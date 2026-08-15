@@ -3,7 +3,7 @@ name: Bootstrap verified source
 on:
   push:
     paths:
-      - '.bootstrap/project.zip.b64'
+      - '.bootstrap/READY'
 
 permissions:
   contents: write
@@ -17,7 +17,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 -d .bootstrap/project.zip.b64 > /tmp/ecomevo.zip
+          cat .bootstrap/chunk_* | base64 -d > /tmp/ecomevo.zip
           unzip -oq /tmp/ecomevo.zip -d .
           rm -rf .bootstrap
           git config user.name "github-actions[bot]"
