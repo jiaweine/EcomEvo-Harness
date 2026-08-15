@@ -1,0 +1,128 @@
+name: Import EcomEvo verified source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/import-ecomevo.yml'
+      - '.transfer4/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct verified project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64, io, shutil, tarfile, zipfile
+
+          repo = Path('.').resolve()
+          transfer = repo / '.transfer4'
+          blocks = sorted(transfer.glob('block_*'))
+          if not blocks:
+              raise SystemExit('No .transfer4/block_* payload files found')
+
+          encoded = ''.join(p.read_text(encoding='utf-8').strip() for p in blocks)
+          try:
+              payload = base64.b64decode(encoded, validate=True)
+          except Exception as exc:
+              raise SystemExit(f'Payload base64 validation failed: {exc}')
+
+          staging = repo / '.import-staging'
+          if staging.exists():
+              shutil.rmtree(staging)
+          staging.mkdir()
+
+          if payload[:4] == b'PK\x03\x04':
+              with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+                  for info in zf.infolist():
+                      dest = (staging / info.filename).resolve()
+                      if staging not in dest.parents and dest != staging:
+                          raise SystemExit(f'Unsafe zip path: {info.filename}')
+                  zf.extractall(staging)
+          else:
+              try:
+                  with tarfile.open(fileobj=io.BytesIO(payload), mode='r:*') as tf:
+                      for member in tf.getmembers():
+                          dest = (staging / member.name).resolve()
+                          if staging not in dest.parents and dest != staging:
+                              raise SystemExit(f'Unsafe tar path: {member.name}')
+                      tf.extractall(staging, filter='data')
+              except tarfile.TarError as exc:
+                  raise SystemExit(f'Unknown payload format ({len(payload)} bytes): {exc}')
+
+          children = [p for p in staging.iterdir() if p.name not in {'__MACOSX'}]
+          source = children[0] if len(children) == 1 and children[0].is_dir() else staging
+
+          # Remove the temporary repository contents but keep Git metadata and staging.
+          for p in list(repo.iterdir()):
+              if p.name in {'.git', '.import-staging'}:
+                  continue
+              if p.is_dir():
+                  shutil.rmtree(p)
+              else:
+                  p.unlink()
+
+          for p in source.iterdir():
+              target = repo / p.name
+              if p.is_dir():
+                  shutil.copytree(p, target)
+              else:
+                  shutil.copy2(p, target)
+
+          shutil.rmtree(staging)
+
+          # Never publish local secrets/caches/runtime state even if an old package contained them.
+          for rel in ['.env', '.pytest_cache', '__pycache__']:
+              p = repo / rel
+              if p.exists():
+                  shutil.rmtree(p) if p.is_dir() else p.unlink()
+          for p in list(repo.rglob('__pycache__')) + list(repo.rglob('*.pyc')):
+              shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+          required = [
+              'README.md', 'requirements.txt', 'Dockerfile',
+              'ecomevo/api/app.py', 'ecomevo/runtime/event_store.py',
+              'frontend/index.html', 'frontend/app.js',
+              'tests/test_runtime.py', 'docs/VERIFICATION_REPORT.md'
+          ]
+          missing = [p for p in required if not (repo / p).exists()]
+          if missing:
+              raise SystemExit('Import incomplete; required files missing: ' + ', '.join(missing))
+
+          print(f'Imported {sum(1 for p in repo.rglob("*") if p.is_file())} files')
+          PY
+
+      - name: Validate imported source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q ecomevo tests scripts
+          if command -v node >/dev/null 2>&1; then node --check frontend/app.js; fi
+          test -f README.md
+          test -f docs/VERIFICATION_REPORT.md
+          test -f .env.example
+          test ! -f .env
+
+      - name: Commit clean source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'Publish verified EcomEvo Harness source'
+          git push origin HEAD:main
