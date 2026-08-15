@@ -1,0 +1,30 @@
+# Runtime data
+outputs/*
+!outputs/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
+
+# Secrets / local environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Test / build artifacts
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
