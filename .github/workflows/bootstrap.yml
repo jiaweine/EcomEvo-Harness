@@ -3,7 +3,7 @@ name: Bootstrap verified source
 on:
   push:
     paths:
-      - '.payload/READY'
+      - '.transfer4/READY'
 
 permissions:
   contents: write
@@ -17,11 +17,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .payload/part_* | base64 -d > /tmp/ecomevo.zip
-          echo "ef791391f26a06f999c17827a05d46ccdba3ce1466a6cf55acc2107ce48c44bf  /tmp/ecomevo.zip" | sha256sum -c -
-          unzip -t /tmp/ecomevo.zip
-          unzip -oq /tmp/ecomevo.zip -d .
-          rm -rf .payload .bootstrap
+          cat .transfer4/block_* | base64 -d > /tmp/ecomevo.tar.xz
+          echo "5f64904ceb90cf0894ac6ba01f0b8a0445d3e4ec3128601064c2faedf4529fd4  /tmp/ecomevo.tar.xz" | sha256sum -c -
+          xz -t /tmp/ecomevo.tar.xz
+          tar -xJf /tmp/ecomevo.tar.xz -C .
+          rm -rf .transfer4 .transfer .payload .bootstrap
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
