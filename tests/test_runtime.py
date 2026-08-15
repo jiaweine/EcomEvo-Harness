@@ -1,0 +1,245 @@
+import asyncio
+from ecomevo.runtime import EcomEvoEngine, EventStore
+
+
+def test_event_store_hash_chain_and_snapshot(tmp_path):
+    s=EventStore(tmp_path/'events.db');s.create_session('s',meta={'x':1});s.append('s','a',{'x':1});s.append('s','b',{'x':2});s.save_snapshot('s',2,{'safe':True})
+    assert s.verify_chain('s') is True
+    assert s.get_snapshot('s',2)['safe'] is True
+
+
+def test_engine_missing_evidence_recovers_but_never_proposes_side_effect(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('帮我判断这个商家是否可以通过入驻审核',[],domain_hint='merchant_review'))
+    assert summary.status=='needs_evidence'
+    assert summary.domain.value=='merchant_review'
+    assert summary.tool_calls >= 5
+    assert summary.subagents >= 4
+    assert summary.event_chain_valid is True
+    assert summary.belief.missing_evidence
+    assert summary.proposed_actions==[]
+    types={e.event_type for e in engine.events.list_events(summary.session_id)}
+    assert {'goal.parsed','plan.created','tools.completed','verification.checked','run.completed'} <= types
+    assert 'runtime.rollback' in types
+    assert engine.events.list_patches()
+
+
+def test_junk_asset_does_not_count_as_merchant_evidence(tmp_path):
+    p=tmp_path/'junk.txt';p.write_text('hello world',encoding='utf-8')
+    asset={'id':'a1','name':'junk.txt','mime':'text/plain','path':str(p),'meta':{'kind':'text','preview':'hello world'}}
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('帮我判断这个商家是否可以通过审核',[asset],domain_hint='merchant_review'))
+    assert summary.status=='needs_evidence'
+    assert any('主体标识' in x for x in summary.belief.missing_evidence)
+    assert summary.proposed_actions==[]
+
+
+def test_engine_with_asset_can_propose_controlled_action(tmp_path):
+    p=tmp_path/'merchant.txt';p.write_text('商家：海风贸易有限公司\n营业执照 91310000123456789A\n品牌授权书齐全\n无历史处罚',encoding='utf-8')
+    asset={'id':'a1','name':'商家资料.txt','mime':'text/plain','path':str(p),'meta':{'kind':'text','preview':p.read_text(encoding='utf-8')}}
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('审核这个商家的主体、授权和历史风险', [asset],domain_hint='merchant_review'))
+    assert summary.status=='completed'
+    assert summary.verifier_score >= .58
+    assert summary.proposed_actions
+    assert all(a.requires_confirmation for a in summary.proposed_actions if a.side_effect)
+
+
+def test_scene_hint_controls_vague_prompt(tmp_path):
+    p=tmp_path/'m.txt';p.write_text('营业执照 91310000123456789A',encoding='utf-8')
+    asset={'id':'a1','name':'资料.txt','mime':'text/plain','path':str(p),'meta':{'kind':'text','preview':p.read_text()}}
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('帮我看看这个',[asset],domain_hint='merchant_review'))
+    assert summary.domain.value=='merchant_review'
+
+
+def test_event_store_fork(tmp_path):
+    store=EventStore(tmp_path/'fork.db');store.create_session('base')
+    store.append('base','one',{'v':1});store.append('base','two',{'v':2})
+    store.fork('base',1,'branch',{'reason':'test'})
+    events=store.list_events('branch')
+    assert len(events)==1 and events[0].payload['_forked_from']=='base'
+    assert store.verify_chain('branch')
+
+
+def _event_append_worker(db_path:str, count:int, worker:int):
+    store=EventStore(db_path)
+    for i in range(count):
+        store.append('shared','worker.event',{'worker':worker,'i':i})
+    return count
+
+
+def test_event_store_multi_process_append_is_serialized(tmp_path):
+    from concurrent.futures import ProcessPoolExecutor
+    import multiprocessing
+    db=str(tmp_path/'multi.db')
+    store=EventStore(db);store.create_session('shared')
+    with ProcessPoolExecutor(max_workers=4,mp_context=multiprocessing.get_context('spawn')) as pool:
+        counts=list(pool.map(_event_append_worker,[db]*4,[12]*4,range(4)))
+    assert sum(counts)==48
+    events=store.list_events('shared')
+    assert len(events)==48
+    assert [e.seq for e in events]==list(range(1,49))
+    assert store.verify_chain('shared') is True
+
+
+def test_accepted_evolution_is_merged_deduplicated_and_restored(tmp_path):
+    db=tmp_path/'evolve.db';engine=EcomEvoEngine(db)
+    first=asyncio.run(engine.run('审核这个商家',[],domain_hint='merchant_review'))
+    assert first.evolved is True
+    patches=engine.events.list_patches(20);assert len(patches)==1 and patches[0]['accepted'] is True
+    assert any('主体标识' in x for x in engine.planner.evolution_state()['merchant_review'])
+    second=asyncio.run(engine.run('再审核一个商家',[],domain_hint='merchant_review'))
+    assert second.evolved is False
+    assert len(engine.events.list_patches(20))==1
+    types=[e.event_type for e in engine.events.list_events(second.session_id)]
+    assert 'evolution.reused' in types
+    restored=EcomEvoEngine(db)
+    assert any('主体标识' in x for x in restored.planner.evolution_state()['merchant_review'])
+    plan=next(e for e in restored.events.list_events(first.session_id) if e.event_type=='plan.created')
+    # First run was planned before the patch existed; a later run must include the learned check.
+    later=next(e for e in engine.events.list_events(second.session_id) if e.event_type=='plan.created')
+    assert not any('主体标识' in x for x in plan.payload['learned_checks'])
+    assert any('主体标识' in x for x in later.payload['learned_checks'])
+
+
+def _text_asset(tmp_path, content, name='x.txt'):
+    p=tmp_path/name;p.write_text(content,encoding='utf-8')
+    return {'id':name,'name':name,'mime':'text/plain','path':str(p),'meta':{'kind':'text','text':content,'preview':content}}
+
+
+def test_unrelated_product_attachment_cannot_unlock_product_action(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('这个商品宣称治愈，能不能下架？',[_text_asset(tmp_path,'hello world unrelated')],domain_hint='product_governance'))
+    assert summary.status=='needs_evidence'
+    assert summary.proposed_actions==[]
+    assert '可关联到当前商品/声明的资料' in summary.belief.missing_evidence
+
+
+def test_merchant_label_without_identifier_cannot_unlock_review(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('这个商家能通过吗？',[_text_asset(tmp_path,'营业执照')],domain_hint='merchant_review'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert any('主体标识' in x for x in summary.belief.missing_evidence)
+
+
+def test_aftersales_amount_without_order_and_dispute_cannot_unlock_action(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('这个订单退款吗？',[_text_asset(tmp_path,'金额: 199')],domain_hint='aftersales'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert '可关联的订单号' in summary.belief.missing_evidence
+    assert '履约或争议事实凭证' in summary.belief.missing_evidence
+
+
+def test_chinese_evidence_search_uses_task_terms_not_whole_sentence(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    asset=_text_asset(tmp_path,'商品ID SKU-7788\n宣传文案：快速治愈皮肤问题')
+    summary=asyncio.run(engine.run('这个商品宣称治愈，帮我核对', [asset],domain_hint='product_governance'))
+    assert summary.status=='completed'
+    completed=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='tools.completed')
+    search=next(x for x in completed.payload['results'] if x['tool']=='evidence.search')
+    assert search['data']['hits']
+    assert '治愈' in search['data']['query_terms']
+
+
+def test_content_image_without_visual_extraction_is_not_marked_reviewed(tmp_path):
+    p=tmp_path/'image.png';p.write_bytes(b'not interpreted in demo mode')
+    asset={'id':'img','name':'素材.png','mime':'image/png','path':str(p),'meta':{'kind':'image','width':100,'height':100}}
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('审核这张素材是否违规',[asset],domain_hint='content_audit'))
+    assert summary.status=='needs_evidence'
+    assert any('可读取的素材内容' in x for x in summary.belief.missing_evidence)
+
+
+def test_missing_evidence_confidence_never_claims_near_complete(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('审核商家',[_text_asset(tmp_path,'营业执照')],domain_hint='merchant_review'))
+    assert summary.status=='needs_evidence'
+    assert summary.verifier_score <= .49
+    assert summary.belief.confidence <= .49
+
+
+def test_recursive_review_creates_second_depth_crosscheck(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    asset=_text_asset(tmp_path,'商品ID SKU-7788\n宣传文案：治愈问题')
+    summary=asyncio.run(engine.run('核对这个商品的治愈宣称',[asset],domain_hint='product_governance'))
+    review=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='review.completed')
+    depths=[x['depth'] for x in review.payload['reviews']]
+    assert 1 in depths and 2 in depths
+    cross=next(x for x in review.payload['reviews'] if x['depth']==2)
+    assert cross['children']>=4 and cross['parent_agent']=='任务复核'
+
+
+def test_runtime_memory_is_recalled_after_restart_but_not_counted_as_evidence(tmp_path):
+    db=tmp_path/'memory.db';engine=EcomEvoEngine(db)
+    first_asset=_text_asset(tmp_path,'营业执照 91310000123456789A\n历史处罚记录',name='m1.txt')
+    first=asyncio.run(engine.run('审核商家历史风险',[first_asset],domain_hint='merchant_review'))
+    assert first.status=='completed' and first.risks
+    restored=EcomEvoEngine(db)
+    second_asset=_text_asset(tmp_path,'营业执照 91310000999999999X',name='m2.txt')
+    second=asyncio.run(restored.run('审核另一个商家',[second_asset],domain_hint='merchant_review'))
+    events=restored.events.list_events(second.session_id)
+    recalled=next(e for e in events if e.event_type=='memory.recalled')
+    assert recalled.payload['case_count']>=1 and recalled.payload['usage']=='planning_only_not_evidence'
+    assert second.belief.facts['memory_case_count']>=1
+    assert all(e.source!='memory' for e in second.evidence)
+
+
+def test_configured_mcp_read_tool_participates_in_plan_and_can_supply_authoritative_identity(tmp_path):
+    class FakeMCP:
+        def __init__(self):self.calls=[]
+        def read_tool_specs(self):return [{'key':'mcp.merchant.profile','domain':'merchant_review','server':'merchant-core','tool':'get_profile','purpose':'读取商家主体档案','arguments':{'query':'${text}'},'evidence_tags':['merchant_identity'],'cost':.8}]
+        async def call_tool(self,server,tool,args):
+            self.calls.append((server,tool,args));return {'merchant_id':'M-1','company_code':'91310000123456789A','status':'active'}
+    mcp=FakeMCP();engine=EcomEvoEngine(tmp_path/'runtime.db',mcp=mcp)
+    summary=asyncio.run(engine.run('审核商家 M-1 的主体信息',[],domain_hint='merchant_review'))
+    assert summary.status=='completed' and summary.proposed_actions
+    assert mcp.calls and mcp.calls[0][0:2]==('merchant-core','get_profile')
+    assert any(e.source=='mcp.merchant.profile' and 'merchant_identity' in e.tags for e in summary.evidence)
+    plan=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='plan.created')
+    assert any(c['tool']=='mcp.merchant.profile' for c in plan.payload['calls'])
+
+
+def test_plugin_registry_holds_live_runtime_instances(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    assert engine.plugins.get('tool.ptc') is engine.ptc
+    assert engine.plugins.get('memory.runtime') is engine.memory
+    rows={x['key']:x for x in engine.plugins.describe()}
+    assert rows['tool.ptc']['loaded'] is True
+
+
+def test_evidence_search_can_find_fact_beyond_display_text_window(tmp_path):
+    content='x'*30000+'\n商品ID SKU-8899 宣传治愈问题'
+    p=tmp_path/'long.txt';p.write_text(content,encoding='utf-8')
+    from ecomevo.product.media import probe_media
+    asset={'id':'long','name':'long.txt','mime':'text/plain','path':str(p),'meta':probe_media(p,'text/plain')}
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    summary=asyncio.run(engine.run('核对 SKU-8899 的治愈宣称',[asset],domain_hint='product_governance'))
+    assert summary.status=='completed'
+    completed=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='tools.completed')
+    search=next(x for x in completed.payload['results'] if x['tool']=='evidence.search')
+    assert search['data']['hits'] and any('sku-8899' in x.lower() for x in search['data']['query_terms'])
+
+
+def test_specific_product_claim_requires_claim_evidence(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'r.db')
+    asset=_text_asset(tmp_path,'SKU-8899 商品基础信息')
+    summary=asyncio.run(engine.run('核对 SKU-8899 是否存在治愈功效宣称',[asset],domain_hint='product_governance'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert any('功效/治愈声明' in x for x in summary.belief.missing_evidence)
+
+
+def test_specific_merchant_authorization_requires_authorization_material(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'r.db')
+    asset=_text_asset(tmp_path,'营业执照 91310000123456789A')
+    summary=asyncio.run(engine.run('审核这个商家的品牌授权是否齐全',[asset],domain_hint='merchant_review'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert '品牌/经营授权材料' in summary.belief.missing_evidence
+
+
+def test_generic_risk_word_is_not_a_risk_signal(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'r.db')
+    asset=_text_asset(tmp_path,'风险核查资料，账户正常，无异常')
+    summary=asyncio.run(engine.run('核查这个账户是否存在套现风险',[asset],domain_hint='risk_review'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert any('独立风险信号' in x for x in summary.belief.missing_evidence)
