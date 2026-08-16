@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<rect x="0" y="0" width="1600" height="1000" rx="0" fill="#f7f8fa" stroke="none" stroke-width="1"/>
+<rect x="0" y="0" width="1600" height="58" rx="0" fill="#ffffff" stroke="none" stroke-width="1"/>
+<line x1="0" y1="58" x2="1600" y2="58" stroke="#e4e7ec" stroke-width="1"/>
+<rect x="0" y="0" width="258" height="58" rx="0" fill="#0d1728" stroke="none" stroke-width="1"/>
+<rect x="17" y="14" width="32" height="32" rx="7" fill="#245edb" stroke="none" stroke-width="1"/>
+<text x="33" y="36" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="700" fill="#fff" text-anchor="middle" opacity="1">E</text>
+<text x="58" y="35" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="700" fill="#f8fafc" text-anchor="start" opacity="1">EcomEvo</text>
+<text x="132" y="35" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="400" fill="#9aa7ba" text-anchor="start" opacity="1">商业决策工作台</text>
+<rect x="290" y="12" width="480" height="34" rx="7" fill="#fff" stroke="#d7dce4" stroke-width="1"/>
+<text x="311" y="34" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="400" fill="#667085" text-anchor="start" opacity="1">⌕</text>
+<text x="335" y="34" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="400" fill="#7a8496" text-anchor="start" opacity="1">搜索任务、业务入口</text>
+<rect x="726" y="18" width="32" height="22" rx="5" fill="#f8f9fb" stroke="#dfe3e8" stroke-width="1"/>
+<text x="742" y="34" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="600" fill="#667085" text-anchor="middle" opacity="1">⌘K</text>
+<text x="1370" y="34" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="400" fill="#596579" text-anchor="start" opacity="1">资料</text>
+<text x="1432" y="34" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="400" fill="#596579" text-anchor="start" opacity="1">服务</text>
+<rect x="1518" y="13" width="32" height="32" rx="16" fill="#f5f7fa" stroke="#dbe1e8" stroke-width="1"/>
+<text x="1534" y="35" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="700" fill="#344054" text-anchor="middle" opacity="1">运</text>
+<rect x="0" y="58" width="258" height="942" rx="0" fill="#0d1728" stroke="none" stroke-width="1"/>
+<rect x="14" y="75" width="230" height="42" rx="7" fill="#245edb" stroke="none" stroke-width="1"/>
+<text x="30" y="102" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="18" font-weight="400" fill="#fff" text-anchor="start" opacity="1">＋</text>
+<text x="55" y="101" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="700" fill="#fff" text-anchor="start" opacity="1">新建任务</text>
+<rect x="200" y="84" width="34" height="24" rx="5" fill="#3e73df" stroke="none" stroke-width="1"/>
+<text x="217" y="101" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="600" fill="#dbe7ff" text-anchor="middle" opacity="1">⌘N</text>
+<text x="18" y="146" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#8190a6" text-anchor="start" opacity="1">业务入口</text>
+<rect x="18" y="173" width="29" height="29" rx="6" fill="#142237" stroke="#384a64" stroke-width="1"/>
+<text x="32.5" y="193" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#dce6f5" text-anchor="middle" opacity="1">品</text>
+<text x="58" y="186" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="650" fill="#d8e0eb" text-anchor="start" opacity="1">商品治理</text>
+<text x="58" y="204" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#8796aa" text-anchor="start" opacity="1">商品信息 · 素材 · 资质</text>
+<rect x="18" y="227" width="29" height="29" rx="6" fill="#142237" stroke="#384a64" stroke-width="1"/>
+<text x="32.5" y="247" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#dce6f5" text-anchor="middle" opacity="1">商</text>
+<text x="58" y="240" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="650" fill="#d8e0eb" text-anchor="start" opacity="1">商家审核</text>
+<text x="58" y="258" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#8796aa" text-anchor="start" opacity="1">主体 · 授权 · 经营风险</text>
+<rect x="10" y="272" width="238" height="52" rx="7" fill="#172944" stroke="none" stroke-width="1"/>
+<rect x="18" y="281" width="29" height="29" rx="6" fill="#142237" stroke="#384a64" stroke-width="1"/>
+<text x="32.5" y="301" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#dce6f5" text-anchor="middle" opacity="1">售</text>
+<text x="58" y="294" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="650" fill="#f4f7fb" text-anchor="start" opacity="1">售后判责</text>
+<text x="58" y="312" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#8796aa" text-anchor="start" opacity="1">订单 · 履约 · 举证 · 退款</text>
+<rect x="18" y="335" width="29" height="29" rx="6" fill="#142237" stroke="#384a64" stroke-width="1"/>
+<text x="32.5" y="355" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#dce6f5" text-anchor="middle" opacity="1">险</text>
+<text x="58" y="348" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="650" fill="#d8e0eb" text-anchor="start" opacity="1">风险核查</text>
+<text x="58" y="366" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#8796aa" text-anchor="start" opacity="1">交易 · 账户 · 商品 · 履约</text>
+<rect x="18" y="389" width="29" height="29" rx="6" fill="#142237" stroke="#384a64" stroke-width="1"/>
+<text x="32.5" y="409" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#dce6f5" text-anchor="middle" opacity="1">审</text>
+<text x="58" y="402" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="650" fill="#d8e0eb" text-anchor="start" opacity="1">内容审核</text>
+<text x="58" y="420" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#8796aa" text-anchor="start" opacity="1">图片 · 视频 · 文案 · 一致性</text>
+<line x1="14" y1="450" x2="244" y2="450" stroke="#26364e" stroke-width="1"/>
+<text x="18" y="475" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#8190a6" text-anchor="start" opacity="1">最近任务</text>
+<text x="218" y="475" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#8190a6" text-anchor="start" opacity="1">刷新</text>
+<rect x="10" y="488" width="238" height="52" rx="6" fill="#172944" stroke="none" stroke-width="1"/>
+<text x="22" y="510" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11.5" font-weight="650" fill="#fff" text-anchor="start" opacity="1">订单 4812 售后争议</text>
+<text x="22" y="529" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#8392a7" text-anchor="start" opacity="1">售后判责 · 08/17 09:32</text>
+<text x="22" y="568" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11.5" font-weight="650" fill="#c8d1de" text-anchor="start" opacity="1">华东商家品牌授权审核</text>
+<text x="22" y="587" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#8392a7" text-anchor="start" opacity="1">商家审核 · 08/17 08:40</text>
+<text x="22" y="626" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11.5" font-weight="650" fill="#c8d1de" text-anchor="start" opacity="1">SKU-8899 功效声明核查</text>
+<text x="22" y="645" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#8392a7" text-anchor="start" opacity="1">商品治理 · 08/16 08:30</text>
+<line x1="14" y1="855" x2="244" y2="855" stroke="#26364e" stroke-width="1"/>
+<rect x="15" y="879" width="7" height="7" rx="4" fill="#24c78a" stroke="none" stroke-width="1"/>
+<text x="30" y="886" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="650" fill="#d6deea" text-anchor="start" opacity="1">数据流向可控</text>
+<text x="30" y="904" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#7f8da2" text-anchor="start" opacity="1">外部服务仅按当前选择发送</text>
+<text x="15" y="939" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="400" fill="#8190a6" text-anchor="start" opacity="1">服务状态</text>
+<rect x="258" y="58" width="932" height="942" rx="0" fill="#fff" stroke="none" stroke-width="1"/>
+<text x="290" y="92" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#245edb" text-anchor="start" opacity="1">售后判责</text>
+<text x="350" y="92" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="400" fill="#667085" text-anchor="start" opacity="1">·  已同步</text>
+<text x="290" y="126" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="24" font-weight="700" fill="#111827" text-anchor="start" opacity="1">订单 4812 售后争议</text>
+<text x="290" y="149" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="400" fill="#697586" text-anchor="start" opacity="1">结合订单、履约、沟通记录和举证还原事实。</text>
+<text x="290" y="181" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="400" fill="#7a8496" text-anchor="start" opacity="1">资料</text>
+<text x="323" y="181" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#344054" text-anchor="start" opacity="1">3</text>
+<text x="355" y="181" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="400" fill="#7a8496" text-anchor="start" opacity="1">待确认</text>
+<text x="405" y="181" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#344054" text-anchor="start" opacity="1">1</text>
+<rect x="440" y="172" width="7" height="7" rx="4" fill="#b7791f" stroke="none" stroke-width="1"/>
+<text x="452" y="181" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="650" fill="#805616" text-anchor="start" opacity="1">待确认</text>
+<rect x="965" y="80" width="145" height="56" rx="8" fill="#fff" stroke="#d8dee6" stroke-width="1"/>
+<text x="977" y="99" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#7a8496" text-anchor="start" opacity="1">处理服务</text>
+<text x="977" y="120" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="650" fill="#273449" text-anchor="start" opacity="1">自动选择</text>
+<text x="1097" y="115" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="400" fill="#667085" text-anchor="start" opacity="1">⌄</text>
+<rect x="1120" y="80" width="53" height="56" rx="8" fill="#fff" stroke="#d8dee6" stroke-width="1"/>
+<text x="1146" y="113" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="650" fill="#344054" text-anchor="middle" opacity="1">分享</text>
+<line x1="258" y1="201" x2="1190" y2="201" stroke="#e5e7eb" stroke-width="1"/>
+<rect x="344" y="203" width="364" height="27" rx="5" fill="#fff" stroke="#e1e5ea" stroke-width="1"/>
+<text x="358" y="221" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="600" fill="#425066" text-anchor="start" opacity="1">订单与物流记录.pdf</text>
+<text x="602" y="221" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#7f8998" text-anchor="start" opacity="1">文档 · 6页</text>
+<rect x="716" y="203" width="364" height="27" rx="5" fill="#fff" stroke="#e1e5ea" stroke-width="1"/>
+<text x="730" y="221" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="600" fill="#425066" text-anchor="start" opacity="1">订单明细.xlsx</text>
+<text x="974" y="221" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#7f8998" text-anchor="start" opacity="1">表格 · 48行</text>
+<rect x="344" y="239" width="364" height="50" rx="7" fill="#fbfcfd" stroke="#e1e5ea" stroke-width="1"/>
+<rect x="356" y="250" width="34" height="28" rx="5" fill="#f0f3f6" stroke="none" stroke-width="1"/>
+<text x="373" y="269" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#667085" text-anchor="middle" opacity="1">图</text>
+<text x="401" y="260" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="600" fill="#344054" text-anchor="start" opacity="1">买家双方沟通截图.png</text>
+<text x="401" y="276" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#7a8496" text-anchor="start" opacity="1">图片 · 1242×2688</text>
+<line x1="292" y1="315" x2="1156" y2="315" stroke="#eef0f3" stroke-width="1"/>
+<rect x="292" y="341" width="29" height="29" rx="6" fill="#0d1728" stroke="none" stroke-width="1"/>
+<text x="306.5" y="361" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#fff" text-anchor="middle" opacity="1">E</text>
+<text x="344" y="359" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#253147" text-anchor="start" opacity="1">EcomEvo</text>
+<text x="413" y="359" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#8a94a4" text-anchor="start" opacity="1">08/17 09:32</text>
+<text x="344" y="397" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="15" font-weight="700" fill="#172033" text-anchor="start" opacity="1">建议支持本次退款。</text>
+<text x="344" y="439" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="400" fill="#2e3a4d" text-anchor="start" opacity="1">订单与物流信息能够确认商品已经正常签收，但双方沟通记录中存在商家对质量问题的明确售后承诺；</text>
+<text x="344" y="464" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="400" fill="#2e3a4d" text-anchor="start" opacity="1">用户上传的破损证据与订单商品一致。当前资料更支持“商品质量问题”而不是“无理由退货”。</text>
+<text x="344" y="515" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="700" fill="#172033" text-anchor="start" opacity="1">处理建议</text>
+<text x="344" y="548" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="400" fill="#2e3a4d" text-anchor="start" opacity="1">• 退款金额：¥199</text>
+<text x="344" y="610" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="400" fill="#2e3a4d" text-anchor="start" opacity="1">• 运费：由商家承担</text>
+<text x="344" y="672" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="400" fill="#2e3a4d" text-anchor="start" opacity="1">• 责任方：商家</text>
+<text x="344" y="734" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="400" fill="#2e3a4d" text-anchor="start" opacity="1">• 建议保留本次图片与沟通记录作为后续争议依据。</text>
+<text x="344" y="764" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#8a94a4" text-anchor="start" opacity="1">由 通义千问 完成   复制</text>
+<rect x="292" y="829" width="864" height="97" rx="11" fill="#fff" stroke="#ccd3dc" stroke-width="1"/>
+<text x="308" y="857" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="12" font-weight="400" fill="#6d7788" text-anchor="start" opacity="1">直接描述要处理的事情，例如：这笔退款该不该退？把订单、物流和聊天记录一起核对。</text>
+<text x="310" y="900" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="400" fill="#667085" text-anchor="start" opacity="1">▧ 图片    ▶ 视频    ♪ 音频    ＋ 文档 / 表格</text>
+<text x="968" y="899" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="8" font-weight="400" fill="#7f8998" text-anchor="start" opacity="1">Enter 发送 · Shift+Enter 换行</text>
+<rect x="1091" y="884" width="53" height="31" rx="7" fill="#245edb" stroke="none" stroke-width="1"/>
+<text x="1117.5" y="905" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="11" font-weight="700" fill="#fff" text-anchor="middle" opacity="1">发送</text>
+<text x="724" y="946" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="middle" fill="#8a94a4" text-anchor="start" opacity="1">退款、下架、审核和风险升级等操作会先请你确认，不会直接执行。</text>
+<rect x="1190" y="58" width="410" height="942" rx="0" fill="#fbfcfd" stroke="none" stroke-width="1"/>
+<line x1="1190" y1="58" x2="1190" y2="1000" stroke="#e2e6ec" stroke-width="1"/>
+<text x="1215" y="88" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="700" fill="#253147" text-anchor="start" opacity="1">任务详情</text>
+<text x="1232" y="126" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="600" fill="#657186" text-anchor="middle" opacity="1">进度</text>
+<text x="1301" y="126" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="600" fill="#657186" text-anchor="middle" opacity="1">依据</text>
+<text x="1370" y="126" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#245edb" text-anchor="middle" opacity="1">待确认  1</text>
+<text x="1470" y="126" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="600" fill="#657186" text-anchor="middle" opacity="1">资料</text>
+<line x1="1377" y1="142" x2="1460" y2="142" stroke="#245edb" stroke-width="2"/>
+<text x="1208" y="181" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="700" fill="#253147" text-anchor="start" opacity="1">待确认操作</text>
+<text x="1208" y="202" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="400" fill="#7a8496" text-anchor="start" opacity="1">会改变商品、商家、订单或风险状态的操作，都需要你确认。</text>
+<line x1="1208" y1="217" x2="1570" y2="217" stroke="#e5e7eb" stroke-width="1"/>
+<rect x="1208" y="236" width="50" height="20" rx="4" fill="#edf2ff" stroke="none" stroke-width="1"/>
+<text x="1233" y="250" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9" font-weight="700" fill="#2852a5" text-anchor="middle" opacity="1">等待确认</text>
+<text x="1208" y="280" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="13" font-weight="700" fill="#253147" text-anchor="start" opacity="1">向用户退款 ¥199</text>
+<text x="1208" y="302" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="9.5" font-weight="400" fill="#667085" text-anchor="start" opacity="1">按本次判责结果原路退款，运费计入商家责任。</text>
+<rect x="1208" y="318" width="48" height="20" rx="4" fill="#fffaf1" stroke="#ead5ae" stroke-width="1"/>
+<text x="1232" y="332" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="8.5" font-weight="700" fill="#8b5b14" text-anchor="middle" opacity="1">中等影响</text>
+<rect x="1264" y="318" width="72" height="20" rx="4" fill="#fff" stroke="#d9dee5" stroke-width="1"/>
+<text x="1300" y="332" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="8.5" font-weight="600" fill="#667085" text-anchor="middle" opacity="1">会改变业务状态</text>
+<rect x="1208" y="353" width="169" height="34" rx="6" fill="#fff" stroke="#d9dee5" stroke-width="1"/>
+<text x="1292.5" y="375" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="650" fill="#596579" text-anchor="middle" opacity="1">暂不执行</text>
+<rect x="1384" y="353" width="186" height="34" rx="6" fill="#245edb" stroke="none" stroke-width="1"/>
+<text x="1477" y="375" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,Microsoft YaHei,Arial,sans-serif" font-size="10" font-weight="700" fill="#fff" text-anchor="middle" opacity="1">确认执行</text>
+<line x1="1208" y1="404" x2="1570" y2="404" stroke="#e5e7eb" stroke-width="1"/>
+</svg>

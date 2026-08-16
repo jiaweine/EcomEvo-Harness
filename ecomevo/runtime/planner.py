@@ -44,12 +44,14 @@ class AdaptivePlanner:
             hint = DecisionDomain(domain_hint) if domain_hint else None
         except ValueError:
             hint = None
+        # A task's selected business workspace is authoritative. Switching domains is a product action
+        # (new task / explicit scene change), never a hidden inference caused by keywords in one message.
         if hint in scores:
-            # The selected workspace should control vague prompts, while a clearly explicit cross-domain request can override it.
-            scores[hint] += 1.5
-        if any(str(a.get('mime','')).startswith(('image/','video/')) for a in assets):
-            scores[DecisionDomain.CONTENT_AUDIT] += 0.35
-        domain = max(scores, key=scores.get) if max(scores.values(), default=0) > 0 else (hint or DecisionDomain.GENERAL)
+            domain=hint
+        else:
+            if any(str(a.get('mime','')).startswith(('image/','video/')) for a in assets):
+                scores[DecisionDomain.CONTENT_AUDIT] += 0.35
+            domain=max(scores,key=scores.get) if max(scores.values(),default=0)>0 else DecisionDomain.GENERAL
         req = {
             DecisionDomain.PRODUCT_GOVERNANCE:['商品信息','适用规则'],
             DecisionDomain.MERCHANT_REVIEW:['主体/资质信息','适用规则'],
@@ -73,7 +75,8 @@ class AdaptivePlanner:
         calls=[call('media.summarize','整理当前任务素材',group='parallel-a'),call('policy.lookup','读取当前场景规则',group='parallel-a')]
         learned=self.learned_checks.get(goal.domain.value,[])
         memory_terms=[str(x) for x in (belief.facts.get('memory_watch_terms') or []) if str(x).strip()]
-        keywords=list(dict.fromkeys(_query_terms(goal.primary,limit=24)+learned[:8]+memory_terms[:8]))
+        context_terms=[str(x) for x in (belief.facts.get('conversation_context_terms') or []) if str(x).strip()]
+        keywords=list(dict.fromkeys(_query_terms(goal.primary,limit=24)+context_terms[:12]+learned[:8]+memory_terms[:8]))
         calls.append(call('evidence.search','从附件中定位与问题直接相关的证据',{'keywords':keywords},group='parallel-a'))
         domain=goal.domain
         if domain==DecisionDomain.PRODUCT_GOVERNANCE:calls += [call('catalog.inspect','核对商品字段与高风险声明',group='parallel-b'),call('risk.scan','检查商品与交易风险线索',group='parallel-b')]

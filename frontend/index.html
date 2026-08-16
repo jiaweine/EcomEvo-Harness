@@ -2,103 +2,93 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#0b1220" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1728" />
   <title>EcomEvo 商业决策工作台</title>
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
-<div class="shell">
+<div class="app-shell">
   <header class="topbar">
-    <div class="brand-block">
-      <div class="brand-mark"><span></span><span></span><span></span></div>
-      <div class="brand-copy"><b>EcomEvo</b><small>商业决策工作台</small></div>
+    <div class="top-left">
+      <button class="mobile-icon" id="navToggle" aria-label="打开业务导航" aria-expanded="false">☰</button>
+      <div class="brand" aria-label="EcomEvo 商业决策工作台">
+        <span class="brand-mark" aria-hidden="true">E</span>
+        <div class="brand-copy"><b>EcomEvo</b><small>商业决策工作台</small></div>
+      </div>
     </div>
-    <div class="workspace-switch">
-      <span class="workspace-icon">EC</span>
-      <div><small>当前空间</small><b>电商运营中心</b></div>
-      <button aria-label="切换空间">⌄</button>
+    <button class="command-trigger" id="commandBtn" aria-label="搜索任务和业务入口">
+      <span class="command-symbol" aria-hidden="true">⌕</span><span class="command-placeholder">搜索任务、业务入口</span><kbd>⌘ K</kbd>
+    </button>
+    <div class="top-actions">
+      <button class="top-action" id="assetLibraryBtn"><span aria-hidden="true">▤</span><em>资料</em></button>
+      <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>服务</em></button>
+      <button class="avatar" aria-label="当前用户">运</button>
+      <button class="mobile-icon" id="detailToggle" aria-label="打开任务详情" aria-expanded="false">⋯</button>
     </div>
-    <div class="top-spacer"></div>
-    <button class="top-ghost" id="assetLibraryBtn">资料</button>
-    <button class="top-ghost" id="providerBtn">模型服务</button>
-    <div class="health-pill"><i></i><span>服务正常</span></div>
-    <button class="avatar">运</button>
   </header>
 
-  <aside class="leftbar">
-    <button class="new-task" id="newTaskBtn"><span>＋</span><b>新建任务</b><kbd>⌘ N</kbd></button>
+  <aside class="leftbar" id="leftbar" aria-label="业务导航">
+    <div class="left-top">
+      <button class="new-task" id="newTaskBtn"><span aria-hidden="true">＋</span><b>新建任务</b><kbd>⌘ N</kbd></button>
+    </div>
     <div class="left-scroll">
       <section class="nav-section">
         <div class="nav-title">业务入口</div>
-        <button class="scene active" data-scene="product_governance">
-          <span class="scene-icon">品</span><div><b>商品治理</b><small>标题 · 主图 · 详情 · 资质</small></div><em>›</em>
-        </button>
-        <button class="scene" data-scene="merchant_review">
-          <span class="scene-icon">商</span><div><b>商家审核</b><small>主体 · 授权 · 风险 · 关联</small></div><em>›</em>
-        </button>
-        <button class="scene" data-scene="aftersales">
-          <span class="scene-icon">售</span><div><b>售后判责</b><small>订单 · 履约 · 举证 · 退款</small></div><em>›</em>
-        </button>
-        <button class="scene" data-scene="risk_review">
-          <span class="scene-icon">险</span><div><b>风险核查</b><small>交易 · 账户 · 商品 · 履约</small></div><em>›</em>
-        </button>
-        <button class="scene" data-scene="content_audit">
-          <span class="scene-icon">审</span><div><b>内容审核</b><small>图片 · 视频 · 文案 · 一致性</small></div><em>›</em>
-        </button>
+        <button class="scene active" data-scene="product_governance"><span class="scene-icon">品</span><div><b>商品治理</b><small>商品信息 · 素材 · 资质</small></div></button>
+        <button class="scene" data-scene="merchant_review"><span class="scene-icon">商</span><div><b>商家审核</b><small>主体 · 授权 · 经营风险</small></div></button>
+        <button class="scene" data-scene="aftersales"><span class="scene-icon">售</span><div><b>售后判责</b><small>订单 · 履约 · 举证 · 退款</small></div></button>
+        <button class="scene" data-scene="risk_review"><span class="scene-icon">险</span><div><b>风险核查</b><small>交易 · 账户 · 商品 · 履约</small></div></button>
+        <button class="scene" data-scene="content_audit"><span class="scene-icon">审</span><div><b>内容审核</b><small>图片 · 视频 · 文案 · 一致性</small></div></button>
       </section>
-
       <section class="nav-section recent-section">
-        <div class="nav-title"><span>最近任务</span><button id="refreshBtn">↻</button></div>
+        <div class="nav-title"><span>最近任务</span><button id="refreshBtn" aria-label="刷新任务">刷新</button></div>
         <div id="conversationList" class="conversation-list"></div>
       </section>
     </div>
     <div class="left-footer">
-      <div class="privacy-mini"><span>●</span><p><b>模型连接由服务端管理</b><small>选择外部服务时，当前任务内容会按配置发送到对应服务</small></p></div>
-      <button id="settingsBtn">设置</button>
+      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>数据流向可控</b><small>选择外部服务时，当前任务内容会按配置发送到对应服务</small></p></div>
+      <button id="settingsBtn">服务状态</button>
     </div>
   </aside>
 
-  <main class="main">
-    <div class="chat-head">
-      <div>
-        <div class="eyebrow" id="sceneEyebrow">商品治理</div>
+  <main class="workspace">
+    <header class="task-head">
+      <div class="task-head-main">
+        <div class="eyebrow"><span id="sceneEyebrow">商品治理</span><i></i><span id="taskConnection">已同步</span></div>
         <h1 id="conversationTitle">新的业务任务</h1>
         <p id="conversationMeta">把相关资料放进来，直接描述要处理的问题。</p>
+        <div class="task-chips" aria-label="任务摘要">
+          <span class="task-chip"><small>资料</small><b id="assetCountChip">0</b></span>
+          <span class="task-chip"><small>待确认</small><b id="actionCountChip">0</b></span>
+          <span class="task-chip ready" id="taskReadyChip"><i></i><b>就绪</b></span>
+        </div>
       </div>
-      <div class="head-actions">
-        <label class="provider-control"><small>使用服务</small><select id="providerSelect"><option value="auto">自动选择</option></select><span>⌄</span></label>
-        <button class="icon-btn" id="shareBtn" title="复制任务链接">↗</button>
-        <button class="icon-btn" id="moreBtn" title="更多">•••</button>
+      <div class="task-head-actions">
+        <label class="provider-control"><small>处理服务</small><select id="providerSelect" aria-label="选择处理服务"><option value="auto">自动选择</option></select><span aria-hidden="true">⌄</span></label>
+        <button class="icon-btn" id="shareBtn" title="复制任务链接" aria-label="复制任务链接">分享</button>
       </div>
-    </div>
+    </header>
+
+    <div class="history-notice" id="historyNotice" hidden>当前显示最近 200 条记录，较早内容仍保留在任务中。</div>
 
     <div class="chat-scroll" id="chatScroll">
       <section class="welcome" id="welcomePanel">
-        <div class="welcome-badge"><span></span>对话式业务处理</div>
-        <h2>今天要处理什么业务问题？</h2>
-        <p>商品、商家、订单、截图、视频、合同、表格和日志可以放在同一个任务里。你只说业务问题，资料核对和处理步骤会自动组织。</p>
+        <div class="welcome-badge"><span></span>新任务</div>
+        <h2>把目标交代清楚，剩下的过程都留在这里。</h2>
+        <p>商品、商家、订单、截图、视频、表格和沟通记录可以持续追加。工作台会把事实、风险、结论和需要你确认的操作分开整理。</p>
         <div class="quick-grid">
-          <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。">
-            <span class="qicon">品</span><div><b>核对一批商品</b><small>找风险声明、资质缺口和处置建议</small></div><em>↗</em>
-          </button>
-          <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。">
-            <span class="qicon">商</span><div><b>审核商家入驻</b><small>主体、资质、授权与关联风险一起看</small></div><em>↗</em>
-          </button>
-          <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。">
-            <span class="qicon">售</span><div><b>处理售后争议</b><small>还原时间线、核对证据、给出判责依据</small></div><em>↗</em>
-          </button>
-          <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。">
-            <span class="qicon">险</span><div><b>核查异常风险</b><small>交易、账户、商品与履约信号交叉确认</small></div><em>↗</em>
-          </button>
+          <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对一批商品</b><small>找出风险声明、资料缺口和需要处理的商品</small></div><em>商品治理</em></button>
+          <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家入驻</b><small>核对主体、资质、品牌授权和历史经营风险</small></div><em>商家审核</em></button>
+          <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后争议</b><small>还原订单时间线，核对举证并给出判责建议</small></div><em>售后判责</em></button>
+          <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查异常风险</b><small>区分明确证据和普通线索，决定是否需要升级</small></div><em>风险核查</em></button>
         </div>
-        <div class="input-types"><span>支持</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
+        <div class="input-types"><span>可直接加入</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
       </section>
 
       <div id="messageList" class="message-list"></div>
-
       <div class="work-card" id="workCard" hidden>
-        <div class="work-head"><div class="pulse"><i></i><i></i><i></i></div><div><b id="workStep">正在处理</b><small id="workDetail">正在整理资料</small></div><em id="workPercent">0%</em></div>
+        <div class="work-head"><div class="pulse" aria-hidden="true"><i></i><i></i><i></i></div><div><b id="workStep">正在处理</b><small id="workDetail">正在整理资料</small></div><em id="workPercent">0%</em></div>
         <div class="work-progress"><i id="workBar"></i></div>
       </div>
     </div>
@@ -106,70 +96,78 @@
     <div class="composer-zone">
       <div id="pendingAssets" class="pending-assets" hidden></div>
       <div class="composer" id="composer">
-        <textarea id="messageInput" rows="1" placeholder="例如：这笔退款该不该退？请把订单、物流和聊天记录一起核对。"></textarea>
+        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="直接描述要处理的事情，例如：这笔退款该不该退？把订单、物流和聊天记录一起核对。" aria-label="任务问题"></textarea>
         <div class="composer-bottom">
           <div class="attach-row">
-            <button class="attach" data-accept="image/*"><span>▧</span>图片</button>
-            <button class="attach" data-accept="video/*"><span>▶</span>视频</button>
-            <button class="attach" data-accept="audio/*"><span>♫</span>音频</button>
-            <button class="attach" data-accept=".pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span>＋</span>文档/表格</button>
+            <button class="attach" data-accept="image/*"><span aria-hidden="true">▧</span>图片</button>
+            <button class="attach" data-accept="video/*"><span aria-hidden="true">▶</span>视频</button>
+            <button class="attach" data-accept="audio/*"><span aria-hidden="true">♪</span>音频</button>
+            <button class="attach" data-accept=".pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span aria-hidden="true">＋</span>文档 / 表格</button>
+            <button class="attach mobile-attach" data-accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span aria-hidden="true">＋</span>添加资料</button>
           </div>
-          <div class="send-row"><small>Enter 发送 · Shift+Enter 换行</small><button id="sendBtn" class="send-btn">↑</button></div>
+          <div class="send-row"><small>Enter 发送 · Shift+Enter 换行</small><button id="sendBtn" class="send-btn" aria-label="发送">发送</button></div>
         </div>
         <input type="file" id="fileInput" multiple hidden />
       </div>
-      <div class="composer-note">涉及下架、审核、退款、冻结等会改变业务状态的操作，都会先进入确认环节。</div>
+      <div class="composer-note">退款、下架、审核和风险升级等操作会先请你确认，不会直接执行。</div>
     </div>
   </main>
 
-  <aside class="rightbar">
+  <aside class="rightbar" id="rightbar" aria-label="任务详情">
     <div class="right-head">
-      <div class="right-tabs">
-        <button class="right-tab active" data-panel="progress">处理进度</button>
-        <button class="right-tab" data-panel="evidence">关键依据</button>
-        <button class="right-tab" data-panel="actions">待确认</button>
-        <button class="right-tab" data-panel="assets">资料</button>
+      <div class="right-title"><b>任务详情</b><button class="right-close" id="rightClose" aria-label="关闭任务详情">×</button></div>
+      <div class="right-tabs" role="tablist" aria-label="任务详情分类">
+        <button class="right-tab active" data-panel="progress" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="true">进度</button>
+        <button class="right-tab" data-panel="evidence" role="tab" id="tab-evidence" aria-controls="panel-evidence" aria-selected="false" tabindex="-1">依据</button>
+        <button class="right-tab" data-panel="actions" role="tab" id="tab-actions" aria-controls="panel-actions" aria-selected="false" tabindex="-1">待确认 <i id="actionBadge" hidden>0</i></button>
+        <button class="right-tab" data-panel="assets" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">资料</button>
       </div>
     </div>
     <div class="right-scroll">
-      <section class="right-panel active" id="panel-progress">
+      <section class="right-panel active" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress">
         <div class="status-card">
-          <div class="status-top"><div class="status-ring"><span id="statusPercent">0</span><small>%</small></div><div><small>当前状态</small><b id="taskState">等待任务</b><p id="taskDetail">发一句问题，或者先添加资料。</p></div></div>
+          <div class="status-top"><div><small>当前状态</small><b id="taskState">等待任务</b><p id="taskDetail">发一句问题，或者先添加资料。</p></div><div class="status-ring"><em>本轮</em><span id="statusPercent">0</span><small>%</small></div></div>
           <div class="status-line"><i id="statusBar"></i></div>
         </div>
         <div id="progressList" class="progress-list"></div>
-        <div class="follow-card">
-          <div class="follow-title"><b>可以继续这样问</b><small>点击即可放到输入框</small></div>
-          <div id="suggestionList" class="suggestions"></div>
-        </div>
+        <div class="follow-card"><div class="follow-title"><b>继续处理</b><small>常用追问</small></div><div id="suggestionList" class="suggestions"></div></div>
       </section>
-      <section class="right-panel" id="panel-evidence">
+      <section class="right-panel" id="panel-evidence" role="tabpanel" aria-labelledby="tab-evidence" hidden>
         <div class="panel-copy"><b>关键依据</b><p>只展示与当前结论直接相关的资料和核对结果。</p></div>
-        <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次处理后显示。</div></div>
+        <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次处理后，这里会显示关键依据。</div></div>
       </section>
-      <section class="right-panel" id="panel-actions">
-        <div class="panel-copy"><b>待确认操作</b><p>会改变商品、商家、订单或风控状态的操作，需要你确认后才会执行。</p></div>
+      <section class="right-panel" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden>
+        <div class="panel-copy"><b>待确认操作</b><p>会改变商品、商家、订单或风险状态的操作，都需要你确认。</p></div>
         <div id="actionList" class="action-list"><div class="empty-side">目前没有待确认操作。</div></div>
       </section>
-      <section class="right-panel" id="panel-assets">
-        <div class="panel-copy"><b>本次资料</b><p>后续可以继续追加，不需要重新描述背景。</p></div>
+      <section class="right-panel" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden>
+        <div class="panel-copy"><b>任务资料</b><p>后续可以继续追加，不需要重新描述背景。</p></div>
         <div id="assetList" class="asset-list"><div class="empty-side">还没有添加资料。</div></div>
       </section>
     </div>
   </aside>
+  <div class="drawer-scrim" id="drawerScrim" hidden></div>
 </div>
 
-<div class="drop-mask" id="dropMask" hidden><div><span>＋</span><b>松开即可加入当前任务</b><small>图片、视频、音频、PDF、Word、Excel、日志都可以</small></div></div>
+<div class="drop-mask" id="dropMask" hidden><div><span>＋</span><b>松开即可加入当前任务</b><small>支持图片、视频、音频、PDF、Word、Excel 和日志</small></div></div>
 
-<div class="modal-backdrop" id="providerModal" hidden>
+<div class="modal-backdrop" id="providerModal" hidden role="dialog" aria-modal="true" aria-labelledby="providerModalTitle">
   <div class="modal">
-    <div class="modal-head"><div><small>服务配置</small><h3>模型服务</h3><p>密钥只保存在服务端。可自动选择，也可以固定使用已配置服务。</p></div><button class="modal-close">×</button></div>
+    <div class="modal-head"><div><small>服务状态</small><h3 id="providerModalTitle">处理服务</h3><p>可自动选择，也可以固定使用已配置服务。外部服务的数据流向以当前配置为准。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
     <div id="providerGrid" class="provider-grid"></div>
-    <div class="modal-foot"><span>未配置任何外部服务时，系统仍可使用本地演示执行器完整跑通流程。</span></div>
+    <div class="modal-foot"><span>本地演示适合文本和结构化资料；图片、音视频和扫描件需要使用支持对应能力的服务。</span></div>
   </div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="command-backdrop" id="commandModal" hidden role="dialog" aria-modal="true" aria-labelledby="commandTitle">
+  <div class="command-modal">
+    <div class="command-input"><span aria-hidden="true">⌕</span><input id="commandInput" autocomplete="off" placeholder="搜索任务或业务入口" aria-labelledby="commandTitle" /><kbd>Esc</kbd></div>
+    <div class="command-caption" id="commandTitle">快速打开</div>
+    <div id="commandResults" class="command-results"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="/assets/app.js"></script>
 </body>
 </html>

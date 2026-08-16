@@ -87,3 +87,14 @@ def test_gemini_large_media_uses_files_api_and_deletes_after_use(tmp_path):
     out=asyncio.run(p.chat(messages=[{'role':'user','content':'listen'}],assets=[{'mime':'audio/mpeg','path':str(audio),'name':'call.mp3'}]))
     assert out=='heard'
     assert any(m=='DELETE' and '/v1beta/files/f1' in u for m,u in seen)
+
+
+def test_explicit_demo_never_routes_to_external_provider(monkeypatch):
+    from ecomevo.providers.registry import ProviderRegistry
+    reg=ProviderRegistry()
+    # Even if a real provider is configured in memory, choosing local demo must remain local.
+    any_provider=next(iter(reg.providers.values()))
+    any_provider.info.configured=True
+    assert reg.choose('demo',[]) is None
+    rows={x['key']:x for x in reg.list()}
+    assert rows['demo']['multimodal'] is False and rows['demo']['supports_audio'] is False and rows['demo']['supports_document'] is False

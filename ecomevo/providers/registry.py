@@ -22,10 +22,22 @@ class ProviderRegistry:
             self.providers['custom']=OpenAICompatProvider(key='custom',name='企业模型',vendor='OpenAI-Compatible',api_key=e.get('CUSTOM_API_KEY'),base_url=e['CUSTOM_BASE_URL'],model=e.get('CUSTOM_MODEL'),multimodal=e.get('CUSTOM_MULTIMODAL','1')!='0',note='企业自建或私有化模型服务')
     def list(self)->list[dict[str,Any]]:
         rows=[p.info.dict() for p in self.providers.values()]
-        rows.insert(0,ProviderInfo('auto','自动选择','系统',None,True,True,True,True,'根据附件类型和已配置服务选择',True).dict())
-        rows.append(ProviderInfo('demo','本地演示','本地','Deterministic Runtime',True,True,True,True,'无需密钥，可完整跑通产品流程').dict())
+        configured=[p.info for p in self.providers.values() if p.info.configured]
+        rows.insert(0,ProviderInfo(
+            'auto','自动选择','系统',None,True,
+            any(x.multimodal for x in configured),
+            any(x.supports_video for x in configured),
+            any(x.supports_audio for x in configured),
+            '根据附件类型和已配置服务选择',
+            any(x.supports_document for x in configured),
+        ).dict())
+        # Local demo can exercise the full business workflow, but it does not pretend to
+        # understand pixels/audio/scanned documents. Those still require a configured provider.
+        rows.append(ProviderInfo('demo','本地演示','本地','Deterministic Runtime',True,False,False,False,'无需密钥，可跑通文本/结构化资料的业务流程',False).dict())
         return rows
     def choose(self,preferred:str|None,assets:list[dict[str,Any]])->BaseProvider|None:
+        # Explicit local demo is a privacy boundary: never route it to a configured external provider.
+        if preferred=='demo':return None
         needs_audio=any(str(a.get('mime','')).startswith('audio/') for a in assets)
         needs_visual=any(str(a.get('mime','')).startswith(('image/','video/')) for a in assets)
         # Native-text PDFs can already be parsed locally. A scanned/image-only PDF

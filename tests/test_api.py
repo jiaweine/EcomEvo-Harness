@@ -177,7 +177,10 @@ def test_followup_reuses_task_assets_and_prior_user_context():
     assert any(e.get('asset_id')==asset['id'] for e in assistant['payload']['evidence'])
     events=c.get(f"/api/runtime/sessions/{assistant['payload']['session_id']}/events").json()
     goal=next(e['payload'] for e in events if e['event_type']=='goal.parsed')
-    assert '先核对这个商家的主体和授权' in goal['primary']
+    assert goal['primary']=='那按刚才资料继续处理'
+    plan=next(e['payload'] for e in events if e['event_type']=='plan.created')
+    search=next(x for x in plan['calls'] if x['tool']=='evidence.search')
+    assert any('授权' in str(x) for x in search['args'].get('keywords',[]))
 
 
 def test_asset_content_tampering_is_detected_before_runtime():
@@ -219,3 +222,30 @@ def test_asset_upload_must_belong_to_a_task():
 def test_frontend_cross_scene_shortcut_creates_new_task_after_conversation_started():
     js=TestClient(app).get('/assets/app.js').text
     assert "state.messages.length>0&&state.conversation.scene!==scene){await newConversation(scene)" in js
+
+
+def test_missing_evidence_progress_ends_in_clear_waiting_state_without_duplicate_completion():
+    c=TestClient(app)
+    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'这个商家能过吗','asset_ids':[],'provider':'demo'})
+    assert r.status_code==200
+    d=c.get(f"/api/conversations/{conv['id']}").json()
+    progress=[e['payload'] for e in d['events'] if e['type']=='progress']
+    assert progress[-1]['step']=='等待补充资料' and progress[-1]['percent']==100
+    assert sum(1 for x in progress if x.get('percent')==100)==1
+    ninety_four=[x for x in progress if x.get('percent')==94][-1]
+    assert ninety_four['step']=='整理结论'
+    assert '可确认' not in ninety_four['detail']
+
+
+def test_completed_progress_ends_once_with_business_completion():
+    c=TestClient(app)
+    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    asset=c.post('/api/assets',files={'file':('merchant.txt','营业执照 91310000123456789A 品牌授权书齐全 无历史处罚'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核这个商家的主体、授权和历史风险','asset_ids':[asset['id']],'provider':'demo'})
+    assert r.status_code==200
+    d=c.get(f"/api/conversations/{conv['id']}").json()
+    progress=[e['payload'] for e in d['events'] if e['type']=='progress']
+    assert progress[-1]['step']=='处理完成' and progress[-1]['percent']==100
+    assert sum(1 for x in progress if x.get('percent')==100)==1
+    assert [x for x in progress if x.get('percent')==94][-1]['step']=='整理待确认操作'

@@ -81,7 +81,7 @@ class BusinessAction(BaseModel):
     risk_level: Literal["low", "medium", "high"] = "medium"
     requires_confirmation: bool = True
     payload: dict[str, Any] = Field(default_factory=dict)
-    status: Literal["proposed", "approved", "executed", "rejected", "failed"] = "proposed"
+    status: Literal["proposed", "approved", "executed", "rejected", "failed", "uncertain"] = "proposed"
 
 
 class VerificationResult(BaseModel):

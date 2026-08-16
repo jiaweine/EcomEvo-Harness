@@ -66,11 +66,24 @@ class ConversationStore:
             c.execute('INSERT INTO messages VALUES(?,?,?,?,?,?)',(mid,cid,role,content,json.dumps(payload,ensure_ascii=False,default=str),now));c.execute('UPDATE conversations SET updated_at=? WHERE id=?',(now,cid))
         return {'id':mid,'conversation_id':cid,'role':role,'content':content,'payload':payload,'created_at':now}
 
-    def list_messages(self,cid):
-        with self._conn() as c:rows=c.execute('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,id',(cid,)).fetchall()
+    def list_messages(self,cid,limit:int|None=None):
+        if limit is not None:
+            limit=max(1,int(limit))
+            with self._conn() as c:rows=c.execute('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at DESC,id DESC LIMIT ?',(cid,limit)).fetchall()
+            rows=list(reversed(rows))
+        else:
+            with self._conn() as c:rows=c.execute('SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at,id',(cid,)).fetchall()
         out=[]
         for r in rows:d=dict(r);d['payload']=json.loads(d.pop('payload') or '{}');out.append(d)
         return out
+
+    def count_messages(self,cid)->int:
+        with self._conn() as c:r=c.execute('SELECT COUNT(*) AS count FROM messages WHERE conversation_id=?',(cid,)).fetchone()
+        return int(r['count'] or 0)
+
+    def has_messages(self,cid)->bool:
+        with self._conn() as c:r=c.execute('SELECT 1 FROM messages WHERE conversation_id=? LIMIT 1',(cid,)).fetchone()
+        return bool(r)
 
     def add_asset(self,cid,*,name,mime,path,size,meta):
         aid=f'asset-{uuid.uuid4().hex[:12]}';now=time.time()
@@ -164,8 +177,16 @@ class ConversationStore:
         with self._conn() as c:cur=c.execute('INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)',(cid,type_,json.dumps(payload,ensure_ascii=False,default=str),now));eid=cur.lastrowid
         return {'id':eid,'conversation_id':cid,'type':type_,'payload':payload,'created_at':now}
 
-    def list_events(self,cid,after_id=0):
-        with self._conn() as c:rows=c.execute('SELECT * FROM task_events WHERE conversation_id=? AND id>? ORDER BY id',(cid,after_id)).fetchall()
+    def list_events(self,cid,after_id=0,limit:int|None=None):
+        if limit is not None:
+            limit=max(1,int(limit))
+            if int(after_id)>0:
+                with self._conn() as c:rows=c.execute('SELECT * FROM task_events WHERE conversation_id=? AND id>? ORDER BY id LIMIT ?',(cid,after_id,limit)).fetchall()
+            else:
+                with self._conn() as c:rows=c.execute('SELECT * FROM task_events WHERE conversation_id=? ORDER BY id DESC LIMIT ?',(cid,limit)).fetchall()
+                rows=list(reversed(rows))
+        else:
+            with self._conn() as c:rows=c.execute('SELECT * FROM task_events WHERE conversation_id=? AND id>? ORDER BY id',(cid,after_id)).fetchall()
         out=[]
         for r in rows:d=dict(r);d['payload']=json.loads(d.pop('payload') or '{}');out.append(d)
         return out
@@ -179,11 +200,28 @@ class ConversationStore:
     def _decode_action(self,r):
         d=dict(r);d['payload']=json.loads(d.pop('payload') or '{}');d['side_effect']=bool(d['side_effect']);d['requires_confirmation']=bool(d['requires_confirmation']);return d
 
-    def list_actions(self,cid,status=None):
-        q='SELECT * FROM actions WHERE conversation_id=?';p=[cid]
-        if status:q+=' AND status=?';p.append(status)
-        q+=' ORDER BY created_at DESC'
-        with self._conn() as c:rows=c.execute(q,p).fetchall()
+    def recover_stale_actions(self,cid,older_than=300.0):
+        """Mark a crashed/abandoned execution as uncertain instead of allowing a blind retry."""
+        cutoff=time.time()-max(30.0,float(older_than));now=time.time();recovered=[]
+        with self._conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            rows=c.execute("SELECT * FROM actions WHERE conversation_id=? AND status='approved' AND updated_at<?",(cid,cutoff)).fetchall()
+            for r in rows:
+                payload=json.loads(r['payload'] or '{}')
+                payload.update({'execution_error':'执行进程中断，无法确认下游是否已完成；请先在业务系统核对结果，不要直接重复执行。','execution_outcome':'unknown'})
+                cur=c.execute("UPDATE actions SET status='uncertain',payload=?,updated_at=? WHERE id=? AND status='approved'",(json.dumps(payload,ensure_ascii=False),now,r['id']))
+                if cur.rowcount==1:recovered.append(r['id'])
+        return recovered
+
+    def list_actions(self,cid,status=None,terminal_limit:int=100):
+        if status:
+            with self._conn() as c:
+                rows=c.execute('SELECT * FROM actions WHERE conversation_id=? AND status=? ORDER BY created_at DESC',(cid,status)).fetchall()
+            return [self._decode_action(r) for r in rows]
+        with self._conn() as c:
+            active=c.execute("SELECT * FROM actions WHERE conversation_id=? AND status NOT IN ('executed','rejected','failed') ORDER BY created_at DESC",(cid,)).fetchall()
+            recent=c.execute("SELECT * FROM actions WHERE conversation_id=? AND status IN ('executed','rejected','failed') ORDER BY created_at DESC LIMIT ?",(cid,max(1,int(terminal_limit)))).fetchall()
+        rows=sorted([*active,*recent],key=lambda r:(float(r['created_at']),str(r['id'])),reverse=True)
         return [self._decode_action(r) for r in rows]
 
     def get_action(self,aid):

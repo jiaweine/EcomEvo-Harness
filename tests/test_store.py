@@ -23,3 +23,17 @@ def test_expired_turn_is_recovered_once(tmp_path):
     assert recovered and recovered['type']=='answer.error' and recovered['payload']['recovered'] is True
     assert s.recover_interrupted_turn(c['id']) is None
     assert s.claim_turn(c['id'],ttl=60)
+
+def test_action_listing_keeps_active_but_bounds_terminal_history(tmp_path):
+    from ecomevo.models import BusinessAction
+    from ecomevo.product.store import ConversationStore
+    store=ConversationStore(tmp_path/'product.db',tmp_path/'assets')
+    cv=store.create_conversation()
+    for i in range(125):
+        action=BusinessAction(action_id=f'done-{i}',kind='test',title='done',description='x',risk_level='low',side_effect=True,requires_confirmation=True,status='proposed')
+        store.save_actions(cv['id'],'s',[action]);store.update_action(action.action_id,'executed')
+    active=BusinessAction(action_id='still-proposed',kind='test',title='active',description='x',risk_level='low',side_effect=True,requires_confirmation=True,status='proposed')
+    store.save_actions(cv['id'],'s',[active])
+    rows=store.list_actions(cv['id'])
+    assert any(x['id']=='still-proposed' for x in rows)
+    assert sum(x['status']=='executed' for x in rows)==100

@@ -66,3 +66,27 @@ def test_mcp_read_tool_specs_are_loaded_from_env(monkeypatch):
     rows=reg.read_tool_specs()
     assert rows[0]['key']=='mcp.orders' and rows[0]['domain']=='aftersales'
     assert rows[0]['evidence_tags']==['order_identity','dispute_fact']
+
+
+def test_modern_tool_application_error_never_replays_via_legacy():
+    calls=[]
+    def handler(request:httpx.Request):
+        body=json.loads(request.content.decode());calls.append(body['method'])
+        if body['method']=='tools/list':
+            return httpx.Response(200,headers={'content-type':'application/json'},json={'jsonrpc':'2.0','id':body['id'],'result':{'tools':[{'name':'refund','inputSchema':{'type':'object'}}]}})
+        if body['method']=='tools/call':
+            return httpx.Response(400,headers={'content-type':'application/json'},json={'jsonrpc':'2.0','id':body['id'],'error':{'code':-32602,'message':'invalid amount'}})
+        if body['method']=='initialize':
+            raise AssertionError('side-effect application error must not trigger legacy replay')
+        raise AssertionError(body)
+    reg=MCPRegistry(transport=httpx.MockTransport(handler));reg.servers['biz']=MCPServer('biz','业务系统','https://mcp.test/mcp')
+    import pytest
+    with pytest.raises(RuntimeError):asyncio.run(reg.call_tool('biz','refund',{'amount':-1}))
+    assert calls==['tools/list','tools/call']
+
+
+def test_mcp_server_list_does_not_leak_endpoint_or_token_env(monkeypatch):
+    reg=MCPRegistry();reg.servers['internal']=MCPServer('internal','订单中心','https://secret.internal/mcp','VERY_SECRET_TOKEN')
+    row=next(x for x in reg.list() if x['key']=='internal')
+    assert row=={'key':'internal','name':'订单中心','enabled':True,'configured':True}
+    assert 'url' not in row and 'token_env' not in row

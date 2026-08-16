@@ -144,3 +144,92 @@ def test_low_confidence_visual_read_never_unlocks_business_action(tmp_path):
     assert result['actions']==[]
     assert result['evidence'][0]['tags']==[]
     assert '还不适合直接做最终处置' in result['answer']
+
+
+def test_incomplete_text_case_skips_discarded_final_provider_call(tmp_path):
+    class TextProvider(BaseProvider):
+        def __init__(self):self.info=ProviderInfo('text','Text Provider','test','t1',True,False);self.calls=0
+        async def chat(self,**kwargs):self.calls+=1;return '不应被调用'
+    p=TextProvider();analyzer=ProductAnalyzer(EcomEvoEngine(tmp_path/'r.db'),FakeRegistry(p))
+    async def sink(t,payload):pass
+    result=asyncio.run(analyzer.run(text='审核这个商家',assets=[],provider_key='text',sink=sink,domain_hint='merchant_review'))
+    assert result['runtime']['status']=='needs_evidence'
+    assert p.calls==0
+    assert result['provider']=='工作台'
+
+
+def test_semantic_extraction_prompt_is_task_independent(tmp_path):
+    class Capture(FakeVisionProvider):
+        def __init__(self):super().__init__();self.prompts=[];self.asset_counts=[]
+        async def chat(self,*,messages,assets=None,temperature=.2,max_tokens=1400):
+            self.calls+=1;self.prompts.append(messages[-1]['content']);self.asset_counts.append(len(assets or []))
+            if self.calls==1:return '{"assets":[{"asset_id":"img-1","visible_text":"营业执照 91310000123456789A 品牌授权书","observations":[],"identifiers":["91310000123456789A"],"risk_signals":[],"confidence":0.95}]}'
+            return '已完成。'
+    img=tmp_path/'x.png';img.write_bytes(b'x')
+    asset={'id':'img-1','name':'执照.png','mime':'image/png','path':str(img),'meta':{'kind':'image'}}
+    p=Capture();analyzer=ProductAnalyzer(EcomEvoEngine(tmp_path/'r.db'),FakeRegistry(p))
+    async def sink(t,payload):pass
+    result=asyncio.run(analyzer.run(text='这个商家能过吗',assets=[asset],provider_key='vision',sink=sink,domain_hint='merchant_review'))
+    assert result['runtime']['status']=='completed'
+    assert '用户任务：' not in p.prompts[0]
+    assert '这份结果会复用于后续追问' in p.prompts[0]
+    assert p.asset_counts[0]>=1 and p.asset_counts[1]==0
+
+
+def test_old_semantic_cache_schema_is_re_read(tmp_path):
+    class Refresh(FakeVisionProvider):
+        async def chat(self,*,messages,assets=None,temperature=.2,max_tokens=1400):
+            self.calls+=1
+            if self.calls==1:return '{"assets":[{"asset_id":"img-1","visible_text":"营业执照 91310000123456789A 品牌授权书","observations":[],"identifiers":["91310000123456789A"],"risk_signals":[],"confidence":0.93}]}'
+            return '完成'
+    img=tmp_path/'old.png';img.write_bytes(b'x')
+    asset={'id':'img-1','name':'old.png','mime':'image/png','path':str(img),'meta':{'kind':'image','semantic_text':'旧缓存','semantic_schema_version':1}}
+    p=Refresh();analyzer=ProductAnalyzer(EcomEvoEngine(tmp_path/'r.db'),FakeRegistry(p))
+    async def sink(t,payload):pass
+    result=asyncio.run(analyzer.run(text='审核商家',assets=[asset],provider_key='vision',sink=sink,domain_hint='merchant_review'))
+    assert p.calls==2 and result['runtime']['status']=='completed'
+    assert asset['meta']['semantic_schema_version']==ProductAnalyzer.SEMANTIC_SCHEMA_VERSION
+
+
+def test_final_answer_provider_is_workspace_when_external_provider_not_used_for_incomplete_case(tmp_path):
+    class TextProvider(BaseProvider):
+        def __init__(self):self.info=ProviderInfo('txt','企业文本模型','test','t',True,False);self.calls=0
+        async def chat(self,**kwargs):self.calls+=1;return '审核通过'
+    p=TextProvider();analyzer=ProductAnalyzer(EcomEvoEngine(tmp_path/'r.db'),FakeRegistry(p))
+    async def sink(t,payload):pass
+    result=asyncio.run(analyzer.run(text='审核商家',assets=[],provider_key='txt',sink=sink,domain_hint='merchant_review'))
+    assert result['provider']=='工作台' and result['selected_provider']=='企业文本模型' and p.calls==0
+
+def test_cached_multimodal_evidence_keeps_original_provider_attribution(tmp_path):
+    class TextProvider(BaseProvider):
+        def __init__(self):self.info=ProviderInfo('text','Text Writer','test','t',True,False);self.calls=0
+        async def chat(self,**kwargs):self.calls+=1;return '已完成审核。'
+    vision=FakeVisionProvider();text=TextProvider()
+    class Registry:
+        providers={'vision':vision,'text':text}
+        def choose(self,preferred,assets):return text
+    img=tmp_path/'cached.png';img.write_bytes(b'x')
+    asset={'id':'img-1','name':'cached.png','mime':'image/png','path':str(img),'meta':{
+        'kind':'image','semantic_text':'营业执照 91310000123456789A 品牌授权书','semantic_source':'vision',
+        'semantic_confidence':.94,'semantic_observation_count':2,'semantic_schema_version':ProductAnalyzer.SEMANTIC_SCHEMA_VERSION,
+    }}
+    analyzer=ProductAnalyzer(EcomEvoEngine(tmp_path/'r.db'),Registry())
+    async def sink(t,payload):pass
+    result=asyncio.run(analyzer.run(text='审核这个商家',assets=[asset],provider_key='text',sink=sink,domain_hint='merchant_review'))
+    assert result['runtime']['status']=='completed'
+    assert result['provider']=='Text Writer'
+    assert result['evidence_provider']=='Vision Test'
+    assert text.calls==1 and vision.calls==0
+
+def test_analyzer_history_does_not_reapply_old_dynamic_requirement(tmp_path):
+    p=tmp_path/'merchant.txt';p.write_text('营业执照 91310000123456789A\n法人：张三',encoding='utf-8')
+    asset={'id':'m','name':'merchant.txt','mime':'text/plain','path':str(p),'meta':{'kind':'text','text':p.read_text(encoding='utf-8'),'search_text':p.read_text(encoding='utf-8')}}
+    class NoExternal:
+        providers={}
+        def choose(self,*args,**kwargs):return None
+    analyzer=ProductAnalyzer(EcomEvoEngine(tmp_path/'r.db'),NoExternal())
+    async def sink(t,payload):pass
+    history=[{'role':'user','content':'这个商家的品牌授权是否齐全？'}]
+    result=asyncio.run(analyzer.run(text='那法人是谁？',assets=[asset],provider_key='demo',sink=sink,domain_hint='merchant_review',history=history))
+    assert result['runtime']['status']=='completed'
+    assert '品牌/经营授权材料' not in result['runtime']['belief']['missing_evidence']

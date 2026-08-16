@@ -1,6 +1,6 @@
 from __future__ import annotations
 import base64, json, os, re, time, uuid
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import Any
 import httpx
 
@@ -69,7 +69,8 @@ class MCPRegistry:
         return [dict(x) for x in self.read_tools]
 
     def list(self):
-        return [{**asdict(s),'configured':True,'token_env':s.token_env or ''} for s in self.servers.values()]
+        # Never expose internal endpoints or secret environment-variable names to the browser.
+        return [{'key':s.key,'name':s.name,'enabled':s.enabled,'configured':True} for s in self.servers.values()]
 
     def action_binding(self,kind:str,context:dict[str,Any]|None=None)->dict[str,Any]|None:
         row=self.action_map.get(kind)
@@ -140,11 +141,11 @@ class MCPRegistry:
     def _modern_meta(self)->dict[str,Any]:
         return {
             'io.modelcontextprotocol/protocolVersion':MODERN_VERSION,
-            'io.modelcontextprotocol/clientInfo':{'name':'EcomEvo','version':'1.0.1'},
+            'io.modelcontextprotocol/clientInfo':{'name':'EcomEvo','version':'1.0.0'},
             'io.modelcontextprotocol/clientCapabilities':{},
         }
 
-    async def _modern_request(self,s:MCPServer,method:str,params:dict[str,Any],name:str|None=None,extra_headers:dict[str,str]|None=None)->dict[str,Any]:
+    async def _modern_request(self,s:MCPServer,method:str,params:dict[str,Any],name:str|None=None,extra_headers:dict[str,str]|None=None,*,allow_legacy_probe:bool=False)->dict[str,Any]:
         rid=uuid.uuid4().hex
         params={**params,'_meta':self._modern_meta()}
         payload={'jsonrpc':'2.0','id':rid,'method':method,'params':params}
@@ -152,16 +153,18 @@ class MCPRegistry:
         if name is not None:headers['Mcp-Name']=self._header_value(name)
         if extra_headers:headers.update(extra_headers)
         r,data=await self._post(s,payload,headers)
-        if r.status_code in {400,404,405}:
+        if allow_legacy_probe and r.status_code in {400,404,405}:
             err=data.get('error',{}) if isinstance(data,dict) else {}
             code=err.get('code') if isinstance(err,dict) else None
             msg=str(err.get('message','')).lower() if isinstance(err,dict) else ''
-            # Modern header/version errors are actionable and should not be mistaken for a legacy server.
+            # Probe-only fallback: before any side-effect call, a clearly incompatible endpoint may be retried
+            # with the legacy lifecycle. Application errors from tools/call must never trigger a replay.
             if code not in {-32020,-32021,-32022} and 'protocol version' not in msg and 'header' not in msg:
                 raise _LegacyRequired('legacy MCP transport suspected')
-        if data.get('error'):
+        if allow_legacy_probe and data.get('error'):
             msg=str(data['error']).lower()
-            if 'initializ' in msg or 'session' in msg:raise _LegacyRequired('legacy MCP lifecycle required')
+            if 'initializ' in msg or 'session' in msg:
+                raise _LegacyRequired('legacy MCP lifecycle required')
         return self._result_or_raise(r,data)
 
     @staticmethod
@@ -188,7 +191,7 @@ class MCPRegistry:
     async def _modern_tool_schema(self,s:MCPServer,tool_name:str)->dict[str,Any]|None:
         now=time.time();cached=self._tool_cache.get(s.key)
         if not cached or cached[0]<=now:
-            result=await self._modern_request(s,'tools/list',{})
+            result=await self._modern_request(s,'tools/list',{},allow_legacy_probe=True)
             tools={x.get('name'):x for x in result.get('tools',[]) if isinstance(x,dict) and x.get('name')}
             ttl_ms=int(result.get('ttlMs',30000) or 30000);ttl_ms=max(1000,min(ttl_ms,300000))
             self._tool_cache[s.key]=(now+ttl_ms/1000,tools);cached=self._tool_cache[s.key]
@@ -204,7 +207,7 @@ class MCPRegistry:
 
     async def _legacy_initialize(self,s:MCPServer)->tuple[str,str|None]:
         rid=uuid.uuid4().hex
-        payload={'jsonrpc':'2.0','id':rid,'method':'initialize','params':{'protocolVersion':LEGACY_VERSION,'capabilities':{},'clientInfo':{'name':'EcomEvo','version':'1.0.1'}}}
+        payload={'jsonrpc':'2.0','id':rid,'method':'initialize','params':{'protocolVersion':LEGACY_VERSION,'capabilities':{},'clientInfo':{'name':'EcomEvo','version':'1.0.0'}}}
         r,data=await self._post(s,payload,self._auth_headers(s));result=self._result_or_raise(r,data)
         version=str(result.get('protocolVersion') or LEGACY_VERSION);session=r.headers.get('MCP-Session-Id') or r.headers.get('Mcp-Session-Id')
         headers={**self._auth_headers(s),'MCP-Protocol-Version':version}
