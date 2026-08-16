@@ -30,7 +30,7 @@ class EvidenceSpecialist(Specialist):
 class RiskSpecialist(Specialist):
     name='风险复核'
     async def review(self,domain,tool_data):
-        risk=tool_data.get('risk.scan',{}); signals=risk.get('signals',{}); score=float(risk.get('risk_score',.15))
+        risk=tool_data.get('risk.scan',{}); signals=risk.get('asset_signals',{}); score=float(risk.get('risk_score',.15))
         findings=[f"{k}：{', '.join(v)}" for k,v in signals.items()]
         return SubAgentResult(agent=self.name,summary='发现风险线索' if findings else '未发现强风险线索',findings=findings,risks=findings,confidence=max(.45,score),depth=1,parent_agent='任务复核')
 
@@ -40,13 +40,13 @@ class DomainSpecialist(Specialist):
     async def review(self,domain,tool_data):
         common={'depth':1,'parent_agent':'任务复核'}
         if domain==DecisionDomain.PRODUCT_GOVERNANCE:
-            d=tool_data.get('catalog.inspect',{}); flags=d.get('claim_flags',[])
+            d=tool_data.get('catalog.inspect',{}); flags=d.get('asset_claim_flags',[])
             return SubAgentResult(agent=self.name,summary='已核对商品声明与基础信息',findings=[f'需核验证明：{x}' for x in flags],risks=flags,confidence=.76 if d else .3,**common)
         if domain==DecisionDomain.MERCHANT_REVIEW:
-            d=tool_data.get('merchant.inspect',{}); risks=d.get('risk_signals',[])
+            d=tool_data.get('merchant.inspect',{}); risks=d.get('asset_risk_signals',[])
             return SubAgentResult(agent=self.name,summary='已核对商家主体与资质材料',findings=[f'风险项：{x}' for x in risks],risks=risks,confidence=.78 if d else .3,**common)
         if domain==DecisionDomain.AFTERSALES:
-            d=tool_data.get('order.inspect',{}); s=d.get('signals',[])
+            d=tool_data.get('order.inspect',{}); s=d.get('asset_signals',[])
             return SubAgentResult(agent=self.name,summary='已核对订单与履约事实',findings=[f'争议事实：{x}' for x in s],risks=[x for x in s if x in {'假货','与描述不符','未收到货'}],confidence=.75 if d else .3,**common)
         d=tool_data.get('risk.scan',{})
         return SubAgentResult(agent=self.name,summary='已完成业务事实复核',confidence=.62 if d else .3,**common)

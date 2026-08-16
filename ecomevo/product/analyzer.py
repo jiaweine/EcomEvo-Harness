@@ -15,9 +15,26 @@ DOMAIN_NAME={
 }
 
 class ProductAnalyzer:
-    SEMANTIC_SCHEMA_VERSION=1
+    SEMANTIC_SCHEMA_VERSION=2
     MIN_SEMANTIC_CONFIDENCE=.65
     def __init__(self,engine:EcomEvoEngine,providers:ProviderRegistry,asset_meta_writer=None):self.engine=engine;self.providers=providers;self.asset_meta_writer=asset_meta_writer
+
+    @staticmethod
+    def _requires_semantic_channel(a:dict[str,Any])->bool:
+        mime=str(a.get('mime',''))
+        if mime.startswith(('image/','video/','audio/')):
+            return True
+        if mime=='application/pdf':
+            meta=a.get('meta') or {}
+            return not str(meta.get('text') or '').strip() or float(meta.get('text_density') or 0)<40
+        return False
+
+    @classmethod
+    def _needs_semantic_read(cls,a:dict[str,Any])->bool:
+        if not cls._requires_semantic_channel(a):
+            return False
+        meta=a.get('meta') or {}
+        return not (str(meta.get('semantic_text') or '').strip() and int(meta.get('semantic_schema_version') or 0)==cls.SEMANTIC_SCHEMA_VERSION)
 
     @staticmethod
     def _provider_assets(assets:list[dict[str,Any]])->list[dict[str,Any]]:
@@ -66,11 +83,7 @@ class ProductAnalyzer:
         This never invents a local fallback. If the remote extractor is unavailable or returns malformed data,
         the runtime receives the original assets and will safely request more evidence where needed.
         """
-        def needs_semantic_read(a):
-            mime=str(a.get('mime',''))
-            if mime.startswith(('image/','video/','audio/')):return True
-            return mime=='application/pdf' and (not str((a.get('meta') or {}).get('text') or '').strip() or float((a.get('meta') or {}).get('text_density') or 0)<40)
-        media=[a for a in assets if needs_semantic_read(a) and not (str((a.get('meta') or {}).get('semantic_text') or '').strip() and int((a.get('meta') or {}).get('semantic_schema_version') or 0)==self.SEMANTIC_SCHEMA_VERSION)]
+        media=[a for a in assets if self._needs_semantic_read(a)]
         if not media or provider is None:return assets
         await sink('progress',{'step':'读取多媒体资料','detail':'正在从图片、视频、音频或扫描文档中提取可核对事实','percent':16})
         provider_assets=self._provider_assets(media)
@@ -90,7 +103,8 @@ class ProductAnalyzer:
         prompt=(
           '你现在只做电商业务附件事实提取，不做通过/拒绝/退款/下架等处置判断。\n'
           '严格区分“看得见/听得见的事实”和推测；模糊、遮挡、听不清的一律不要补全。\n'
-          f'用户任务：{text}\n附件顺序与标识：{json.dumps(ordered,ensure_ascii=False)}\n'
+          '请完整提取附件中所有与电商业务有关的可确认事实，不要因为当前问题只选取某一类信息；这份结果会复用于后续追问。\n'
+          f'附件顺序与标识：{json.dumps(ordered,ensure_ascii=False)}\n'
           f'只返回 JSON，不要 Markdown。结构：{json.dumps(schema,ensure_ascii=False)}'
         )
         try:
@@ -162,7 +176,8 @@ class ProductAnalyzer:
 
     async def run(self,*,text:str,assets:list[dict[str,Any]],provider_key:str,sink:EventSink,domain_hint:str|None=None,history:list[dict[str,Any]]|None=None)->dict[str,Any]:
         await sink('progress',{'step':'资料整理','detail':f'已接收 {len(assets)} 份资料，正在建立本次业务上下文','percent':10})
-        provider=self.providers.choose(provider_key,assets);provider_name='本地演示'
+        routing_assets=[a for a in assets if self._needs_semantic_read(a) or not self._requires_semantic_channel(a)]
+        provider=self.providers.choose(provider_key,routing_assets);provider_name='本地演示'
         if provider_key not in {'auto','demo'} and provider is None:
             requested=self.providers.providers.get(provider_key)
             if requested and requested.info.configured:
@@ -174,9 +189,10 @@ class ProductAnalyzer:
         # Only prior USER statements may influence factual planning. Earlier assistant prose is
         # useful for dialogue continuity but is never promoted into the evidence path.
         prior_user_context=self._history_context(history,users_only=True)
-        task_text=text if not prior_user_context else f'{text}\n\n此前用户补充（仅作任务上下文）：\n{prior_user_context}'
-        # Multimodal observations must enter the evidence path before planning/verifying, not only the prose answer.
-        runtime_assets=await self._enrich_multimodal(text=task_text,assets=assets,provider=provider,sink=sink)
+        # Current wording controls this turn's requirements. Previous user turns are retrieval/reference
+        # context only, so an old question (e.g. authorization) cannot silently become a hard gate
+        # for a later, different question (e.g. legal representative).
+        runtime_assets=await self._enrich_multimodal(text=text,assets=assets,provider=provider,sink=sink)
         stage_map={
           'goal.parsed':('识别任务','正在确认业务场景、目标和处理约束',20),
           'plan.created':('安排核对','已选择本次需要核对的资料与业务信息',32),
@@ -185,19 +201,33 @@ class ProductAnalyzer:
           'runtime.rollback':('补充核对','发现证据缺口，已回到上一个稳定节点补充检查',74),
           'tools.recovery_completed':('补充核对','第二轮资料核对已完成',81),
           'verification.rechecked':('结果复核','正在确认结论是否有足够证据支撑',88),
-          'action.proposed':('整理处理建议','已形成可确认的下一步处理建议',94),
-          'run.completed':('完成','本次核对已完成','100')
         }
         async def runtime_sink(t,p):
             if t in stage_map:
                 step,detail,percent=stage_map[t];await sink('progress',{'step':step,'detail':detail,'percent':int(percent)})
+            elif t=='action.proposed':
+                has_actions=bool(p.get('actions'))
+                await sink('progress',{
+                    'step':'整理待确认操作' if has_actions else '整理结论',
+                    'detail':'需要你确认的下一步操作已准备好。' if has_actions else '本轮没有生成会改变业务状态的操作。',
+                    'percent':94,
+                })
+            elif t=='run.completed':
+                waiting=p.get('status')=='needs_evidence'
+                await sink('progress',{
+                    'step':'等待补充资料' if waiting else '处理完成',
+                    'detail':'本轮核对已结束，补齐缺少的资料后可以继续。' if waiting else '结论、依据和待确认操作已整理完成。',
+                    'percent':100,
+                })
             if t in {'verification.checked','verification.rechecked','evolution.patch'}:await sink('runtime.notice',{'runtime_type':t,'payload':p})
-        summary=await self.engine.run(task_text,runtime_assets,runtime_sink,domain_hint=domain_hint)
+        summary=await self.engine.run(text,runtime_assets,runtime_sink,domain_hint=domain_hint,context_text=prior_user_context)
         domain_name=DOMAIN_NAME[summary.domain];generated=None
-        if provider:
+        if provider and summary.status=='completed' and not summary.belief.missing_evidence:
             try:
                 prompt=self._prompt(text,summary,history)
-                generated=await provider.chat(messages=[{'role':'system','content':'你服务于电商运营、审核、客服与风控团队。回答必须使用业务人员能理解的中文，不出现 Agent、Harness、Verifier、Belief State、rollback、planner 等内部实现词。先给结论，再给依据，再给下一步；证据不足要明确说缺什么，不能伪造已读取到的事实。'}, {'role':'user','content':prompt}],assets=self._provider_assets(assets),max_tokens=1800)
+                # Attachments have already been normalized into verified runtime evidence. Do not send
+                # the same media a second time merely to polish the prose answer.
+                generated=await provider.chat(messages=[{'role':'system','content':'你服务于电商运营、审核、客服与风控团队。回答必须使用业务人员能理解的中文，不出现 Agent、Harness、Verifier、Belief State、rollback、planner 等内部实现词。先给结论，再给依据，再给下一步；证据不足要明确说缺什么，不能伪造已读取到的事实。'}, {'role':'user','content':prompt}],assets=[],max_tokens=1800)
             except Exception:
                 logger.exception('final answer provider failed: %s', provider.info.key if provider else 'unknown')
                 await sink('notice',{'title':'所选模型暂不可用，已使用本地结果','detail':'业务核对结果已保留，本次改用工作台的受控结果展示。'})
@@ -206,8 +236,19 @@ class ProductAnalyzer:
         answer=generated if (generated and summary.status=='completed' and not summary.belief.missing_evidence) else self._demo_answer(text,summary,domain_name)
         evidence=[e.model_dump() for e in summary.evidence]
         suggestions=self._suggestions(summary.domain,summary.risks)
-        await sink('progress',{'step':'完成','detail':'结论、依据和待确认操作已整理完成','percent':100})
-        return {'answer':answer,'domain':summary.domain.value,'domain_name':domain_name,'provider':provider_name,'runtime':summary.model_dump(mode='json'),'session_id':summary.session_id,'evidence':evidence,'actions':[a.model_dump() for a in summary.proposed_actions],'suggestions':suggestions}
+        answer_provider=provider_name if generated else ('本地演示' if provider is None or provider_key=='demo' else '工作台')
+        semantic_keys=[]
+        for asset in runtime_assets:
+            source=str((asset.get('meta') or {}).get('semantic_source') or '').strip()
+            if source and source not in semantic_keys:semantic_keys.append(source)
+        semantic_names=[]
+        registry=getattr(self.providers,'providers',{}) or {}
+        for key in semantic_keys:
+            source_provider=registry.get(key) if isinstance(registry,dict) else None
+            name=getattr(getattr(source_provider,'info',None),'name',None) or key
+            if name not in semantic_names:semantic_names.append(name)
+        semantic_provider='、'.join(semantic_names) if semantic_names else None
+        return {'answer':answer,'domain':summary.domain.value,'domain_name':domain_name,'provider':answer_provider,'selected_provider':provider_name,'evidence_provider':semantic_provider,'runtime':summary.model_dump(mode='json'),'session_id':summary.session_id,'evidence':evidence,'actions':[a.model_dump() for a in summary.proposed_actions],'suggestions':suggestions}
 
     def _prompt(self,text,summary,history=None):
         facts={'domain':summary.domain.value,'verifier_score':summary.verifier_score,'findings':summary.findings,'risks':summary.risks,'missing':summary.belief.missing_evidence,'actions':[a.model_dump() for a in summary.proposed_actions]}

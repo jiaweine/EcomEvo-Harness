@@ -1,6 +1,6 @@
 [project]
 name = "ecomevo-harness"
-version = "1.0.1"
+version = "1.0.0"
 description = "E-commerce autonomous decision runtime with event sourcing, adaptive planning, multimodal evidence, verification, rollback and controlled evolution."
 requires-python = ">=3.11"
 dependencies = [

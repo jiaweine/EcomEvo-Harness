@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 from ecomevo.runtime import EcomEvoEngine, EventStore
 
 
@@ -243,3 +244,130 @@ def test_generic_risk_word_is_not_a_risk_signal(tmp_path):
     summary=asyncio.run(engine.run('核查这个账户是否存在套现风险',[asset],domain_hint='risk_review'))
     assert summary.status=='needs_evidence' and summary.proposed_actions==[]
     assert any('独立风险信号' in x for x in summary.belief.missing_evidence)
+
+
+def test_product_price_question_requires_actual_price_not_unrelated_numbers(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'price.db')
+    asset=_text_asset(tmp_path,'SKU-8899 商品基础信息，库存 100 件',name='price-base.txt')
+    summary=asyncio.run(engine.run('SKU-8899 现在售价多少钱？',[asset],domain_hint='product_governance'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert '当前商品的可核验价格信息' in summary.belief.missing_evidence
+
+
+def test_product_price_question_accepts_attachment_price(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'price-ok.db')
+    asset=_text_asset(tmp_path,'SKU-8899 商品基础信息\n售价：199.00',name='price-ok.txt')
+    summary=asyncio.run(engine.run('SKU-8899 现在售价多少钱？',[asset],domain_hint='product_governance'))
+    assert '当前商品的可核验价格信息' not in summary.belief.missing_evidence
+
+
+def test_merchant_legal_representative_alias_is_normalized(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'legal.db')
+    asset=_text_asset(tmp_path,'营业执照 91310000123456789A\n法人：张三',name='merchant-legal.txt')
+    summary=asyncio.run(engine.run('核对这个商家的法人信息',[asset],domain_hint='merchant_review'))
+    assert '可核验的法定代表人/负责人信息' not in summary.belief.missing_evidence
+
+
+def test_incomplete_cases_never_enter_business_memory_even_after_restart(tmp_path):
+    db=tmp_path/'memory-safe.db';engine=EcomEvoEngine(db)
+    failed=asyncio.run(engine.run('审核商家是否有伪造风险',[],domain_hint='merchant_review'))
+    assert failed.status=='needs_evidence'
+    assert engine.memory.relevant('merchant_review')==[]
+    restored=EcomEvoEngine(db)
+    assert restored.memory.relevant('merchant_review')==[]
+
+
+def test_text_attachment_cannot_make_unread_image_look_audited(tmp_path):
+    img=tmp_path/'main.png';img.write_bytes(b'opaque-to-local-runtime')
+    image={'id':'img','name':'主图.png','mime':'image/png','path':str(img),'meta':{'kind':'image','width':100,'height':100}}
+    text=_text_asset(tmp_path,'商品文案：普通商品介绍，无违规词',name='copy.txt')
+    engine=EcomEvoEngine(tmp_path/'content-mixed.db')
+    summary=asyncio.run(engine.run('审核这张主图是否违规',[image,text],domain_hint='content_audit'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert any('可读取的图片素材内容' in x for x in summary.belief.missing_evidence)
+
+
+def test_unread_product_image_cannot_be_replaced_by_other_text_attachment(tmp_path):
+    img=tmp_path/'main.png';img.write_bytes(b'not-read-by-local-runtime')
+    image={'id':'img','name':'主图.png','mime':'image/png','path':str(img),'meta':{'kind':'image','width':100,'height':100}}
+    text=_text_asset(tmp_path,'SKU-8899 商品文案：治愈皮肤问题',name='copy-claim.txt')
+    engine=EcomEvoEngine(tmp_path/'product-mixed.db')
+    summary=asyncio.run(engine.run('核对这张主图是否有治愈字样',[image,text],domain_hint='product_governance'))
+    assert summary.status=='needs_evidence' and summary.proposed_actions==[]
+    assert any('可读取的商品图片内容' in x for x in summary.belief.missing_evidence)
+
+
+def test_common_business_negations_do_not_become_risk_evidence(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'negation.db')
+    asset=_text_asset(tmp_path,'经核查该交易并非刷单，账户不属于套现账户，未发现虚假物流',name='negated-risk.txt')
+    summary=asyncio.run(engine.run('核查是否存在刷单或套现风险',[asset],domain_hint='risk_review'))
+    completed=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='tools.completed')
+    risk=next(x for x in completed.payload['results'] if x['tool']=='risk.scan')
+    assert risk['data']['asset_signals']=={}
+    assert summary.proposed_actions==[]
+
+@pytest.mark.asyncio
+async def test_evidence_search_finds_claim_beyond_bounded_text_index(tmp_path):
+    from ecomevo.runtime.tools import EvidenceSearchTool
+    path=tmp_path/'huge.log'
+    path.write_text('普通记录\n' + ('x'*620000) + '\nSKU-TAIL-8899 当前页面宣称治愈并承诺最低价',encoding='utf-8')
+    asset={
+        'id':'tail','name':'huge.log','mime':'text/plain','path':str(path),
+        'meta':{'kind':'text','text':'普通记录','search_text':('普通记录\n'+'x'*499990),'search_truncated':True},
+    }
+    result=await EvidenceSearchTool().execute({'assets':[asset],'text':'核对 SKU-TAIL-8899 的治愈宣称'}, {'keywords':['SKU-TAIL-8899','治愈']})
+    assert result['hits']
+    matched=set(result['hits'][0]['matched'])
+    assert 'sku-tail-8899' in matched or '治愈' in matched
+    assert '治愈' in result['hits'][0]['snippet'] or 'SKU-TAIL-8899' in result['hits'][0]['snippet']
+
+def test_product_claim_in_tail_of_large_log_is_real_attachment_evidence(tmp_path):
+    from ecomevo.product.media import probe_media
+    p=tmp_path/'tail-evidence.log'
+    p.write_text('常规商品日志\n'+('x'*620000)+'\nSKU-TAIL-8899 宣传文案：治愈皮肤问题',encoding='utf-8')
+    asset={'id':'tail-evidence','name':p.name,'mime':'text/plain','path':str(p),'meta':probe_media(p,'text/plain')}
+    assert asset['meta']['search_truncated'] is True
+    engine=EcomEvoEngine(tmp_path/'tail-runtime.db')
+    summary=asyncio.run(engine.run('核对 SKU-TAIL-8899 的治愈宣称',[asset],domain_hint='product_governance'))
+    assert summary.status=='completed'
+    assert not any('功效/治愈声明' in x for x in summary.belief.missing_evidence)
+
+@pytest.mark.asyncio
+async def test_stream_search_does_not_stop_after_early_entity_match(tmp_path):
+    from ecomevo.runtime.tools import EvidenceSearchTool
+    p=tmp_path/'separated.log'
+    p.write_text('x'*520000+'\nSKU-SEPARATED-1\n'+'y'*320000+'\n最终宣传页面包含治愈字样',encoding='utf-8')
+    asset={'id':'sep','name':p.name,'mime':'text/plain','path':str(p),'meta':{'kind':'text','search_text':'x'*500000,'search_truncated':True}}
+    result=await EvidenceSearchTool().execute({'assets':[asset],'text':'核对 SKU-SEPARATED-1 是否有治愈宣称'},{'keywords':['SKU-SEPARATED-1','治愈']})
+    matched=set(result['hits'][0]['matched'])
+    assert 'sku-separated-1' in matched
+    assert '治愈' in matched
+
+def test_suffix_negations_in_risk_forms_do_not_become_positive_signals(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'risk-form.db')
+    asset=_text_asset(tmp_path,'风险问卷\n刷单：否\n套现风险：否\n虚假物流：未发现\n是否存在异常退款？',name='risk-form.txt')
+    summary=asyncio.run(engine.run('核查刷单、套现、虚假物流风险',[asset],domain_hint='risk_review'))
+    completed=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='tools.completed')
+    risk=next(x for x in completed.payload['results'] if x['tool']=='risk.scan')
+    assert risk['data']['asset_signals']=={}
+    assert summary.proposed_actions==[]
+
+
+def test_suffix_negations_in_merchant_report_do_not_create_history_risk(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'merchant-form.db')
+    asset=_text_asset(tmp_path,'营业执照 91310000123456789A\n处罚记录：无\n投诉情况：无\n材料伪造：否',name='merchant-form.txt')
+    summary=asyncio.run(engine.run('审核商家的主体和历史风险',[asset],domain_hint='merchant_review'))
+    completed=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='tools.completed')
+    merchant=next(x for x in completed.payload['results'] if x['tool']=='merchant.inspect')
+    assert merchant['data']['asset_risk_signals']==[]
+
+def test_previous_question_is_retrieval_context_not_current_evidence_gate(tmp_path):
+    engine=EcomEvoEngine(tmp_path/'context-gate.db')
+    asset=_text_asset(tmp_path,'营业执照 91310000123456789A\n法人：张三',name='merchant-context.txt')
+    summary=asyncio.run(engine.run('这个商家的法人是谁？',[asset],domain_hint='merchant_review',context_text='上一轮我问过品牌授权是否齐全'))
+    assert summary.status=='completed'
+    assert '品牌/经营授权材料' not in summary.belief.missing_evidence
+    assert '可核验的法定代表人/负责人信息' not in summary.belief.missing_evidence
+    plan=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='plan.created')
+    search=next(x for x in plan.payload['calls'] if x['tool']=='evidence.search')
+    assert any('授权' in str(x) for x in search['args'].get('keywords',[]))

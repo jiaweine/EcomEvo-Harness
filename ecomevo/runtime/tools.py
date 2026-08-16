@@ -38,6 +38,26 @@ EVIDENCE_TERMS=[
 ]
 STOP_TERMS={'这个','那个','怎么','如何','能不能','可以吗','帮我','看看','一下','继续','处理','是否','进行','当前','刚才','资料'}
 
+
+
+def _term_asserted(text:str,term:str)->bool:
+    """Return True only when a term is asserted as a fact rather than negated/form-field text."""
+    text=str(text or '')
+    for match in re.finditer(re.escape(term),text,flags=re.I):
+        prefix=text[max(0,match.start()-16):match.start()]
+        suffix=text[match.end():match.end()+18]
+        # Prefix negation: 无历史处罚、未发现伪造、并非刷单。
+        if re.search(r'(?:无|未|没有|并无|不存在|否认|不涉及|未发现|未见|无任何|没有任何|不是|并非|不属于)[^，。；;\n]{0,7}$',prefix):
+            continue
+        # Form/report suffix negation: 刷单：否、处罚记录：无、套现风险=未发现。
+        if re.match(r'^\s*(?:(?:行为|记录|情况|风险|迹象|证据|问题|相关)\s*)?[:：=]?\s*(?:无|否|没有|未发现|未见|不存在|正常)(?=$|[，。；;\n、 ])',suffix):
+            continue
+        # Unanswered questionnaire fields such as “是否存在刷单？” are questions, not evidence.
+        if re.search(r'(?:是否|有无)(?:存在|涉及)?[^，。；;\n]{0,4}$',prefix) and (not suffix.strip() or re.match(r'^\s*[？?]',suffix)):
+            continue
+        return True
+    return False
+
 def _query_terms(query:str,limit:int=40)->list[str]:
     text=str(query or '').lower();terms=[]
     def add(value):
@@ -70,6 +90,40 @@ class MediaSummarizeTool(BaseTool):
             m=a.get('meta',{}); content=_asset_text(a).strip(); rows.append({'asset_id':a.get('id'),'name':a.get('name'),'mime':a.get('mime'),'kind':m.get('kind','file'),'duration':m.get('duration'),'width':m.get('width'),'height':m.get('height'),'pages':m.get('pages'),'rows':m.get('rows'),'interpretable':bool(content),'semantic':bool(m.get('semantic_text'))})
         return {'assets':rows,'count':len(rows),'interpretable_count':sum(1 for x in rows if x['interpretable']),'semantic_count':sum(1 for x in rows if x['semantic'])}
 
+def _stream_text_hit(asset:dict[str,Any],words:list[str],chunk_chars:int=262144)->tuple[list[str],str]:
+    """Search the full raw text file when the bounded DB search index was truncated.
+
+    This keeps large logs out of SQLite while still allowing evidence near the tail of an
+    allowed upload to be discovered. Only plain-text assets use this path; structured
+    documents keep their parser-derived bounded index.
+    """
+    meta=asset.get('meta') or {}
+    if meta.get('kind')!='text' or not meta.get('search_truncated'):
+        return [],''
+    path=Path(str(asset.get('path') or ''))
+    if not path.is_file() or not words:
+        return [],''
+    overlap='';seen=set();first_snippet=''
+    try:
+        with path.open('r',encoding='utf-8',errors='ignore') as fh:
+            while True:
+                piece=fh.read(chunk_chars)
+                if not piece:break
+                raw=overlap+piece;txt=raw.lower()
+                matched=[w for w in words if w in txt]
+                if matched:
+                    seen.update(matched)
+                    if not first_snippet:
+                        positions=[txt.find(w) for w in matched if txt.find(w)>=0]
+                        pos=min(positions) if positions else 0
+                        start=max(0,pos-180);first_snippet=raw[start:start+520]
+                    if len(seen)>=len(set(words)):
+                        break
+                overlap=raw[-512:]
+    except (OSError,UnicodeError):
+        return [],''
+    return [w for w in words if w in seen][:8],first_snippet
+
 class EvidenceSearchTool(BaseTool):
     key='evidence.search'; cost=.7
     async def execute(self,ctx,args):
@@ -79,9 +133,13 @@ class EvidenceSearchTool(BaseTool):
         for a in ctx['assets']:
             raw=_asset_text(a,500000,search=True);txt=raw.lower()
             matched=[w for w in words if w in txt]
+            snippet=''
             if matched:
                 positions=[txt.find(w) for w in matched if txt.find(w)>=0];pos=min(positions) if positions else 0
                 start=max(0,pos-180);snippet=raw[start:start+520]
+            else:
+                matched,snippet=_stream_text_hit(a,words)
+            if matched:
                 hits.append({'asset_id':a.get('id'),'name':a.get('name'),'matched':matched[:8],'snippet':snippet})
         return {'hits':hits,'query_terms':words[:12]}
 
@@ -103,12 +161,15 @@ class CatalogInspectTool(BaseTool):
         text=asset_text+'\n'+ctx['text']
         flags=[]; asset_flags=[]
         for kw,label in [('正品','品牌/真伪声明'),('授权','授权链路'),('原装','来源声明'),('100%','绝对化表达'),('治愈','功效高风险词'),('最低价','价格承诺')]:
-            if kw.lower() in text.lower():flags.append(label)
-            if kw.lower() in asset_text.lower():asset_flags.append(label)
+            if _term_asserted(text,kw):flags.append(label)
+            if _term_asserted(asset_text,kw):asset_flags.append(label)
         ids=re.findall(r'(?i)(?:sku|spu|商品id|item)[\s:#-]*([a-z0-9_-]{4,})',text)
         asset_ids=re.findall(r'(?i)(?:sku|spu|商品id|item)[\s:#-]*([a-z0-9_-]{4,})',asset_text)
+        price_re=r'(?i)(?:¥|￥|售价|价格|促销价|活动价|到手价)[\s:：=]*([0-9]+(?:\.[0-9]{1,2})?)'
+        prices=[float(x) for x in re.findall(price_re,text)];asset_prices=[float(x) for x in re.findall(price_re,asset_text)]
         return {'product_ids':list(dict.fromkeys(ids))[:10],'asset_product_ids':list(dict.fromkeys(asset_ids))[:10],
-                'claim_flags':flags,'asset_claim_flags':asset_flags,'text_chars':len(text),'asset_text_chars':len(asset_text.strip())}
+                'claim_flags':flags,'asset_claim_flags':asset_flags,'prices':prices[:10],'asset_prices':asset_prices[:10],
+                'text_chars':len(text),'asset_text_chars':len(asset_text.strip())}
 
 class MerchantInspectTool(BaseTool):
     key='merchant.inspect'; cost=1.1
@@ -117,12 +178,13 @@ class MerchantInspectTool(BaseTool):
         text=asset_text+'\n'+ctx['text']
         risk=[]; asset_risk=[]
         for kw,label in [('处罚','历史处罚'),('吊销','资质异常'),('关联账户','账户关联'),('伪造','材料真实性风险'),('投诉','投诉记录')]:
-            if kw in text:risk.append(label)
-            if kw in asset_text:asset_risk.append(label)
-        unified=re.findall(r'\b[0-9A-Z]{18}\b',text); asset_unified=re.findall(r'\b[0-9A-Z]{18}\b',asset_text)
-        mats=['营业执照','授权书','身份证','许可证'];fields=['经营范围','法定代表人','注册地址']
+            if _term_asserted(text,kw):risk.append(label)
+            if _term_asserted(asset_text,kw):asset_risk.append(label)
+        code_re=r'(?<![0-9A-Z])[0-9A-Z]{18}(?![0-9A-Z])'
+        unified=re.findall(code_re,text,re.I); asset_unified=re.findall(code_re,asset_text,re.I)
+        mats=['营业执照','授权书','身份证','许可证'];field_aliases={'经营范围':('经营范围',),'法定代表人':('法定代表人','法人代表','法人：','法人:'),'注册地址':('注册地址','经营地址','住所：','住所:')}
         present=[x for x in mats if x in text];asset_present=[x for x in mats if x in asset_text]
-        asset_fields=[x for x in fields if x in asset_text]
+        asset_fields=[canonical for canonical,aliases in field_aliases.items() if any(alias in asset_text for alias in aliases)]
         return {'company_codes':unified[:5],'asset_company_codes':asset_unified[:5],'risk_signals':risk,'asset_risk_signals':asset_risk,
                 'materials_present':len(present),'asset_materials_present':len(asset_present),'materials':present,'asset_materials':asset_present,'asset_fields':asset_fields}
 
@@ -131,25 +193,27 @@ class OrderInspectTool(BaseTool):
     async def execute(self,ctx,args):
         asset_text=_combined_asset_text(ctx['assets'])
         text=asset_text+'\n'+ctx['text']
-        order_ids=re.findall(r'(?i)(?:订单|order)[\s:#-]*([a-z0-9_-]{5,})',text)
-        asset_order_ids=re.findall(r'(?i)(?:订单|order)[\s:#-]*([a-z0-9_-]{5,})',asset_text)
-        amounts=[float(x) for x in re.findall(r'(?:¥|￥|金额[:：]?\s*)(\d+(?:\.\d{1,2})?)',text)]
-        asset_amounts=[float(x) for x in re.findall(r'(?:¥|￥|金额[:：]?\s*)(\d+(?:\.\d{1,2})?)',asset_text)]
-        signals=[x for x in ['未收到货','破损','少件','假货','与描述不符','拒收','签收'] if x in text]
-        asset_signals=[x for x in ['未收到货','破损','少件','假货','与描述不符','拒收','签收'] if x in asset_text]
+        order_re=r'(?i)(?:订单(?:号|编号|id)?|order(?:\s*id)?)[\s:#：-]*([a-z0-9_-]{5,})'
+        order_ids=re.findall(order_re,text);asset_order_ids=re.findall(order_re,asset_text)
+        amount_re=r'(?:¥|￥|(?:退款|订单|实付|支付)?金额[:：]?\s*)(\d+(?:\.\d{1,2})?)'
+        amounts=[float(x) for x in re.findall(amount_re,text)];asset_amounts=[float(x) for x in re.findall(amount_re,asset_text)]
+        signal_terms=['未收到货','破损','少件','假货','与描述不符','拒收','签收']
+        signals=[x for x in signal_terms if _term_asserted(text,x)]
+        asset_signals=[x for x in signal_terms if _term_asserted(asset_text,x)]
         return {'order_ids':order_ids[:10],'asset_order_ids':asset_order_ids[:10],'amounts':amounts[:10],'asset_amounts':asset_amounts[:10],
                 'signals':signals,'asset_signals':asset_signals}
 
 class RiskScanTool(BaseTool):
     key='risk.scan'; cost=.8
     async def execute(self,ctx,args):
-        asset_text=_combined_asset_text(ctx['assets']).lower()
-        text=(asset_text+'\n'+ctx['text']).lower()
+        asset_text=_combined_asset_text(ctx['assets'])
+        query_text=str(ctx.get('text') or '')
         lex={'身份矛盾':['不一致','伪造','冒用'],'交易异常':['刷单','套现','异常退款','批量下单'],'商品风险':['假货','侵权','违禁','三无'],'履约争议':['未收到货','虚假物流','破损','少件']}
-        hits={k:[x for x in vs if x.lower() in text] for k,vs in lex.items()}; hits={k:v for k,v in hits.items() if v}
-        asset_hits={k:[x for x in vs if x.lower() in asset_text] for k,vs in lex.items()}; asset_hits={k:v for k,v in asset_hits.items() if v}
-        score=min(.98,.18+.16*sum(len(v) for v in hits.values()))
-        return {'signals':hits,'asset_signals':asset_hits,'risk_score':round(score,3)}
+        asset_hits={k:[x for x in vs if _term_asserted(asset_text,x)] for k,vs in lex.items()};asset_hits={k:v for k,v in asset_hits.items() if v}
+        query_hits={k:[x for x in vs if _term_asserted(query_text,x)] for k,vs in lex.items()};query_hits={k:v for k,v in query_hits.items() if v}
+        combined={k:list(dict.fromkeys((asset_hits.get(k) or [])+(query_hits.get(k) or []))) for k in lex};combined={k:v for k,v in combined.items() if v}
+        score=min(.98,.18+.16*sum(len(v) for v in asset_hits.values()))
+        return {'signals':combined,'asset_signals':asset_hits,'query_signals':query_hits,'risk_score':round(score,3)}
 
 class MCPReadTool(BaseTool):
     def __init__(self,mcp,spec:dict[str,Any]):
@@ -172,7 +236,7 @@ class MCPReadTool(BaseTool):
         context.update({str(k):v for k,v in (ctx.get('mcp_context') or {}).items()})
         template=self.spec.get('arguments') or {};arguments=self._expand(template,context)
         result=await self.mcp.call_tool(self.spec['server'],self.spec['tool'],arguments)
-        return {'server':self.spec['server'],'remote_tool':self.spec['tool'],'result':result,'_evidence_tags':list(self.spec.get('evidence_tags') or [])}
+        return {'server':self.spec['server'],'remote_tool':self.spec['tool'],'result':result,'_purpose':str(self.spec.get('purpose') or '企业业务数据'),'_evidence_tags':list(self.spec.get('evidence_tags') or [])}
 
 
 class ToolRegistry:
