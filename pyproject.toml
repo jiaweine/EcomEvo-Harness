@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+e2e = ["playwright>=1.50,<2"]
 
 [project.scripts]
 ecomevo = "ecomevo.cli:main"

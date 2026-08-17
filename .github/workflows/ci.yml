@@ -44,14 +44,62 @@ jobs:
           loader = (frontend / 'enhancements.js').read_text(encoding='utf-8')
           HTMLParser().feed(html)
           assert html.count('id="') == len({part.split('"',1)[0] for part in html.split('id="')[1:]}), 'duplicate DOM id'
-
           modules = re.findall(r"/assets/([A-Za-z0-9._-]+\.js)", loader)
           assert modules, 'enhancement loader references no modules'
           for module in modules:
               assert (frontend / module).is_file(), f'missing loader module: {module}'
-
           for css_path in ('frontend/visual.css', 'frontend/product-polish.css'):
               css = Path(css_path).read_text(encoding='utf-8')
               assert css.count('{') == css.count('}'), f'unbalanced {css_path}'
           print('frontend static checks ok')
           PY
+
+  pressure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: python -m pip install -e .
+      - name: Current-head 1-240 concurrency gate
+        run: python scripts/pressure_gate.py
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install app and browser harness
+        run: python -m pip install -e '.[e2e]'
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Browser interaction gate
+        env:
+          ECOMEVO_DATA: ${{ runner.temp }}/ecomevo-e2e
+          ECOMEVO_AUTH_MODE: local
+          ECOMEVO_LOCAL_ROLE: admin
+          ECOMEVO_E2E_ARTIFACT_DIR: outputs/e2e
+        run: |
+          set -euo pipefail
+          uvicorn ecomevo.api.app:app --host 127.0.0.1 --port 8765 > /tmp/ecomevo-e2e.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          if ! python scripts/browser_e2e.py; then
+            cat /tmp/ecomevo-e2e.log
+            exit 1
+          fi
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecomevo-browser-e2e
+          path: outputs/e2e
+          if-no-files-found: ignore

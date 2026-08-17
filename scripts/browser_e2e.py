@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+import os
+import time
+import urllib.request
+from pathlib import Path
+
+from playwright.sync_api import expect, sync_playwright
+
+
+BASE_URL = os.environ.get("ECOMEVO_E2E_URL", "http://127.0.0.1:8765").rstrip("/")
+ARTIFACT_DIR = Path(os.environ.get("ECOMEVO_E2E_ARTIFACT_DIR", "outputs/e2e"))
+
+
+def wait_server(timeout: float = 30.0) -> None:
+    deadline = time.time() + timeout
+    last_error = None
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{BASE_URL}/api/health", timeout=2) as response:
+                if response.status == 200:
+                    return
+        except Exception as exc:
+            last_error = exc
+        time.sleep(0.25)
+    raise RuntimeError(f"server did not become healthy: {last_error}")
+
+
+def run() -> None:
+    wait_server()
+    ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="zh-CN")
+        context.tracing.start(screenshots=True, snapshots=True, sources=True)
+        page = context.new_page()
+        browser_errors: list[str] = []
+        page.on("pageerror", lambda exc: browser_errors.append(f"pageerror: {exc}"))
+        page.on("console", lambda msg: browser_errors.append(f"console: {msg.text}") if msg.type == "error" else None)
+        try:
+            page.goto(BASE_URL, wait_until="networkidle")
+            expect(page.locator("#conversationTitle")).to_be_visible()
+            expect(page.locator("#messageInput")).to_be_visible()
+            expect(page.locator("#sceneEyebrow")).to_have_text("商品治理")
+
+            page.locator("#providerBtn").click()
+            expect(page.locator("#providerModal")).to_be_visible()
+            option_texts = page.locator("#providerSelect option").all_text_contents()
+            assert option_texts and all(
+                text.startswith("认知引擎") or text.startswith("自动编排") or text.startswith("本地受控")
+                for text in option_texts
+            ), option_texts
+            for title in page.locator("#providerGrid .provider-card b").all_text_contents():
+                assert title.startswith("认知引擎") or title.startswith("本地受控"), title
+            page.locator("#providerModal .modal-close").click()
+
+            # Empty-task scene changes should reuse the current task rather than creating junk.
+            page.locator('.scene[data-scene="merchant_review"]').click()
+            expect(page.locator("#sceneEyebrow")).to_have_text("商家审核")
+
+            first_prompt = "审核这个商家的主体和品牌授权；证据不足时明确告诉我还缺什么。"
+            page.locator("#messageInput").fill(first_prompt)
+            page.locator("#sendBtn").click()
+            expect(page.locator(".msg.user .msg-content").filter(has_text=first_prompt)).to_be_visible()
+            expect(page.locator(".msg.assistant")).to_have_count(1, timeout=45_000)
+            expect(page.locator("#runtimePulse")).to_be_visible(timeout=10_000)
+            expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中")
+
+            page.keyboard.press("Control+K")
+            expect(page.locator("#commandModal")).to_be_visible()
+            expect(page.locator("#commandInput")).to_be_focused()
+            page.keyboard.press("Escape")
+            expect(page.locator("#commandModal")).to_be_hidden()
+
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.locator("#detailToggle").click()
+            expect(page.locator("#rightbar")).to_have_class(r".*open.*")
+            page.locator("#rightClose").click()
+            expect(page.locator("#rightbar")).not_to_have_class(r".*open.*")
+
+            # Same durable conversation in a second tab: remote accepted user message must
+            # reconcile into the first tab before/alongside its answer.
+            page.set_viewport_size({"width": 1440, "height": 1000})
+            assert "conversation=" in page.url, page.url
+            page2 = context.new_page()
+            page2_errors: list[str] = []
+            page2.on("pageerror", lambda exc: page2_errors.append(f"pageerror: {exc}"))
+            page2.on("console", lambda msg: page2_errors.append(f"console: {msg.text}") if msg.type == "error" else None)
+            page2.goto(page.url, wait_until="networkidle")
+            assistants_before = page2.locator(".msg.assistant").count()
+            second_prompt = f"跨标签页继续核对授权材料，标记 {time.time_ns()}"
+            page2.locator("#messageInput").fill(second_prompt)
+            page2.locator("#sendBtn").click()
+            expect(page.locator(".msg.user .msg-content").filter(has_text=second_prompt)).to_be_visible(timeout=15_000)
+            expect(page2.locator(".msg.assistant")).to_have_count(assistants_before + 1, timeout=45_000)
+            expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中", timeout=45_000)
+
+            assert not browser_errors, browser_errors
+            assert not page2_errors, page2_errors
+        except Exception:
+            page.screenshot(path=str(ARTIFACT_DIR / "failure.png"), full_page=True)
+            raise
+        finally:
+            context.tracing.stop(path=str(ARTIFACT_DIR / "trace.zip"))
+            browser.close()
+
+
+if __name__ == "__main__":
+    run()
+    print("browser e2e ok")
