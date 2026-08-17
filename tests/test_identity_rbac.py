@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import importlib
 import time
 
 import pytest
 from fastapi.testclient import TestClient
 
-import ecomevo.api.app as api
+api = importlib.import_module('ecomevo.api.app')
 from ecomevo.api.auth import AuthError, authenticate, sign_request
 from ecomevo.models import BusinessAction
 from ecomevo.product.tenant_store import TenantConversationStore
@@ -63,11 +64,11 @@ def test_hmac_api_enforces_tenant_and_approval_role_and_records_actor(monkeypatc
     monkeypatch.setenv("ECOMEVO_AUTH_HMAC_SECRET", SECRET)
 
     with TestClient(api.app) as client:
-        create_a = "/api/conversations"
-        a = client.post(create_a, json={"title": "A", "scene": "merchant_review"}, headers=signed_headers("POST", create_a, tenant="tenant-a", user="alice", role="operator"))
+        create_path = "/api/conversations"
+        a = client.post(create_path, json={"title": "A", "scene": "merchant_review"}, headers=signed_headers("POST", create_path, tenant="tenant-a", user="alice", role="operator"))
         assert a.status_code == 200
         a = a.json()
-        b = client.post(create_a, json={"title": "B", "scene": "merchant_review"}, headers=signed_headers("POST", create_a, tenant="tenant-b", user="bob", role="operator"))
+        b = client.post(create_path, json={"title": "B", "scene": "merchant_review"}, headers=signed_headers("POST", create_path, tenant="tenant-b", user="bob", role="operator"))
         assert b.status_code == 200
 
         listing = client.get("/api/conversations", headers=signed_headers("GET", "/api/conversations", tenant="tenant-a", user="alice", role="viewer"))
