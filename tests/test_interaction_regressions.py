@@ -41,8 +41,32 @@ def test_observer_avoids_character_data_churn():
 def test_handled_async_navigation_failure_does_not_become_noisy_unhandled_rejection():
     assert "window.addEventListener('unhandledrejection'" in ENH
     assert 'event.preventDefault()' in ENH
+    assert 'resetUploadGuard()' in ENH
 
 
 def test_empty_task_scene_switching_contract_still_exists_in_primary_app():
     assert "state.messages.length===0&&state.conversation.scene!==scene" in APP
     assert "method:'PATCH'" in APP
+
+
+def test_upload_guard_starts_before_primary_file_change_handler_and_finishes_per_request():
+    assert "document.addEventListener('change'" in ENH
+    assert "event.target?.id !== 'fileInput'" in ENH
+    assert 'beginUploadBatch(event.target.files?.length || 0)' in ENH
+    assert 'const isAssetUpload = assetUploadUrl(args[0], args[1])' in ENH
+    assert 'if (isAssetUpload) finishUploadItem()' in ENH
+
+
+def test_upload_guard_blocks_send_enter_and_cross_task_navigation():
+    assert "#sendBtn,.scene[data-scene],.conv-item,#newTaskBtn,.command-result" in ENH
+    assert "event.target?.id === 'messageInput' && event.key === 'Enter'" in ENH
+    assert "event.stopImmediatePropagation()" in ENH
+    assert '资料还在上传，完成后再发送' in ENH
+    assert '资料还在上传，完成后再切换任务' in ENH
+
+
+def test_upload_guard_exposes_busy_state_and_restores_send_control():
+    assert "composer.setAttribute('aria-busy', String(active))" in ENH
+    assert "send.dataset.uploadLocked = '1'" in ENH
+    assert "send.textContent = uploadBatchPending > 1" in ENH
+    assert 'send.disabled = sendDisabledBeforeUpload' in ENH
