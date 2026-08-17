@@ -11,6 +11,9 @@ from playwright.sync_api import expect, sync_playwright
 
 BASE_URL = os.environ.get("ECOMEVO_E2E_URL", "http://127.0.0.1:8765").rstrip("/")
 ARTIFACT_DIR = Path(os.environ.get("ECOMEVO_E2E_ARTIFACT_DIR", "outputs/e2e"))
+DESKTOP_VIEWPORT = {"width": 1920, "height": 1200}
+MOBILE_VIEWPORT = {"width": 390, "height": 844}
+DEVICE_SCALE_FACTOR = 2
 
 
 def wait_server(timeout: float = 30.0) -> None:
@@ -41,7 +44,13 @@ def run() -> None:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        context = browser.new_context(viewport={"width": 1440, "height": 1000}, locale="zh-CN")
+        # Logical viewport stays deterministic for interaction assertions while DPR=2
+        # produces 3840x2400 desktop captures suitable for README/source inspection.
+        context = browser.new_context(
+            viewport=DESKTOP_VIEWPORT,
+            device_scale_factor=DEVICE_SCALE_FACTOR,
+            locale="zh-CN",
+        )
         context.tracing.start(screenshots=True, snapshots=True, sources=True)
         page = context.new_page()
         browser_errors: list[str] = []
@@ -68,6 +77,7 @@ def run() -> None:
             # Empty-task scene changes should reuse the current task rather than creating junk.
             page.locator('.scene[data-scene="merchant_review"]').click()
             expect(page.locator("#sceneEyebrow")).to_have_text("商家审核")
+            capture(page, "product-scenes.png")
 
             first_prompt = "审核这个商家的主体和品牌授权；证据不足时明确告诉我还缺什么。"
             page.locator("#messageInput").fill(first_prompt)
@@ -92,7 +102,7 @@ def run() -> None:
             page.keyboard.press("Escape")
             expect(page.locator("#commandModal")).to_be_hidden()
 
-            page.set_viewport_size({"width": 390, "height": 844})
+            page.set_viewport_size(MOBILE_VIEWPORT)
             page.locator("#detailToggle").click()
             expect(page.locator("#rightbar")).to_have_class(re.compile(r"\bopen\b"))
             capture(page, "product-mobile.png")
@@ -101,7 +111,7 @@ def run() -> None:
 
             # Same durable conversation in a second tab: remote accepted user message must
             # reconcile into the first tab before/alongside its answer.
-            page.set_viewport_size({"width": 1440, "height": 1000})
+            page.set_viewport_size(DESKTOP_VIEWPORT)
             assert "conversation=" in page.url, page.url
             page2 = context.new_page()
             page2_errors: list[str] = []
