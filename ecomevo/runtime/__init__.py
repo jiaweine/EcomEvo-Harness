@@ -8,15 +8,17 @@ from .evolver import FailureDrivenEvolver
 from .autonomy import AutonomousController, TaskGraph
 from .skills import AdaptiveSkillLibrary
 from .adaptive_routing import AdaptiveAutonomousController, AdaptiveDecisionPolicy, AdaptiveRoutingStore
+from .counterfactual_routing import CounterfactualAdaptiveAutonomousController, CounterfactualAdaptiveDecisionPolicy
 
 # EcomEvoEngine resolves AutonomousController from its module globals at construction time.
-# Bind the production engine to the adaptive controller while preserving the public
-# base-controller import for compatibility and deterministic fallback testing.
+# Bind production runs to the counterfactual adaptive controller while keeping the base
+# classes importable for deterministic fallback and focused regression work.
 from . import engine as _engine
-_engine.AutonomousController = AdaptiveAutonomousController
+_engine.AutonomousController = CounterfactualAdaptiveAutonomousController
 
 __all__=[
     'EcomEvoEngine','EventStore','AdaptivePlanner','DecisionVerifier','ActionSandbox',
     'ToolRegistry','PTCExecutor','FailureDrivenEvolver','AutonomousController','TaskGraph',
-    'AdaptiveSkillLibrary','AdaptiveAutonomousController','AdaptiveDecisionPolicy','AdaptiveRoutingStore'
+    'AdaptiveSkillLibrary','AdaptiveAutonomousController','AdaptiveDecisionPolicy','AdaptiveRoutingStore',
+    'CounterfactualAdaptiveAutonomousController','CounterfactualAdaptiveDecisionPolicy'
 ]
