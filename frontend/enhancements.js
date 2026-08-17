@@ -14,6 +14,8 @@
   let lastActionResult = null;
   let uiScheduled = false;
   let pulseSignature = '';
+  let uploadBatchPending = 0;
+  let sendDisabledBeforeUpload = false;
   const telemetry = {
     apiEwmaMs: null,
     apiLastMs: null,
@@ -34,6 +36,91 @@
   function providerUrl(input) {
     return /\/api\/providers(?:\?|$)/.test(requestUrl(input));
   }
+
+  function assetUploadUrl(input, options) {
+    return /\/api\/assets(?:\?|$)/.test(requestUrl(input)) && String(options?.method || 'GET').toUpperCase() === 'POST';
+  }
+
+  function showInteractionToast(message) {
+    const node = document.getElementById('toast');
+    if (!node) return;
+    node.textContent = message;
+    node.classList.add('show');
+    clearTimeout(showInteractionToast.timer);
+    showInteractionToast.timer = setTimeout(() => node.classList.remove('show'), 2600);
+  }
+
+  function renderUploadGuard() {
+    const active = uploadBatchPending > 0;
+    const composer = document.getElementById('composer');
+    const send = document.getElementById('sendBtn');
+    composer?.classList.toggle('upload-busy', active);
+    if (composer) composer.setAttribute('aria-busy', String(active));
+    if (!send) return;
+    if (active) {
+      if (send.dataset.uploadLocked !== '1') {
+        sendDisabledBeforeUpload = Boolean(send.disabled);
+        send.dataset.uploadLabel = send.textContent || '发送';
+      }
+      send.dataset.uploadLocked = '1';
+      send.disabled = true;
+      send.textContent = uploadBatchPending > 1 ? `上传中 ${uploadBatchPending}` : '资料上传中…';
+      return;
+    }
+    if (send.dataset.uploadLocked === '1') {
+      send.disabled = sendDisabledBeforeUpload;
+      send.textContent = send.dataset.uploadLabel || '发送';
+      delete send.dataset.uploadLocked;
+      delete send.dataset.uploadLabel;
+    }
+  }
+
+  function beginUploadBatch(count) {
+    const amount = Math.max(0, Number(count) || 0);
+    if (!amount) return;
+    uploadBatchPending += amount;
+    renderUploadGuard();
+  }
+
+  function finishUploadItem() {
+    if (uploadBatchPending > 0) uploadBatchPending -= 1;
+    renderUploadGuard();
+  }
+
+  function resetUploadGuard() {
+    uploadBatchPending = 0;
+    renderUploadGuard();
+  }
+
+  function installUploadGuard() {
+    document.addEventListener('change', event => {
+      if (event.target?.id !== 'fileInput') return;
+      beginUploadBatch(event.target.files?.length || 0);
+    }, true);
+    window.addEventListener('drop', event => {
+      const count = event.dataTransfer?.files?.length || 0;
+      if (count) beginUploadBatch(count);
+    }, true);
+    document.addEventListener('click', event => {
+      if (!uploadBatchPending) return;
+      const target = event.target?.closest?.('#sendBtn,.scene[data-scene],.conv-item,#newTaskBtn,.command-result');
+      if (!target) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showInteractionToast(target.id === 'sendBtn' ? '资料还在上传，完成后再发送' : '资料还在上传，完成后再切换任务');
+    }, true);
+    document.addEventListener('keydown', event => {
+      if (!uploadBatchPending) return;
+      const sendByEnter = event.target?.id === 'messageInput' && event.key === 'Enter' && !event.shiftKey && !event.isComposing;
+      const newTaskShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n';
+      if (!sendByEnter && !newTaskShortcut) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      showInteractionToast(sendByEnter ? '资料还在上传，完成后再发送' : '资料还在上传，完成后再新建任务');
+    }, true);
+  }
+
+  installUploadGuard();
 
   function genericProviderRows(rows) {
     if (!Array.isArray(rows)) return rows;
@@ -60,6 +147,7 @@
 
   window.fetch = async (...args) => {
     const started = performance.now();
+    const isAssetUpload = assetUploadUrl(args[0], args[1]);
     try {
       const response = await nativeFetch(...args);
       updateApiLatency(performance.now() - started);
@@ -85,6 +173,8 @@
     } catch (error) {
       updateApiLatency(performance.now() - started);
       throw error;
+    } finally {
+      if (isAssetUpload) finishUploadItem();
     }
   };
 
@@ -345,6 +435,7 @@
     const message = String(event.reason?.message || event.reason || '');
     if (!/请求失败|Failed to fetch|NetworkError|任务不存在|服务连接/.test(message)) return;
     event.preventDefault();
+    resetUploadGuard();
     const toast = document.getElementById('toast');
     if (toast) {
       toast.textContent = '操作未完成，请检查连接后重试';
@@ -358,6 +449,7 @@
     document.querySelector('.task-head')?.style.setProperty('position', 'relative');
     installObserver();
     installMotion();
+    renderUploadGuard();
     scheduleUiPass();
   });
 })();
