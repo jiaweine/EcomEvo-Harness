@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "frontend/app.js").read_text(encoding="utf-8")
 ENH = (ROOT / "frontend/enhancements.js").read_text(encoding="utf-8")
 HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
+CSS = (ROOT / "frontend/product-polish.css").read_text(encoding="utf-8")
 
 
 def test_runtime_pulse_mounts_into_existing_progress_panel():
@@ -53,7 +54,7 @@ def test_upload_guard_starts_before_primary_file_change_handler_and_finishes_per
     assert "document.addEventListener('change'" in ENH
     assert "event.target?.id !== 'fileInput'" in ENH
     assert 'beginUploadBatch(event.target.files?.length || 0)' in ENH
-    assert 'const isAssetUpload = assetUploadUrl(args[0], args[1])' in ENH
+    assert 'const isAssetUpload = assetUploadUrl(input, options)' in ENH
     assert 'if (isAssetUpload) finishUploadItem()' in ENH
 
 
@@ -70,3 +71,47 @@ def test_upload_guard_exposes_busy_state_and_restores_send_control():
     assert "send.dataset.uploadLocked = '1'" in ENH
     assert "send.textContent = uploadBatchPending > 1" in ENH
     assert 'send.disabled = sendDisabledBeforeUpload' in ENH
+    assert '.composer.upload-busy' in CSS
+
+
+def test_runtime_telemetry_restores_from_historical_conversation():
+    assert 'function latestRuntimeFromConversation(payload)' in ENH
+    assert 'function restoreConversationTelemetry(payload, expectedConversationId)' in ENH
+    assert 'restoreConversationTelemetry(payload, conversationIdFromRequest(input))' in ENH
+    assert "message?.payload?.runtime" in ENH
+
+
+def test_runtime_telemetry_ignores_out_of_order_navigation_response():
+    assert "new URLSearchParams(location.search).get('conversation')" in ENH
+    assert 'currentConversationId !== expectedConversationId' in ENH
+    assert 'setTimeout(() =>' in ENH
+
+
+def test_new_turn_and_new_task_clear_previous_runtime_metrics():
+    assert 'if (conversationCreateUrl(input, options) && response.ok)' in ENH
+    assert "if (event.type === 'message.accepted')" in ENH
+    assert "if (event.type === 'answer.error')" in ENH
+    assert ENH.count('clearTurnTelemetry()') >= 3
+
+
+def test_runtime_pulse_surfaces_structured_decision_state_not_chain_of_thought():
+    for field in ('evidence_complete', 'missing_evidence', 'tool_cost_used', 'tool_cost_budget', 'tool_cost_remaining', 'stop_reason', 'autonomy_mode'):
+        assert field in ENH
+    assert '证据状态' in ENH
+    assert '停止原因' in ENH
+    assert '工具预算' in ENH
+    assert '运行模式' in ENH
+    assert 'chain-of-thought' not in ENH.lower()
+
+
+def test_narrow_asset_library_opens_assets_without_toggling_open_drawer_closed():
+    assert 'function installNarrowAssetDrawerFix()' in ENH
+    assert "event.target?.closest?.('#assetLibraryBtn')" in ENH
+    assert "document.getElementById('tab-assets')?.click()" in ENH
+    assert "if (!rightbar?.classList.contains('open')) document.getElementById('detailToggle')?.click()" in ENH
+
+
+def test_mobile_runtime_pulse_uses_two_column_six_cell_layout():
+    assert '@media(max-width:620px)' in CSS
+    assert '.runtime-pulse-grid{grid-template-columns:repeat(2,minmax(0,1fr))}' in CSS
+    assert '.runtime-pulse-grid>div:nth-child(odd)' in CSS
