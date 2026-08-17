@@ -11,7 +11,10 @@ async def test_runtime_summary_exposes_verifiable_stop_and_budget_state(tmp_path
     assert summary.status == 'needs_evidence'
     assert summary.evidence_complete is False
     assert summary.missing_evidence == summary.belief.missing_evidence
-    assert summary.stop_reason in {'evidence_incomplete', 'stagnated', 'budget_exhausted', 'step_limit'}
+    assert summary.stop_reason in {
+        'evidence_incomplete', 'stagnated', 'budget_exhausted', 'step_limit',
+        'no_high_value_action', 'controller_stop'
+    }
     assert summary.stop_detail
     assert summary.tool_cost_budget >= summary.tool_cost_used >= 0
     assert summary.tool_cost_remaining == pytest.approx(
@@ -21,12 +24,22 @@ async def test_runtime_summary_exposes_verifiable_stop_and_budget_state(tmp_path
     assert summary.belief.facts['stop_reason'] == summary.stop_reason
     assert summary.belief.facts['tool_cost_used'] == summary.tool_cost_used
 
-    completed = [event for event in engine.events.list_events(summary.session_id) if event.event_type == 'run.completed']
+    events = engine.events.list_events(summary.session_id)
+    stopped = [event for event in events if event.event_type == 'autonomy.stopped']
+    completed = [event for event in events if event.event_type == 'run.completed']
+    assert len(stopped) == 1
+    assert stopped[0].payload['reason'] == summary.stop_reason
+    assert stopped[0].payload['missing_evidence'] == summary.missing_evidence
     assert len(completed) == 1
     payload = completed[0].payload
     assert payload['stop_reason'] == summary.stop_reason
     assert payload['missing_evidence'] == summary.missing_evidence
     assert payload['tool_cost_budget'] == summary.tool_cost_budget
+
+    stop_nodes = [node for node in summary.task_graph['nodes'] if node['kind'] == 'stop']
+    assert len(stop_nodes) == 1
+    assert stop_nodes[0]['payload']['reason'] == summary.stop_reason
+    assert stop_nodes[0]['status'] == 'completed'
 
 
 @pytest.mark.asyncio
@@ -50,3 +63,5 @@ async def test_verified_runtime_uses_verified_stop_reason(tmp_path):
         assert summary.stop_reason == 'verified'
         assert summary.evidence_complete is True
         assert summary.missing_evidence == []
+        stop_nodes = [node for node in summary.task_graph['nodes'] if node['kind'] == 'stop']
+        assert stop_nodes[-1]['payload']['reason'] == 'verified'
