@@ -29,6 +29,10 @@
     return typeof input === 'string' ? input : (input && input.url) || '';
   }
 
+  function requestMethod(options) {
+    return String(options?.method || 'GET').toUpperCase();
+  }
+
   function actionUrl(input) {
     return /\/api\/actions\/[^/]+\/decision(?:\?|$)/.test(requestUrl(input));
   }
@@ -38,7 +42,15 @@
   }
 
   function assetUploadUrl(input, options) {
-    return /\/api\/assets(?:\?|$)/.test(requestUrl(input)) && String(options?.method || 'GET').toUpperCase() === 'POST';
+    return /\/api\/assets(?:\?|$)/.test(requestUrl(input)) && requestMethod(options) === 'POST';
+  }
+
+  function conversationCreateUrl(input, options) {
+    return /\/api\/conversations(?:\?|$)/.test(requestUrl(input)) && requestMethod(options) === 'POST';
+  }
+
+  function conversationDetailUrl(input, options) {
+    return /\/api\/conversations\/[^/?]+(?:\?|$)/.test(requestUrl(input)) && requestMethod(options) === 'GET';
   }
 
   function showInteractionToast(message) {
@@ -139,6 +151,33 @@
     });
   }
 
+  function clearTurnTelemetry({ keepRouting = false } = {}) {
+    telemetry.runtime = null;
+    telemetry.counterfactualMs = null;
+    if (!keepRouting) telemetry.routing = null;
+    pulseSignature = '';
+    scheduleUiPass();
+  }
+
+  function latestRuntimeFromConversation(payload) {
+    const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message?.role !== 'assistant') continue;
+      const runtime = message?.payload?.runtime;
+      if (runtime && typeof runtime === 'object') return runtime;
+    }
+    return null;
+  }
+
+  function restoreConversationTelemetry(payload) {
+    telemetry.runtime = latestRuntimeFromConversation(payload);
+    telemetry.routing = telemetry.runtime?.belief?.facts?.routing_policy || null;
+    telemetry.counterfactualMs = null;
+    pulseSignature = '';
+    scheduleUiPass();
+  }
+
   function updateApiLatency(ms) {
     telemetry.apiLastMs = ms;
     telemetry.apiEwmaMs = telemetry.apiEwmaMs == null ? ms : (0.82 * telemetry.apiEwmaMs + 0.18 * ms);
@@ -147,11 +186,13 @@
 
   window.fetch = async (...args) => {
     const started = performance.now();
-    const isAssetUpload = assetUploadUrl(args[0], args[1]);
+    const input = args[0];
+    const options = args[1];
+    const isAssetUpload = assetUploadUrl(input, options);
     try {
       const response = await nativeFetch(...args);
       updateApiLatency(performance.now() - started);
-      if (providerUrl(args[0]) && response.ok) {
+      if (providerUrl(input) && response.ok) {
         try {
           const payload = genericProviderRows(await response.clone().json());
           const headers = new Headers(response.headers);
@@ -163,7 +204,12 @@
           });
         } catch (_) {}
       }
-      if (actionUrl(args[0]) && response.ok) {
+      if (conversationCreateUrl(input, options) && response.ok) {
+        clearTurnTelemetry();
+      } else if (conversationDetailUrl(input, options) && response.ok) {
+        try { restoreConversationTelemetry(await response.clone().json()); } catch (_) {}
+      }
+      if (actionUrl(input) && response.ok) {
         try {
           const payload = await response.clone().json();
           if (payload && typeof payload === 'object') lastActionResult = payload;
@@ -182,6 +228,10 @@
     let event;
     try { event = JSON.parse(raw); } catch (_) { return; }
     if (!event || typeof event !== 'object') return;
+    if (event.type === 'message.accepted') {
+      clearTurnTelemetry();
+      return;
+    }
     if (event.type === 'routing.policy.updated') {
       telemetry.routing = event.payload?.policy || event.payload || null;
       telemetry.counterfactualMs = Number(event.payload?.counterfactual_ms ?? null);
@@ -190,7 +240,12 @@
     }
     if (event.type === 'answer.ready') {
       telemetry.runtime = event.payload?.result?.runtime || event.payload?.message?.payload?.runtime || null;
+      telemetry.routing = telemetry.runtime?.belief?.facts?.routing_policy || telemetry.routing;
       scheduleUiPass();
+      return;
+    }
+    if (event.type === 'answer.error') {
+      clearTurnTelemetry({ keepRouting: false });
     }
   }
 
@@ -234,7 +289,20 @@
     }, true);
   }
 
+  function installNarrowAssetDrawerFix() {
+    document.addEventListener('click', event => {
+      const trigger = event.target?.closest?.('#assetLibraryBtn');
+      if (!trigger || !matchMedia('(max-width:1080px)').matches) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      document.getElementById('tab-assets')?.click();
+      const rightbar = document.getElementById('rightbar');
+      if (!rightbar?.classList.contains('open')) document.getElementById('detailToggle')?.click();
+    }, true);
+  }
+
   installSceneBridge();
+  installNarrowAssetDrawerFix();
 
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
@@ -351,6 +419,23 @@
     return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
   }
 
+  function fmtCost(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number.toFixed(number < 10 ? 1 : 0) : '—';
+  }
+
+  function stopLabel(reason) {
+    return ({
+      verified: '验证完成',
+      budget_exhausted: '预算用尽',
+      controller_stop: '本轮主动停止',
+      no_high_value_action: '没有更高价值的下一步',
+      stagnated: '补证没有改变状态',
+      step_limit: '达到处理步数上限',
+      evidence_incomplete: '证据仍不完整',
+    })[reason] || '等待本轮结果';
+  }
+
   function runtimeFacts() {
     return telemetry.runtime?.belief?.facts || telemetry.runtime?.runtime?.belief?.facts || {};
   }
@@ -363,7 +448,7 @@
     host = document.createElement('section');
     host.id = 'runtimePulse';
     host.className = 'runtime-pulse';
-    host.setAttribute('aria-label', '运行质量');
+    host.setAttribute('aria-label', '运行质量与决策透明度');
     const first = panel.firstElementChild;
     if (first) first.after(host); else panel.prepend(host);
     return host;
@@ -372,25 +457,40 @@
   function renderRuntimePulse() {
     const host = ensureRuntimePulse();
     if (!host) return;
+    const runtime = telemetry.runtime || {};
     const facts = runtimeFacts();
     const routing = facts.routing_policy || telemetry.routing || {};
     const runtimeMs = Number(facts.runtime_elapsed_ms ?? NaN);
     const samples = Number(routing.samples ?? routing.policy?.samples ?? 0);
     const drift = Number(routing.residual_ewma ?? routing.policy?.residual_ewma ?? NaN);
+    const steps = Number(runtime.autonomy_steps ?? facts.autonomy_steps ?? 0);
+    const evidenceComplete = runtime.evidence_complete ?? facts.evidence_complete;
+    const missing = Array.isArray(runtime.missing_evidence) ? runtime.missing_evidence : [];
+    const used = runtime.tool_cost_used ?? facts.tool_cost_used;
+    const budget = runtime.tool_cost_budget ?? facts.tool_cost_budget;
+    const remaining = runtime.tool_cost_remaining ?? facts.tool_cost_remaining;
+    const reason = runtime.stop_reason || facts.stop_reason || '';
+    const mode = runtime.autonomy_mode || facts.autonomy_mode || '';
     const sync = telemetry.connected || /已同步/.test(document.getElementById('taskConnection')?.textContent || '');
+    const evidenceLabel = evidenceComplete === true ? '证据完整' : evidenceComplete === false ? `缺证 ${missing.length || '待核'}` : '等待本轮';
+    const modeLabel = mode === 'model_controller' ? '自适应认知' : mode ? '受控本地' : '等待任务';
+    const gap = missing[0] ? String(missing[0]).slice(0, 48) : '';
     const html = `
       <div class="runtime-pulse-head">
         <div><span class="runtime-live ${sync ? 'ok' : ''}"></span><b>运行质量</b></div>
-        <small>只读策略 · 可审计</small>
+        <small>证据与权限 · 可审计</small>
       </div>
       <div class="runtime-pulse-grid">
-        <div><small>任务用时</small><strong>${fmtLatency(runtimeMs)}</strong></div>
-        <div><small>策略样本</small><strong>${samples > 0 ? String(samples) : '冷启动'}</strong></div>
+        <div><small>证据状态</small><strong>${evidenceLabel}</strong></div>
+        <div><small>工具预算</small><strong>${fmtCost(used)} / ${fmtCost(budget)}</strong></div>
+        <div><small>自主步骤</small><strong>${steps || '—'}</strong></div>
+        <div><small>停止原因</small><strong>${stopLabel(reason)}</strong></div>
         <div><small>API RTT</small><strong>${fmtLatency(telemetry.apiEwmaMs)}</strong></div>
+        <div><small>运行模式</small><strong>${modeLabel}</strong></div>
       </div>
       <div class="runtime-pulse-foot">
-        <span>${Number.isFinite(drift) ? `分布漂移 ${drift.toFixed(3)}` : '等待策略样本'}</span>
-        <span>${Number.isFinite(telemetry.counterfactualMs) ? `反事实复核 ${fmtLatency(telemetry.counterfactualMs)}` : '证据优先'}</span>
+        <span>${gap ? `最先缺口：${gap}` : Number.isFinite(Number(remaining)) ? `剩余预算 ${fmtCost(remaining)}` : `任务用时 ${fmtLatency(runtimeMs)}`}</span>
+        <span>${samples > 0 ? `策略样本 ${samples}${Number.isFinite(drift) ? ` · 漂移 ${drift.toFixed(3)}` : ''}` : Number.isFinite(telemetry.counterfactualMs) ? `反事实复核 ${fmtLatency(telemetry.counterfactualMs)}` : '证据优先'}</span>
       </div>`;
     if (html === pulseSignature) return;
     pulseSignature = html;
@@ -406,6 +506,7 @@
     const messages = document.getElementById('messageList');
     if (messages) animateNewMessages(messages);
     rewriteActionToast(document.getElementById('toast'));
+    renderUploadGuard();
     renderRuntimePulse();
   }
 
