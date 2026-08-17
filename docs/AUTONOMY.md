@@ -1,8 +1,8 @@
 # Autonomous & Self-Evolving Runtime
 
-EcomEvo 的自主性建立在一个明确边界上：**模型负责认知候选，Runtime 负责工具政策，Verifier 负责业务事实门槛，人工保留高影响动作授权。**
+EcomEvo 的自主性建立在一个明确边界上：**模型负责提出认知候选，Runtime 负责学习和选择只读工具策略，Verifier 负责业务事实门槛，人工保留高影响动作授权。**
 
-这不是“让模型拥有更多权限”，而是让系统在安全边界内拥有更强的任务自主性。
+这不是让模型拥有更多权限，而是让系统在硬边界内拥有更强的任务自主性和长期适应能力。
 
 ## EvoLoop
 
@@ -10,72 +10,185 @@ EcomEvo 的自主性建立在一个明确边界上：**模型负责认知候选�
 
 1. **Observe**：读取目标、业务域、强制证据、当前缺口、工具结果、剩余预算、已验证技能；
 2. **Decide**：模型提出少量只读候选工具和可选 cognitive delegation；
-3. **EvoGain Route**：Runtime 对合法候选重新计算预期证据信息增益；
+3. **EvoGain-APR Route**：Runtime 用 adaptive posterior 对合法候选重新排序；
 4. **Act**：并行执行被选中的只读工具；
-5. **Review**：规则、证据、风险、业务 specialist 与可选动态 specialist 做交叉复核；
+5. **Review**：规则、证据、风险、固定 specialist 与动态 specialist 做交叉复核；
 6. **Verify**：deterministic verifier 检查真实证据硬门槛与副作用安全；
-7. **Reflect / Replan**：证据不足时基于最新状态重新规划；
-8. **Stop**：通过验证，或继续探索已经没有足够信息价值时停止。
+7. **Counterfactual Credit**：对本轮自适应选中的工具做 verifier leave-one-out 差分贡献；
+8. **Posterior Update**：更新 routing posterior 与 tool reliability posterior；
+9. **Reflect / Replan**：证据不足时基于最新状态重新规划；
+10. **Stop**：通过验证，或继续探索已经没有足够信息价值时停止。
 
 Planner 不再写死完整路线。它只保留业务域、强制证据、成本约束和无模型时的安全 fallback。
 
-## EvoGain
+---
+
+## EvoGain-APR
+
+APR 表示 **Adaptive Posterior Routing**。
 
 ### 为什么需要第二层路由
 
-模型很擅长提出可能的下一步，但模型输出顺序并不天然代表最优工具策略。尤其在更小、开源权重或成本更低的控制器上，如果 Runtime 直接照模型列表执行，容易出现：
+语言模型可以提出下一步候选，但候选顺序本身不是执行权。尤其在较小、自托管或成本更低的控制器上，直接照模型输出执行容易出现：
 
 - 先调用与当前 missing evidence 无关的工具；
 - 同一轮多次查相似证据通道；
-- 在已经得到足够信息后仍继续调用；
-- 高成本工具抢占低成本、高价值工具预算；
-- skill 推荐与当前真实缺口脱节。
+- 已经得到足够信息后仍继续调用；
+- 高成本工具抢占预算；
+- skill 推荐与当前真实缺口脱节；
+- 新工具上线后长期停留在旧 prompt 偏好。
 
 因此 EcomEvo 把“候选生成”和“执行选择”拆开。
 
-### 可审计评分维度
+### 可学习 context
 
-EvoGain 对每个合法候选计算：
+对每个合法工具，Runtime 构造可审计的上下文特征：
 
-- **coverage**：与当前 missing evidence 的语义覆盖；
-- **authority**：可信企业 read tool 是否提供明确 evidence tags；
-- **novelty**：该工具此前已经成功使用过多少次；
-- **skill support**：当前活跃技能对该工具的 posterior 支持；
-- **contradiction value**：是否有能力发现反证、规则冲突或风险信号；
-- **cost**：工具成本；
-- **diversity overlap**：和本轮已选工具是否覆盖同一证据通道。
+- evidence coverage；
+- source authority；
+- skill posterior support；
+- novelty；
+- contradiction value；
+- purpose / evidence-channel specificity；
+- tool reliability posterior；
+- cost pressure；
+- same-round redundancy；
+- evidence gap pressure；
+- recovery context。
 
-简化表示：
+这些都来自 Runtime 状态，不来自模型隐藏思维。
+
+### Cold-start prior，不是固定价值函数
+
+生产路由维护 Bayesian linear posterior：
 
 ```text
-utility(tool)
-  = evidence coverage
-  + source authority
-  + novelty
-  + posterior skill support
-  + contradiction value
-  - same-round overlap
-  --------------------------------
-             execution cost
+A0 = prior precision
+b0 = A0 × prior mean
+
+A ← prior + decay × (A - prior) + x xᵀ
+b ← prior_b + decay × (b - prior_b) + reward × x
+posterior_mean = A⁻¹ b
 ```
 
-这些分数只用于 **routing**，绝不进入 Business Verifier，也绝不变成业务置信度。
+人工系数只承担冷启动 prior 的作用。
 
-### Greedy diversity selection
+当真实任务数据积累后，posterior 会逐渐替代 cold-start prior，不存在一组永远不变的最终 routing weights。
+
+### Global → Domain transfer
+
+每个 credit 同时更新：
+
+- 全局 routing posterior；
+- 当前业务域 routing posterior。
+
+新业务域可以使用少量全局经验，但不会直接继承成熟业务域的全部偏好。
+
+本域样本增多后，domain posterior 权重自动提高。
+
+### Deterministic UCB
+
+生产探索使用 deterministic UCB，而不是随机抽样：
+
+```text
+score = posterior_mean + exploration × posterior_uncertainty
+```
+
+因此高不确定、但合法且可能有价值的工具仍能得到探索机会，同时保持相同状态下的可复现排序。
+
+### Shadow before adaptive
+
+领域样本不足时，posterior 只记录、不接管生产排序。
+
+达到最小样本后才逐步提高 learned policy activation。若 residual drift 增大，activation 会下降、探索不确定性会提高。
+
+这样可以避免少量早期错误轨迹直接把生产 routing 带偏。
+
+---
+
+## Verifier Difference Credit
+
+EcomEvo 不再用一组固定 reward 权重训练另一组“可学习权重”。
+
+对本轮被 adaptive router 选中的工具结果，Runtime 使用 deterministic verifier 做 leave-one-out：
+
+```text
+full       = verifier(all_results)
+without_i  = verifier(all_results - tool_result_i)
+
+marginal_credit
+  = potential(full) - potential(without_i)
+  -------------------------------------------
+                  1 + tool_cost
+```
+
+其中 verification potential 由：
+
+- verifier score；
+- evidence completeness
+
+组成，两者本身都已经归一到 `[0, 1]`。
+
+这个 credit 表示：**拿掉这个工具结果后，可验证状态到底下降了多少。**
+
+它不是完整 Shapley value，也不是严格因果识别，但比手工 reward 权重更直接、更可解释，而且额外 verifier 次数受每步工具上限严格限制。
+
+Specialist 自然语言不参与这次 counterfactual credit，避免“模型表达更像真的”被误学习成证据价值。
+
+---
+
+## Tool Reliability Posterior
+
+工具的业务价值和运行稳定性分开学习。
+
+每个 domain/tool 维护 Beta posterior：
+
+```text
+success → alpha + 1
+failure → beta + 1
+reliability = alpha / (alpha + beta)
+```
+
+同时保留全局与领域级 reliability，用于新业务域收缩估计。
+
+这个 reliability 只是 routing feature，不是业务证据。
+
+一个工具可以“非常相关但经常失败”，也可以“稳定但对当前证据缺口没有价值”。两者不会被混成同一个分数。
+
+---
+
+## Non-stationary adaptation
+
+工具生态和模型分布会变化，因此 routing posterior 使用缓慢 decay。
+
+旧经验逐渐衰减，但 cold-start prior 保留。
+
+系统还维护 prediction residual EWMA：
+
+- residual 低：当前 posterior 与环境一致；
+- residual 高：可能出现工具质量变化、数据分布变化或模型候选分布变化。
+
+高 residual 时，系统会降低 learned policy activation，并提高 uncertainty exploration。
+
+---
+
+## Budget-aware set selection
 
 不是简单按单工具分数 Top-K。
 
-每选中一个工具，EvoGain 会对后续候选计算证据通道重叠惩罚，使同一轮更倾向于覆盖不同信息来源。例如主体核验和规则核验可以一起被选中，而无关风险扫描会因为信息增益低被放弃。
+每选中一个工具，后续候选会重新计算与已选 evidence channels 的 overlap。
 
-### Utility floor
+`redundancy` 本身也是 posterior feature，因此多样性偏好可以从真实 outcome 学习，而不是永久固定一个减分常数。
 
-候选低于最低预期信息增益时不会执行。
+同时保持：
 
-这是停止机制的一部分：**没有值得查的新东西，就不为了“Agent 看起来很忙”继续 Tool Calling。**
+- 当前剩余工具预算；
+- 每步最大工具数；
+- sandbox gate；
+- unknown tool rejection；
+- side-effect prohibition。
 
-### Concurrency rule
-
-当前 missing evidence 每次显式作为函数参数传入 EvoGain。不存在共享的临时 routing state，因此多个任务共用同一个 Runtime 时不会因为证据缺口串线改变彼此的工具排序。
+---
 
 ## Dynamic Task Graph
 
@@ -91,6 +204,8 @@ Task Graph 记录：
 
 Graph 是运行轨迹，不是预先固定 DAG。节点由真实任务状态动态增长。
 
+---
+
 ## Dynamic cognitive delegation
 
 固定 specialist 提供稳定业务基线，自主控制器还可以增加只读复核角色。
@@ -102,6 +217,8 @@ Graph 是运行轨迹，不是预先固定 DAG。节点由真实任务状态动�
 - 不能改变 verifier；
 - 只能使用已经核对的工具结果；
 - 只输出发现、风险和下一步只读核对方向。
+
+---
 
 ## Stagnation-driven topology mutation
 
@@ -115,7 +232,11 @@ Runtime 会：
 4. 连续无增益后停止；
 5. 把失败轨迹送入 skill evolution。
 
+---
+
 ## Skill evolution
+
+Routing posterior 学“下一步工具策略”；Skill Library 学“可复用业务认知模式”。两者分开更新。
 
 ### Candidate generation
 
@@ -127,12 +248,7 @@ Runtime 会：
 - 当前技能；
 - verifier 结果。
 
-模型可以提出候选技能，但只允许包含：
-
-- 只读策略；
-- 偏好工具；
-- trigger terms；
-- 任务核对建议。
+模型可以提出候选技能，但只允许包含只读策略、偏好工具、trigger terms 和任务核对建议。
 
 ### Shadow before live
 
@@ -150,17 +266,19 @@ failure → beta + 1
 posterior mean = alpha / (alpha + beta)
 ```
 
-posterior 参与 routing，但不是业务证据。
+posterior 可以影响 routing，但不是业务证据。
 
 ### Quality-diversity archive
 
 技能按 domain + pathology niche 竞争。
 
-同一 niche 只保留质量更强代表，防止 prompt/skill 库无限膨胀。
+同一 niche 只保留质量更强代表，防止 prompt / skill 库无限膨胀。
 
 ### Retirement
 
 活跃技能真实使用次数足够后，如果 posterior 长期低于 retirement threshold，会进入 retired 状态，不再参与在线路由。
+
+---
 
 ## Meta-evolution
 
@@ -170,17 +288,26 @@ posterior 参与 routing，但不是业务证据。
 - `retirement_threshold`；
 - `exploration`。
 
-使用技能失败时，系统会略微提高晋升要求并增加探索；技能持续成功时，逐步降低无意义探索。
+这些元参数会根据真实技能 outcome 缓慢变化，但始终有硬范围约束。
 
-所有元参数都有硬边界。
+---
 
 ## Open-weight controllers
 
-EcomEvo 支持把当前开源权重 / 自托管 OpenAI-Compatible 服务作为认知控制器。
+EcomEvo 支持把开源权重 / 自托管 OpenAI-Compatible 服务作为认知控制器。
 
-Runtime 不把“开源模型更便宜”理解成“可以降低安全要求”。相反，EvoGain 的作用之一，就是把候选生成与最终工具政策分离，让较小控制器仍然工作在 deterministic policy envelope 内。
+更强的控制器可以提出更好的候选，但 Runtime 不把模型能力当成业务权限。
 
-自动路由可以优先使用部署方提供的开源文本引擎处理常规规划与工具协作；真正需要图片、音频或扫描文档时再选择具备相应能力的引擎。
+Adaptive Posterior Routing 的目的之一，就是减少整个系统对某一个模型“天生会不会排工具”的依赖。
+
+模型升级时：
+
+- Candidate generation 可以变强；
+- routing posterior 可以重新适应新候选分布；
+- residual drift 可以暴露分布变化；
+- Verifier / Sandbox / Authority 不需要跟模型一起重写。
+
+---
 
 ## Immutable authority
 
@@ -197,12 +324,16 @@ Runtime 不把“开源模型更便宜”理解成“可以降低安全要求”
 
 **Agent 可以改变策略，但不能给自己更多权限。**
 
+---
+
 ## Auditable events
 
 Runtime 记录：
 
 - `autonomy.decided`；
 - `autonomy.decision_rejected`；
+- `routing.policy.updated`；
+- `routing.policy.learning_error`；
 - `agent.delegated`；
 - `topology.mutated`；
 - `autonomy.stagnated`；
@@ -210,9 +341,21 @@ Runtime 记录：
 - `evolution.distilled`；
 - `evolution.reused`。
 
-`autonomy.decided` 还会记录 compact EvoGain selection trace：工具、是否选中、routing utility、coverage、authority、novelty、skill support、cost。
+`autonomy.decided` 的 EvoGain trace 会记录：
 
-这是可审计的工具政策摘要，不是隐藏 chain-of-thought。
+- 是否选中；
+- coverage / authority / novelty / skill support；
+- policy mode；
+- posterior samples；
+- prior score；
+- posterior mean；
+- uncertainty；
+- adaptive activation；
+- final routing utility。
+
+这是一份可审计策略摘要，不是隐藏 chain-of-thought。
+
+---
 
 ## Configuration
 
@@ -223,3 +366,5 @@ ECOMEVO_AUTONOMY_DELEGATIONS_PER_STEP=3
 ```
 
 代码会再次施加硬上限，环境变量不能创建无限循环。
+
+更完整的数学定义见 [`ALGORITHM.md`](ALGORITHM.md)。
