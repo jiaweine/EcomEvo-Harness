@@ -4,6 +4,7 @@
   const UpstreamFetch = window.fetch.bind(window);
   const blockedActionIds = new Set();
   let actionSyncScheduled = false;
+  let turnSyncScheduled = false;
 
   function requestUrl(input) {
     return typeof input === 'string' ? input : (input && input.url) || '';
@@ -28,6 +29,13 @@
     const chip = document.getElementById('taskReadyChip');
     const send = document.getElementById('sendBtn');
     return Boolean(chip?.classList.contains('busy') || send?.dataset.remoteLocked === '1');
+  }
+
+  function turnBusy() {
+    const chip = document.getElementById('taskReadyChip');
+    const send = document.getElementById('sendBtn');
+    const label = chip?.querySelector('b')?.textContent?.trim() || '';
+    return label === '处理中' || send?.dataset.remoteLocked === '1';
   }
 
   function isFileDrag(event) {
@@ -84,6 +92,35 @@
     if (actionSyncScheduled) return;
     actionSyncScheduled = true;
     requestAnimationFrame(syncActionSafetyState);
+  }
+
+  function syncTurnRuntimeState() {
+    turnSyncScheduled = false;
+    if (!turnBusy()) return;
+    const pulse = document.getElementById('runtimePulse');
+    if (!pulse) return;
+
+    const values = {
+      '证据状态': '本轮查证中',
+      '工具预算': '—',
+      '自主步骤': '—',
+      '停止原因': '本轮处理中',
+      '运行模式': '受控运行中',
+    };
+    for (const cell of pulse.querySelectorAll('.runtime-pulse-grid > div')) {
+      const key = cell.querySelector('small')?.textContent?.trim();
+      const strong = cell.querySelector('strong');
+      if (strong && key in values && strong.textContent !== values[key]) strong.textContent = values[key];
+    }
+    const foot = pulse.querySelectorAll('.runtime-pulse-foot > span');
+    if (foot[0] && foot[0].textContent !== '等待本轮运行数据') foot[0].textContent = '等待本轮运行数据';
+    if (foot[1] && foot[1].textContent !== '证据优先') foot[1].textContent = '证据优先';
+  }
+
+  function scheduleTurnRuntimeSync() {
+    if (turnSyncScheduled) return;
+    turnSyncScheduled = true;
+    requestAnimationFrame(syncTurnRuntimeState);
   }
 
   window.fetch = async (...args) => {
@@ -146,6 +183,14 @@
   document.addEventListener('DOMContentLoaded', () => {
     const list = document.getElementById('actionList');
     if (list) new MutationObserver(scheduleActionSafetySync).observe(list, { childList: true, subtree: true });
+
+    const chip = document.getElementById('taskReadyChip');
+    const panel = document.getElementById('panel-progress');
+    const turnObserver = new MutationObserver(scheduleTurnRuntimeSync);
+    if (chip) turnObserver.observe(chip, { attributes: true, childList: true, subtree: true });
+    if (panel) turnObserver.observe(panel, { childList: true, subtree: true });
+
     scheduleActionSafetySync();
+    scheduleTurnRuntimeSync();
   });
 })();
