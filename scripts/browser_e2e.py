@@ -27,6 +27,15 @@ def wait_server(timeout: float = 30.0) -> None:
     raise RuntimeError(f"server did not become healthy: {last_error}")
 
 
+def capture(page, name: str) -> None:
+    page.screenshot(
+        path=str(ARTIFACT_DIR / name),
+        full_page=False,
+        animations="disabled",
+        caret="hide",
+    )
+
+
 def run() -> None:
     wait_server()
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
@@ -43,6 +52,7 @@ def run() -> None:
             expect(page.locator("#conversationTitle")).to_be_visible()
             expect(page.locator("#messageInput")).to_be_visible()
             expect(page.locator("#sceneEyebrow")).to_have_text("商品治理")
+            capture(page, "product-overview.png")
 
             page.locator("#providerBtn").click()
             expect(page.locator("#providerModal")).to_be_visible()
@@ -66,16 +76,26 @@ def run() -> None:
             expect(page.locator(".msg.assistant")).to_have_count(1, timeout=45_000)
             expect(page.locator("#runtimePulse")).to_be_visible(timeout=10_000)
             expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中")
+            page.locator("#tab-progress").click()
+            expect(page.locator("#panel-progress")).to_be_visible()
+            capture(page, "product-runtime.png")
+
+            page.locator("#tab-evidence").click()
+            expect(page.locator("#panel-evidence")).to_be_visible()
+            capture(page, "product-evidence.png")
+            page.locator("#tab-progress").click()
 
             page.keyboard.press("Control+K")
             expect(page.locator("#commandModal")).to_be_visible()
             expect(page.locator("#commandInput")).to_be_focused()
+            capture(page, "product-command.png")
             page.keyboard.press("Escape")
             expect(page.locator("#commandModal")).to_be_hidden()
 
             page.set_viewport_size({"width": 390, "height": 844})
             page.locator("#detailToggle").click()
             expect(page.locator("#rightbar")).to_have_class(re.compile(r"\bopen\b"))
+            capture(page, "product-mobile.png")
             page.locator("#rightClose").click()
             expect(page.locator("#rightbar")).not_to_have_class(re.compile(r"\bopen\b"))
 
