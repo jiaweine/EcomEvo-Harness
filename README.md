@@ -1,27 +1,23 @@
-<div align="center">
+<p align="center"><sub>ADAPTIVE AUTONOMOUS COMMERCE RUNTIME</sub></p>
 
-<p><sub>ADAPTIVE AUTONOMOUS COMMERCE RUNTIME</sub></p>
+<h1 align="center">EcomEvo</h1>
 
-# EcomEvo
+<p align="center"><strong>让复杂电商任务持续查证、自主推进、可恢复、会学习——但永远不越权。</strong></p>
 
-### 让复杂电商任务持续查证、自主推进、可恢复、会学习——但永远不越权。
+<p align="center"><b>目标交给 Runtime · 证据交给 Verifier · 权限留给业务</b></p>
 
-**目标交给 Runtime · 证据交给 Verifier · 权限留给业务**
-
-<p>
+<p align="center">
   <img alt="CI" src="https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml/badge.svg?branch=agent%2Fautonomous-self-evolving-runtime" />
   <img alt="Adaptive Routing" src="https://img.shields.io/badge/Routing-Adaptive%20Posterior-C76535" />
   <img alt="Multimodal Evidence" src="https://img.shields.io/badge/Evidence-Multimodal-BF7B32" />
   <img alt="Deterministic Authority" src="https://img.shields.io/badge/Authority-Deterministic-3F765E" />
 </p>
 
-**[产品手册](docs/PRODUCT_MANUAL.md) · [算法报告](docs/ALGORITHM.md) · [技术手册](docs/TECHNICAL_MANUAL.md) · [性能](docs/PERFORMANCE.md) · [验证](docs/VERIFICATION_REPORT.md)**
+<p align="center">
+  <b><a href="docs/PRODUCT_MANUAL.md">产品手册</a> · <a href="docs/ALGORITHM.md">算法报告</a> · <a href="docs/TECHNICAL_MANUAL.md">技术手册</a> · <a href="docs/PERFORMANCE.md">性能</a> · <a href="docs/VERIFICATION_REPORT.md">验证</a></b>
+</p>
 
-<br />
-
-> **Give the Agent a goal, not a script.**
-
-</div>
+<p align="center"><em><b>Give the Agent a goal, not a script.</b></em></p>
 
 <br />
 
@@ -43,7 +39,8 @@ EcomEvo 运行的是一条**可验证的业务决策链**：它围绕目标持�
 
 这意味着系统可以不断提高“**下一步查什么**”的能力，却不能学习“**怎样获得更多权限**”。
 
-> ### 认知自治，权限确定。
+> **认知自治，权限确定。**
+>
 > 学习发生在安全可行域内部；Verifier、Sandbox、RBAC 与 Human Approval 永远位于学习层之外。
 
 <br />
@@ -185,7 +182,7 @@ $$
 
 <br />
 
-# EvoGain-APR
+## EvoGain-APR · Algorithm
 
 ### Adaptive Posterior Routing for verified evidence acquisition
 
@@ -212,7 +209,7 @@ $$
 
 <br />
 
-## 1 · Hierarchical Bayesian Posterior
+### 1 · Hierarchical Bayesian Posterior
 
 对每个合法候选工具构造上下文向量 $x$，包含 evidence coverage、authority、skill support、novelty、counter-evidence value、specificity、tool reliability、cost pressure、redundancy、evidence gap 与 recovery context。
 
@@ -254,7 +251,7 @@ $$
 
 <br />
 
-## 2 · Deterministic UCB
+### 2 · Deterministic UCB
 
 生产 routing 需要探索，但也需要可复现。
 
@@ -278,7 +275,7 @@ $$
 
 <br />
 
-## 3 · Contextual Abstention
+### 3 · Contextual Abstention
 
 真正高效的 Agent 不只会选择工具，也会知道**什么时候不应该再调用工具**。
 
@@ -306,7 +303,7 @@ $$
 
 <br />
 
-## 4 · Verifier Difference Credit
+### 4 · Verifier Difference Credit
 
 语言模型不给自己打 reward。
 
@@ -348,7 +345,7 @@ $$
 
 <br />
 
-## 5 · Tool Reliability Posterior
+### 5 · Tool Reliability Posterior
 
 “这个数据源很有价值”和“这个数据源运行稳定”不是一回事。
 
@@ -563,14 +560,10 @@ OPEN_MODEL_MULTIMODAL=0
 
 <br />
 
-<div align="center">
+<h2 align="center">EcomEvo</h2>
 
-## EcomEvo
+<p align="center"><b>目标交给 Runtime。证据交给 Verifier。权限留给业务。</b></p>
 
-### 目标交给 Runtime。证据交给 Verifier。权限留给业务。
+<p align="center"><b>Adaptive cognition. Deterministic authority.</b></p>
 
-**Adaptive cognition. Deterministic authority.**
-
-<sub>Build agents that can learn what to do next — without learning how to bypass control.</sub>
-
-</div>
+<p align="center"><sub>Build agents that can learn what to do next — without learning how to bypass control.</sub></p>
