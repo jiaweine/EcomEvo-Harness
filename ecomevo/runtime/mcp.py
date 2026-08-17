@@ -129,7 +129,12 @@ class MCPRegistry:
         data={}
         if r.content:
             try:data=self._json_from_response(r,str(payload.get('id')) if payload.get('id') is not None else None)
-            except RuntimeError:
+            except RuntimeError as exc:
+                if r.status_code<400 and payload.get('method')=='tools/call':
+                    raise httpx.RemoteProtocolError(
+                        'MCP tool-call response could not be confirmed',
+                        request=r.request,
+                    ) from exc
                 if r.status_code<400:raise
         return r,data
 
@@ -149,6 +154,32 @@ class MCPRegistry:
                 request=r.request,
             )
 
+    @classmethod
+    def _tool_result_or_raise(cls,r:httpx.Response,data:dict[str,Any])->dict[str,Any]:
+        """Return a confirmed tool result or distinguish definite rejection from ambiguity."""
+        cls._raise_if_ambiguous_tool_transport(r)
+        if r.status_code>=400:
+            return cls._result_or_raise(r,data)
+        if not isinstance(data,dict) or ('result' not in data and 'error' not in data):
+            raise httpx.RemoteProtocolError('MCP tool-call response has no confirmable result',request=r.request)
+        error=data.get('error')
+        if error:
+            code=error.get('code') if isinstance(error,dict) else None
+            if code in {-32600,-32601,-32602}:
+                # Invalid request/method/params are pre-execution rejections and are safe to
+                # classify as explicit failures. Server/internal/application errors are not.
+                raise RuntimeError(str(error))
+            raise httpx.RemoteProtocolError(
+                f'MCP tool-call returned an ambiguous JSON-RPC error: {error}',
+                request=r.request,
+            )
+        result=data.get('result')
+        if not isinstance(result,dict):
+            raise httpx.RemoteProtocolError('MCP tool-call result has an invalid shape',request=r.request)
+        if result.get('isError') is True:
+            raise httpx.RemoteProtocolError('MCP tool reported an unconfirmed execution error',request=r.request)
+        return result
+
     def _modern_meta(self)->dict[str,Any]:
         return {
             'io.modelcontextprotocol/protocolVersion':MODERN_VERSION,
@@ -164,7 +195,7 @@ class MCPRegistry:
         if name is not None:headers['Mcp-Name']=self._header_value(name)
         if extra_headers:headers.update(extra_headers)
         r,data=await self._post(s,payload,headers)
-        if method=='tools/call':self._raise_if_ambiguous_tool_transport(r)
+        if method=='tools/call':return self._tool_result_or_raise(r,data)
         if allow_legacy_probe and r.status_code in {400,404,405}:
             err=data.get('error',{}) if isinstance(data,dict) else {}
             code=err.get('code') if isinstance(err,dict) else None
@@ -240,8 +271,7 @@ class MCPRegistry:
             # Never replay it automatically. Clear the stale session and surface an ambiguous transport result.
             self._legacy_sessions.pop(s.key,None)
             raise httpx.RemoteProtocolError('MCP legacy session expired during tool call',request=r.request)
-        self._raise_if_ambiguous_tool_transport(r)
-        return self._result_or_raise(r,data)
+        return self._tool_result_or_raise(r,data)
 
     async def call_tool(self,server_key:str,tool_name:str,arguments:dict[str,Any])->dict[str,Any]:
         s=self.servers.get(server_key)
