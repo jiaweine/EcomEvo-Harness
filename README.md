@@ -2,16 +2,16 @@
 
 # EcomEvo
 
-### Autonomous Commerce Runtime
+### Adaptive Autonomous Commerce Runtime
 
-**把复杂电商任务，从一次回答，变成持续查证、可恢复、可学习、权限受控的业务运行时。**
+**把复杂电商任务，从“一次回答”，变成持续查证、可恢复、会学习、权限受控的业务运行时。**
 
 <p>
   <img alt="CI" src="https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml/badge.svg?branch=agent%2Fautonomous-self-evolving-runtime" />
-  <img alt="Runtime" src="https://img.shields.io/badge/Runtime-Autonomous-202733" />
-  <img alt="Routing" src="https://img.shields.io/badge/Routing-Adaptive%20Posterior-C76535" />
-  <img alt="Evidence" src="https://img.shields.io/badge/Evidence-Multimodal-BF7B32" />
-  <img alt="Authority" src="https://img.shields.io/badge/Authority-Deterministic-3F765E" />
+  <img alt="Adaptive Routing" src="https://img.shields.io/badge/Routing-Adaptive%20Posterior-C76535" />
+  <img alt="Multimodal Evidence" src="https://img.shields.io/badge/Evidence-Multimodal-BF7B32" />
+  <img alt="Durable Runtime" src="https://img.shields.io/badge/Runtime-Durable-315EA8" />
+  <img alt="Deterministic Authority" src="https://img.shields.io/badge/Authority-Deterministic-3F765E" />
 </p>
 
 **[产品手册](docs/PRODUCT_MANUAL.md) · [算法技术报告](docs/ALGORITHM.md) · [技术手册](docs/TECHNICAL_MANUAL.md) · [性能](docs/PERFORMANCE.md) · [设计系统](docs/DESIGN.md) · [验证报告](docs/VERIFICATION_REPORT.md)**
@@ -20,259 +20,361 @@
 
 </div>
 
----
-
-## 一个商业任务，而不是一轮聊天
-
-真实电商决策很少只依赖一段文本。
-
-一次商品治理可能同时涉及主图、详情、资质、声明和历史风险；一次售后判责可能需要订单、物流、聊天记录、图片、录音和规则；一次商家审核还会不断遇到新的主体、授权链和证据缺口。
-
-**EcomEvo 把这些材料放进一个持续任务，让 Runtime 自己决定下一步查什么、什么时候补证、什么时候反证、什么时候停止。**
-
-它不是把更多工具塞进一个聊天框，而是把 Agent 变成一个有状态、有预算、有验证器、有恢复能力、也有明确权限边界的业务运行时。
+<br />
 
 <p align="center">
   <img src="docs/images/product-workbench.svg" alt="EcomEvo 商业决策工作台" width="100%" />
 </p>
 
-<table>
-  <tr>
-    <td width="58%" valign="top">
-      <img src="docs/images/product-evidence-wall.svg" alt="EcomEvo 商品证据空间" width="100%" />
-      <br />
-      <sub><b>商品证据空间</b> · 主图、详情、资质、声明与企业证据进入同一验证链。</sub>
-    </td>
-    <td width="42%" valign="top">
-      <img src="docs/images/product-runtime-control.svg" alt="EcomEvo 运行质量与权限控制面" width="100%" />
-      <br />
-      <sub><b>运行质量与权限控制面</b> · 证据完整度、停止原因、预算和权限边界直接可见。</sub>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <sub><b>EcomEvo 商业决策工作台</b> · 一个任务里同时组织目标、消息、多模态证据、运行状态、验证结果与待确认业务动作。</sub>
+</p>
+
+<br />
 
 <table>
   <tr>
-    <td width="70%" valign="top">
-      <img src="docs/images/product-scenes.svg" alt="EcomEvo 五类业务场景" width="100%" />
-      <br />
-      <sub><b>五类高价值场景</b> · 商品治理、商家审核、售后判责、风险核查、内容审核。</sub>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/product-evidence-wall.svg" alt="证据空间" width="100%" />
+      <br /><sub><b>Evidence Space</b><br/>多模态证据与缺口</sub>
     </td>
-    <td width="30%" valign="top" align="center">
-      <img src="docs/images/product-mobile.svg" alt="EcomEvo 移动端任务工作台" width="92%" />
-      <br />
-      <sub><b>移动端控制面</b> · 任务、证据与审批状态在窄屏保持同一语义。</sub>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/product-runtime-control.svg" alt="运行控制面" width="100%" />
+      <br /><sub><b>Runtime Control</b><br/>预算、停止与权限</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/product-scenes.svg" alt="业务场景" width="100%" />
+      <br /><sub><b>Business Scenes</b><br/>五类高价值任务</sub>
+    </td>
+    <td width="25%" align="center" valign="top">
+      <img src="docs/images/product-mobile.svg" alt="移动端任务控制面" width="76%" />
+      <br /><sub><b>Mobile Control</b><br/>窄屏保持同一语义</sub>
     </td>
   </tr>
 </table>
 
 ---
 
-## EcomEvo 在做什么
+## 不是聊天机器人，而是一条可验证的业务决策链
 
-### 01 · 商品治理
+真实电商任务很少只依赖一段文本。
 
-把商品主图、详情页、功效声明、品牌资料、资质文件与历史治理记录放进同一个证据空间。Runtime 会主动发现冲突和缺口，而不是只总结附件。
+一次商品治理可能同时涉及主图、详情页、功效声明、资质、品牌授权和历史治理；一次售后判责可能需要订单、物流、聊天记录、图片、录音与规则；一次商家审核则经常在主体、授权链、经营范围和风险记录之间不断补证。
 
-### 02 · 商家审核
+EcomEvo 把这些材料放进一个**持续任务**。Runtime 自己决定下一步查什么、是否需要反证、什么时候补证、什么时候停止；Verifier 判断证据是否真的闭合；真实高影响动作始终留在确定性的权限链和人工确认之后。
 
-围绕主体、品牌授权、经营范围、风险记录和关联企业持续核验。授权链没有闭合时，系统会明确停在“缺证”，而不是把模型推测包装成完成。
+<table>
+  <tr>
+    <td width="25%" valign="top"><b>自主查证</b><br/><br/>根据证据缺口与不确定性选择下一步只读工具，而不是要求用户手写固定流程。</td>
+    <td width="25%" valign="top"><b>多模态证据</b><br/><br/>图片、视频、音频、PDF、Office、表格、日志和业务 API 结果进入同一验证链。</td>
+    <td width="25%" valign="top"><b>持续学习</b><br/><br/>Routing、工具可靠性与长期 Skill 分开学习；经验可以改变认知策略，但不能改变权限。</td>
+    <td width="25%" valign="top"><b>确定性权限</b><br/><br/>Verifier、Sandbox、RBAC、审批身份和 Human Confirmation 独立掌握真实业务动作。</td>
+  </tr>
+</table>
 
-### 03 · 售后判责
-
-根据订单、物流、聊天、图片、录音和规则重建事实时间线；必要时补查物流或历史记录。退款建议可以自主生成，真实退款执行仍然需要明确权限。
-
-### 04 · 风险核查
-
-把弱线索、相关性和独立证据分开。Runtime 会主动寻找反证，避免把“看起来可疑”直接升级成业务事实。
-
-### 05 · 内容审核
-
-图片、视频、音频、文案和结构化资料进入同一验证过程。多模态模型负责提取可观察事实，但不能单独决定处罚或下架。
+> **认知自治，权限确定。** 让系统学习“下一步查什么”，而不是学习“怎样获得更多权限”。
 
 ---
 
-## 为什么它不是普通 Agent
+## 产品漫游
 
-| 普通工具型 Agent 容易遇到的问题 | EcomEvo 的 Runtime 设计 |
+### 01 · 一个任务，一面完整证据墙
+
+不是把附件当聊天上下文，而是把它们变成可定位、可核验、可补充、可排除的证据对象。Runtime 看到的是当前证据状态与缺口，而不是一段越来越长的历史 prompt。
+
+<p align="center">
+  <img src="docs/images/product-evidence-wall.svg" alt="EcomEvo 商品证据空间" width="94%" />
+</p>
+
+<p align="center"><sub><b>商品证据空间</b> · 主图、详情、资质、声明与企业证据进入同一验证链。</sub></p>
+
+### 02 · 运行状态不是黑盒
+
+用户不需要看到隐藏思维链，但必须知道：**现在还缺什么、为什么继续查、预算还剩多少、为什么停止、最终权限在哪里。**
+
+<p align="center">
+  <img src="docs/images/product-runtime-control.svg" alt="EcomEvo 运行质量与权限控制面" width="88%" />
+</p>
+
+<p align="center"><sub><b>运行质量与权限控制面</b> · Evidence completeness、stop reason、tool budget、routing state 与 authority boundary 都是结构化状态。</sub></p>
+
+### 03 · 从商品治理到售后判责，使用同一套 Runtime
+
+<p align="center">
+  <img src="docs/images/product-scenes.svg" alt="EcomEvo 五类高价值业务场景" width="96%" />
+</p>
+
+| 场景 | Runtime 真正解决的问题 |
 | --- | --- |
-| 模型直接决定下一个工具 | **EvoGain-APR** 在合法动作空间内学习工具路由 |
-| 工具越多，调用越容易失控 | 预算、并行上限、超时、stagnation 与 contextual abstention 同时约束 |
-| 模型自评成为“奖励” | **Verifier Difference Credit** 用反事实边际证据贡献学习 |
-| 失败后无限重试 | Dynamic Task Graph + verification fingerprint 触发重规划或停止 |
-| 历史经验无限塞进 prompt | Bayesian Skill Library 通过 posterior、shadow gate 与 retirement 管理 |
-| 模型既判断又执行 | Verifier、Governance、RBAC 与 Human Approval 独立掌握真实业务权限 |
-| 进程一挂任务就丢 | Durable Job + immutable evidence snapshot + cross-process lease 恢复 |
+| **商品治理** | 主图、详情、声明、品牌与资质是否彼此一致；缺证时继续追证而不是猜测 |
+| **商家审核** | 主体、授权链、经营范围、关联关系和风险记录能否形成闭环 |
+| **售后判责** | 订单、物流、聊天、图片、录音和规则如何重建事实时间线 |
+| **风险核查** | 弱线索、相关性、独立证据和反证如何分开，避免把可疑直接当事实 |
+| **内容审核** | 图片、视频、音频、文案和结构化材料如何在同一验证过程里形成结论 |
 
-> **认知自治，权限确定。** 允许系统持续学习“下一步查什么”，但不允许它学习“如何获得更多权限”。
+### 04 · 窄屏不是删功能，而是重排任务控制面
+
+<table>
+  <tr>
+    <td width="38%" align="center" valign="middle">
+      <img src="docs/images/product-mobile.svg" alt="EcomEvo 移动端任务工作台" width="72%" />
+    </td>
+    <td width="62%" valign="middle">
+      <h3>同一个任务语义，换一种空间组织</h3>
+      <p>移动端仍然保留任务、资料、证据缺口、运行质量和待确认动作，只把控制面变成可开合抽屉。</p>
+      <p>当前 Chromium E2E 会在 <code>390×844</code> 视口下验证抽屉、焦点、消息发送、Runtime Pulse 与 busy-state release。</p>
+    </td>
+  </tr>
+</table>
 
 ---
 
-## 核心运行闭环
+## 为什么它不是普通 Tool Agent
+
+| 常见 Agent 设计 | EcomEvo 的选择 |
+| --- | --- |
+| 模型直接决定下一工具 | **EvoGain-APR** 只在合法只读动作空间内学习路由 |
+| 工具越多越容易无限调用 | Budget、并行上限、timeout、stagnation 与 contextual abstention 联合约束 |
+| 用模型自评作为 reward | **Verifier Difference Credit** 用反事实边际证据贡献形成学习信号 |
+| 失败后盲目重试 | Dynamic Task Graph + verification fingerprint 触发重规划、补证或停止 |
+| 历史经验不断堆进 prompt | Bayesian Skill Library 用 posterior、shadow gate 与 retirement 管理长期经验 |
+| 模型既判断又执行 | Verifier、Governance、RBAC 与 Human Approval 独立掌握真实业务权限 |
+| 进程退出任务就丢 | Durable Job + immutable evidence snapshot + cross-process lease 恢复 |
+| WebSocket 是唯一实时真相 | SQLite event log 保持跨 worker 顺序，queue 仅作为低延迟唤醒信号 |
+
+---
+
+## Runtime：从目标到业务动作
 
 ```text
 Goal
-  ↓
+ │
+ ▼
 Evidence / Belief State
-  ↓
-Observe → Decide → Route → Act → Review → Verify
-                         ↓                 ↓
-                    Read-only Tools   Counterfactual Credit
-                         ↓                 ↓
-                     Task Graph      Posterior Update
-                         └─────── Replan / Stop ───────┘
-                                      ↓
-                         Deterministic Authority
-                                      ↓
-                              Human Approval
-                                      ↓
-                              Business Action
+ │
+ ▼
+Observe ──► Decide ──► Route ──► Read-only Act
+  ▲                                  │
+  │                                  ▼
+  └──── Replan / Stop ◄── Verify ◄── Review
+                             │
+                             ▼
+                  Counterfactual Credit
+                             │
+                             ▼
+                     Posterior Update
+
+════════════ Deterministic Authority Boundary ════════════
+
+Verifier ──► BusinessAction Proposal ──► Approver ──► Executor
 ```
 
-语言模型可以生成候选认知动作，但候选先经过 Registry、Read-only Policy、Budget 和 Sandbox 过滤：
+语言模型可以提出认知动作，但**不能决定动作是否合法**。真正可执行集合先经过 Registry、只读策略、预算和 Sandbox 的交集：
 
 $$
-\mathcal A_t=
+\boxed{
+\mathcal A_t^{\mathrm{safe}}
+=
 \hat{\mathcal A}_t
-\cap\mathcal A^{registered}
-\cap\mathcal A^{read\text{-}only}
-\cap\mathcal A^{budget}
-\cap\mathcal A^{sandbox}
+\cap \mathcal A^{\mathrm{registered}}
+\cap \mathcal A^{\mathrm{read\text{-}only}}
+\cap \mathcal A^{\mathrm{budget}}
+\cap \mathcal A^{\mathrm{sandbox}}
+}
 $$
 
-学习发生在合法动作空间之内，而不是用 reward 去“学会绕过权限”。
+学习只发生在这个可行域内部。
 
 ---
 
 # EvoGain-APR
 
-## 可学习的上下文路由，而不是永久固定权重
+## 在安全可行域内学习“下一步最值得做什么”
 
-EcomEvo 对候选只读工具构造可审计上下文特征，包括 evidence coverage、authority、skill support、novelty、counter-evidence value、specificity、tool reliability、cost pressure、redundancy、evidence gap 和 recovery context。
+EcomEvo 的 routing 不是一组永久固定的手写权重。它把冷启动系数降级为 **prior**，随后用真实任务中的 verifier marginal contribution 持续更新 posterior。
 
-冷启动使用保守 Gaussian prior：
-
-$$
-w\sim\mathcal N(\mu_0,\Lambda_0^{-1})$$
-
-真实任务持续更新后验 sufficient statistics：
+整个学习目标可以概括为一个受约束的 sequential evidence acquisition 问题：
 
 $$
-A_t=A_0+\delta(A_{t-1}-A_0)+\sum_{i=1}^{k}x_ix_i^T
+\boxed{
+\pi^{\star}
+=
+\arg\max_{\pi}
+\;\mathbb E_{\pi}
+\left[\sum_t \mathrm{Credit}_t\right]
+\quad
+\text{s.t.}\quad
+ a_t\in\mathcal A_t^{\mathrm{safe}}
+}
 $$
 
-$$
-b_t=b_0+\delta(b_{t-1}-b_0)+\sum_{i=1}^{k}r_ix_i$$
+安全定义可行域，学习只负责在可行域里提高证据效率。
+
+### 1 · Hierarchical Bayesian Posterior
+
+对每个候选只读工具构造上下文向量：evidence coverage、authority、skill support、novelty、counter-evidence value、specificity、tool reliability、cost pressure、redundancy、evidence gap 与 recovery context。
+
+冷启动：
 
 $$
-\mu_t=A_t^{-1}b_t
+w\sim\mathcal N\!\left(\mu_0,\Lambda_0^{-1}\right)
 $$
 
-因此人工数字只决定冷启动方向，长期策略可以被真实 outcome 覆盖。
-
-### 1. Deterministic UCB
-
-生产环境不依赖随机采样来决定工具顺序：
+每个并行 round 把真实 credit 批量写入 sufficient statistics：
 
 $$
-Q_t(x)=\hat\mu_t(x)+\beta_t\hat\sigma_t(x)
+\begin{aligned}
+A_t &= A_0+\delta(A_{t-1}-A_0)+\sum_{i=1}^{k}x_i x_i^{\top}\\[4pt]
+b_t &= b_0+\delta(b_{t-1}-b_0)+\sum_{i=1}^{k}r_i x_i\\[4pt]
+\mu_t &= A_t^{-1}b_t,\qquad
+\sigma_t^2(x)=x^{\top}A_t^{-1}x
+\end{aligned}
 $$
 
-高 posterior mean 的工具被优先利用；合法但高不确定的工具仍然保留有限探索机会。相同 state + posterior 会得到可复现排序。
+因此 prior 只决定起跑方向；真实 outcome 足够多时，posterior 可以完全反转初始排序。
 
-### 2. Contextual Abstention
-
-系统不仅学习“哪个工具更好”，也学习“现在是否还值得继续调用工具”。
+对业务域采用有界的 global → domain shrinkage：
 
 $$
-Adv_t(a_i\mid s_t)=Score_t(x_i)-Score_t(x_{\varnothing}(s_t))
+\tau_d=\frac{n_d}{n_d+\lambda},
+\qquad
+\tilde\mu_d=\tau_d\mu_d+(1-\tau_d)\mu_g
 $$
 
-只有：
+新域可以借用全局经验，但不会一开始就拥有成熟域的完整激活权。
+
+### 2 · Deterministic UCB
+
+生产 routing 不依赖随机 Thompson sampling 来决定工具顺序：
 
 $$
-Adv_t(a_i\mid s_t)>0
+\boxed{
+Q_t(x)=\mu_t^{\top}x+\beta_t\sqrt{x^{\top}A_t^{-1}x}
+}
 $$
 
-才继续执行只读工具。
+第一项利用已经学到的 evidence value；第二项只给合法但高不确定候选有限探索空间。相同 state + posterior 会得到可复现排序。
 
-这让停止边界和 posterior 使用同一标尺，不再依赖一个永久固定的绝对 utility cutoff。
+### 3 · Contextual Abstention
 
-### 3. Verifier Difference Credit
+系统不仅学习“哪个工具更好”，还学习“现在继续调用工具是否比停止更值得”。
 
-EcomEvo 不让模型给自己的工具调用打分，也不使用另一组固定 reward 权重拼接学习信号。
+$$
+\boxed{
+\mathrm{Adv}_t(a_i\mid s_t)
+=
+Q_t(x_i)-Q_t\!\left(x_{\varnothing}(s_t)\right)
+}
+$$
 
-先定义同时受 Verifier score 与 evidence completeness 限制的调和验证势能：
+只有当：
+
+$$
+\mathrm{Adv}_t(a_i\mid s_t)>0
+$$
+
+候选才进入执行集合。停止边界和 posterior 使用同一标尺，不再依赖一个永久固定的 absolute utility cutoff。
+
+### 4 · Verifier Difference Credit
+
+模型不给自己打分。学习信号来自**拿掉某个工具结果之后，可验证状态到底下降了多少**。
+
+先定义同时受 verifier quality 与 evidence completeness 限制的调和势能：
 
 $$
 \Phi(v)=
 \begin{cases}
-\frac{2q(v)c(v)}{q(v)+c(v)}, & q(v)+c(v)>0\\
+\dfrac{2q(v)c(v)}{q(v)+c(v)}, & q(v)+c(v)>0\\[6pt]
 0, & \text{otherwise}
 \end{cases}
 $$
 
-然后对本轮工具结果做 deterministic leave-one-out：
+然后执行 deterministic leave-one-out：
 
 $$
-D_i=\Phi(V(R))-\Phi\left(V(R\setminus\{r_i\})\right)
+\boxed{
+D_i
+=
+\Phi\!\left(V(R)\right)
+-
+\Phi\!\left(V(R\setminus\{r_i\})\right)
+}
 $$
 
-$$
-credit_i=\frac{D_i}{1+cost_i}
-$$
-
-直观上就是：**拿掉这个工具结果之后，可验证状态到底下降了多少。**
-
-### 4. Tool Reliability Posterior
-
-一个工具“证据价值高”和“运行稳定”不是同一件事，因此 reliability 单独维护 Bayesian posterior：
+并按工具成本归一化：
 
 $$
-p_{d,a}\sim \operatorname{Beta}(\alpha_{d,a},\beta_{d,a})
+\mathrm{Credit}_i=\frac{D_i}{1+\mathrm{Cost}_i}
 $$
 
-成功和失败持续更新稳定性；reliability 只作为 routing feature，不自动变成业务证据。
+这让 routing posterior 学到的是**真实证据边际贡献**，而不是语言模型对自己行为的主观评价。
 
-> 完整数学定义、层级迁移、shadow activation、复杂度与研究边界见 **[算法技术报告](docs/ALGORITHM.md)**。
+### 5 · Tool Reliability Posterior
+
+“证据价值高”和“运行稳定”是两个变量。每个 domain × tool 单独维护可靠性 posterior：
+
+$$
+\boxed{
+ p_{d,a}\sim\operatorname{Beta}(\alpha_{d,a},\beta_{d,a})
+}
+$$
+
+成功/失败持续更新 reliability；它只是 routing feature，永远不会自动升级成业务证据。
+
+> 完整定义、feature space、activation、non-stationary decay、复杂度与研究边界见 **[算法技术报告](docs/ALGORITHM.md)**。
 
 ---
 
-## 三种持续学习
+## 三层学习，互不混淆
 
 <table>
   <tr>
-    <td width="33%" valign="top"><b>Routing Learning</b><br/><br/>学习当前状态下下一步查什么。<br/><br/><code>context → posterior → UCB → tool set</code></td>
-    <td width="33%" valign="top"><b>Tool Reliability</b><br/><br/>学习一个数据源或工具在不同业务域到底有多稳定。<br/><br/><code>success / failure → Beta posterior</code></td>
-    <td width="34%" valign="top"><b>Skill Evolution</b><br/><br/>学习哪些长期认知策略值得复用、晋升或退休。<br/><br/><code>shadow → replay → QD archive → promote/retire</code></td>
+    <td width="33%" valign="top">
+      <b>Routing Learning</b><br/><br/>
+      学习当前状态下下一步查什么。<br/><br/>
+      <code>context → posterior → UCB → tool set</code>
+    </td>
+    <td width="33%" valign="top">
+      <b>Tool Reliability</b><br/><br/>
+      学习数据源在不同业务域里是否稳定。<br/><br/>
+      <code>success / failure → Beta posterior</code>
+    </td>
+    <td width="34%" valign="top">
+      <b>Skill Evolution</b><br/><br/>
+      学习哪些长期认知策略值得复用、晋升或退休。<br/><br/>
+      <code>shadow → replay → QD archive → promote / retire</code>
+    </td>
   </tr>
 </table>
 
-这三种学习都只改变认知层策略，不能改变 registered tool、required evidence、credential scope、hard budget、confirmation requirement 或审批身份。
+三层学习都不能修改 registered tool、required evidence、credential scope、hard budget、confirmation requirement 或审批身份。
 
 ---
 
-## Durable Execution
-
-任务不是依赖某个进程内的临时回调。
+## Durable Execution：任务不属于某个进程
 
 ```text
-User message
-   ↓
-Atomic message + accepted event + durable job
-   ↓
-Immutable input / asset snapshot
-   ↓
-Cross-process worker lease
-   ↓
-Runtime execution
-   ↓
-Atomic assistant message + proposals + terminal event
+User Message
+    │
+    ▼
+Atomic Message + Accepted Event + Durable Job
+    │
+    ▼
+Immutable Input / Asset SHA Snapshot
+    │
+    ▼
+Cross-process Job Lease
+    │
+    ▼
+Autonomous Runtime
+    │
+    ▼
+Atomic Assistant Message + Proposals + Terminal Event
 ```
 
-worker 中断后，lease 到期可以由其他 worker reclaim；运行中的任务不能悄悄加入新资料，因此一个自主轮次始终面对封闭的 evidence snapshot。
+worker 中断后，lease 到期可被其他 worker reclaim。运行中的任务不能悄悄加入新资料，因此一个 autonomous turn 始终面对封闭的 evidence snapshot。
 
-WebSocket 的进程内 queue 只用于低延迟唤醒，SQLite `task_events` 才是跨 worker 的事件顺序真相。断线重连使用 `after_id` 增量续传，不需要重复回放整个任务历史。
+WebSocket 的进程内 queue 只负责低延迟唤醒；SQLite `task_events` 才是跨 worker 的 durable ordering source。断线重连通过 `after_id` 增量续传，不需要重新回放整个任务历史。
 
 ---
 
@@ -280,98 +382,79 @@ WebSocket 的进程内 queue 只用于低延迟唤醒，SQLite `task_events` 才
 
 ```text
 Adaptive Cognition
-      ↓
+        │
+        ▼
 Read-only Tools / Specialists
-      ↓
+        │
+        ▼
 Verifier
-════════════════════════════════
+════════════════════════════════════
 Deterministic Authority Boundary
-      ↓
+        │
+        ▼
 BusinessAction Proposal
-      ↓
+        │
+        ▼
 Approver Identity + Human Confirmation
-      ↓
+        │
+        ▼
 Business Executor
 ```
 
-Agent 可以自主查证、并行工具、重规划、反证、停止和学习；但不能自行：
+Agent 可以自主查证、并行工具、反证、重规划、停止和学习；但不能自行降低 required evidence、把模型回答当独立证据、修改 Sandbox / Verifier、注册生产 side-effect tool、批准退款/下架/冻结，或在 `uncertain` 状态下盲目重放副作用请求。
 
-- 降低 required evidence；
-- 把模型回答当独立证据；
-- 修改 Sandbox / Verifier；
-- 注册新的生产 side-effect tool；
-- 自动批准退款、下架、冻结等高影响动作；
-- 在 `uncertain` 状态下盲目重放副作用请求。
-
-MCP / 企业工具的 timeout、连接中断、HTTP 5xx/408、损坏响应和执行结果不确定会进入 `uncertain`，而不是被伪装成“明确失败后安全重试”。
+MCP / 企业工具的 timeout、连接中断、HTTP 5xx/408、损坏响应、内部错误和无法确认的执行结果会进入 `uncertain`，而不是被包装成“明确失败，因此可以安全重试”。
 
 ---
 
-## 多租户、RBAC 与审批审计
+## Tenant · RBAC · Approval Audit
 
-生产身份边界支持 trusted-proxy / gateway 签入的 tenant、user 和 role。角色层级：
+生产身份边界支持 trusted proxy / gateway 在服务端签入 tenant、user 与 role：
 
 ```text
-viewer < operator < approver < admin
+viewer  <  operator  <  approver  <  admin
 ```
 
 - tenant-scoped conversation / asset / action 不泄漏其他租户资源存在性；
 - action decision 需要 `approver`；
 - runtime / evolution 全局控制面需要 `admin`；
 - 审批 CAS 自动记录 actor tenant / user / role / auth mode；
-- 真实浏览器永远不持有服务端签名 secret。
+- 浏览器永远不持有服务端 HMAC secret。
 
 具体企业 IdP / SSO 属于部署环境集成，不在仓库里伪造“已完成”。
 
 ---
 
-## 当前自动化验证
+## 已经被自动化验证的部分
 
-当前分支把三类 release gate 分开运行：
+当前 CI 把 correctness、pressure 和真实浏览器交互拆成三条独立 release gate。
 
-### Regression
+### Regression Gate
 
-- 完整 `pytest -q`；
-- 9-case Gold Set × fresh / persisted replay；
-- malicious-controller authority gate；
-- durable job / crash reclaim / WebSocket ordering；
-- tenant / RBAC / approval audit；
-- MCP uncertain / no-blind-replay；
-- 所有生产 JS 的 `node --check`；
-- HTML / DOM / CSS 基础结构检查。
+完整 `pytest -q`、9-case Gold Set × fresh/persisted replay、malicious-controller authority、durable job/crash reclaim、WebSocket ordering、tenant/RBAC/approval audit、MCP uncertain/no-blind-replay，以及所有生产 JS / HTML / DOM / CSS 基础结构检查。
 
-### Current-head pressure
+### Current-head Pressure Gate
 
-GitHub-hosted Ubuntu runner 自动跑：
+最终 head 的 GitHub-hosted Ubuntu runner 会自动跑 `1 / 8 / 32 / 64 / 120 / 240` 并发任务。当前记录：
 
 | 并发任务 | Throughput | p50 | p95 | p99 | Safety failures |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 26.604 tasks/s | 0.0375 s | 0.0375 s | 0.0375 s | 0 |
-| 64 | 38.417 tasks/s | 1.2793 s | 1.3820 s | 1.3899 s | 0 |
-| 120 | 39.508 tasks/s | 2.3034 s | 2.5656 s | 2.5849 s | 0 |
-| 240 | **35.402 tasks/s** | **4.6831 s** | **5.7819 s** | **5.8138 s** | **0** |
+| 1 | 24.633 tasks/s | 0.0405 s | 0.0405 s | 0.0405 s | 0 |
+| 64 | 38.283 tasks/s | 1.2719 s | 1.3861 s | 1.3934 s | 0 |
+| 120 | 38.947 tasks/s | 2.3324 s | 2.6088 s | 2.6275 s | 0 |
+| 240 | **39.100 tasks/s** | **4.6430 s** | **5.1802 s** | **5.2152 s** | **0** |
 
-这些是本地 Runtime / SQLite / policy 路径的 hosted-runner 测量，**不是带真实外部模型和企业 MCP 的业务 QPS**。
+这些数字是 hosted runner 上的**本地 Runtime / SQLite / policy 路径测量**，不包含真实外部认知引擎、企业 MCP 网络和复杂媒体解析，因此不是生产业务 QPS。
 
 ### Real Chromium E2E
 
-Playwright 会真正启动 Uvicorn + Chromium，并覆盖：
+Playwright 真正启动 Uvicorn + Chromium，覆盖：首屏、场景切换、durable message → assistant result、Runtime Pulse、命令面板、键盘焦点、390×844 移动端抽屉、双标签页同一任务实时同步、busy-state release，以及 page/console error。
 
-- 首屏和输入框；
-- 场景切换；
-- durable message → assistant result；
-- Runtime Pulse；
-- 命令面板与键盘 focus；
-- 390×844 移动端任务抽屉；
-- 双标签页同一任务实时同步；
-- busy 状态释放；
-- page error / console error。
-
-完整记录见 **[验证报告](docs/VERIFICATION_REPORT.md)**。
+完整证据见 **[验证报告](docs/VERIFICATION_REPORT.md)**。
 
 ---
 
-## 快速开始
+## Quick Start
 
 ```bash
 python -m venv .venv
@@ -400,7 +483,7 @@ docker run --rm \
 
 ### 自托管认知引擎
 
-认知引擎是可替换组件，不拥有业务执行权。通过兼容接口接入当前可用的云端或开源权重推理服务：
+认知引擎是可替换组件，不拥有业务执行权：
 
 ```bash
 OPEN_MODEL_BASE_URL=http://your-runtime/compatible-endpoint
@@ -409,36 +492,36 @@ OPEN_MODEL_MODEL=your-current-model
 OPEN_MODEL_MULTIMODAL=0
 ```
 
-底层模型升级不要求改动 EvoGain-APR、Verifier、Sandbox 或 BusinessAction 权限链。
+底层模型升级不要求修改 EvoGain-APR、Verifier、Sandbox 或 BusinessAction 权限链。
 
 ---
 
 ## 文档地图
 
-| 文档 | 适合谁 | 内容 |
+| 文档 | 面向 | 重点 |
 | --- | --- | --- |
-| **[产品手册](docs/PRODUCT_MANUAL.md)** | 运营 / 审核 / 客服 / 风控 | 怎么发起任务、看证据、补证、确认动作 |
-| **[算法技术报告](docs/ALGORITHM.md)** | Agent / ML / Runtime 工程 | EvoGain-APR、posterior、credit、复杂度 |
+| **[产品手册](docs/PRODUCT_MANUAL.md)** | 运营 / 审核 / 客服 / 风控 | 发起任务、看证据、补证、确认动作 |
+| **[算法技术报告](docs/ALGORITHM.md)** | Agent / ML / Runtime | EvoGain-APR、posterior、credit、复杂度 |
 | **[技术手册](docs/TECHNICAL_MANUAL.md)** | 平台 / 后端 / 安全 | API、durable job、MCP、RBAC、恢复与部署 |
-| **[性能手册](docs/PERFORMANCE.md)** | 性能 / 架构 | 压测口径、锁竞争、routing-store 与 current-head gate |
-| **[架构](docs/ARCHITECTURE.md)** | 系统设计 | 组件分层、数据流和权限边界 |
+| **[性能手册](docs/PERFORMANCE.md)** | 性能 / 架构 | 压测口径、SQLite、routing-store 与 release gate |
+| **[架构](docs/ARCHITECTURE.md)** | 系统设计 | 组件分层、数据流、学习平面与权限边界 |
 | **[设计系统](docs/DESIGN.md)** | 前端 / 产品设计 | 中文排版、动效、响应式和任务工作台规则 |
-| **[验证报告](docs/VERIFICATION_REPORT.md)** | Reviewer / 发布负责人 | 已完成 CI、Gold Set、压力和浏览器证据 |
+| **[验证报告](docs/VERIFICATION_REPORT.md)** | Reviewer / 发布负责人 | CI、Gold Set、压力、Chromium 与真实边界 |
 
 ---
 
-## 当前边界
+## 真实边界
 
-仓库内可以自动化的核心门禁已经闭环，但以下内容必须在真实部署环境验证，不能靠 README 宣布完成：
+仓库内可自动化的核心门禁已经闭环，但以下内容必须在真实部署环境继续验证：
 
 - 企业 IdP / SSO / Gateway 的真实接入；
 - 真实 provider / MCP 凭证、区域、rate limit、schema drift 与下游幂等；
 - Safari / Edge 实机验证；
-- 大型或畸形 PDF、Office、图片、视频和音频业务语料；
+- 大型或畸形 PDF、Office、图片、视频与音频业务语料；
 - 超过 SQLite WAL 单 writer 边界后的生产多节点数据库 / 队列拓扑；
-- 由真实业务团队持续扩展和裁决的 Gold Set。
+- 由真实业务团队持续扩展并裁决的 Gold Set。
 
-真正的智能与产品能力比较，也必须在**相同任务、相同模型、相同工具、相同 token / cost budget 和一致评估标准**下进行。
+智能与产品能力的比较，也必须在**相同任务、相同模型、相同工具、相同 token / cost budget 和一致评估标准**下进行。
 
 ---
 
@@ -446,8 +529,10 @@ OPEN_MODEL_MULTIMODAL=0
 
 ## EcomEvo
 
-**目标交给 Runtime。证据交给 Verifier。权限留给业务。**
+### 目标交给 Runtime。证据交给 Verifier。权限留给业务。
 
-*Adaptive cognition. Deterministic authority.*
+**Adaptive cognition. Deterministic authority.**
+
+<sub>Build agents that can learn what to do next — without learning how to bypass control.</sub>
 
 </div>
