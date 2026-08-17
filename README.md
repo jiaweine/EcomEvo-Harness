@@ -1,257 +1,307 @@
-<div align="center">
+<p align="center"><sub>ECOMMERCE DECISION WORKBENCH</sub></p>
 
-# EcomEvo 商业决策工作台
+<h1 align="center">EcomEvo</h1>
 
-### 把复杂电商业务，从“问 AI”推进到“把事情办完”
+<p align="center"><strong>把复杂电商业务，从“问 AI”推进到“持续查证、组织证据、形成可执行决策”。</strong></p>
 
-**面向商品治理、商家审核、售后判责、风险核查与内容审核的对话式业务执行工作台。**
-
-EcomEvo 不是一个只给答案的聊天机器人。它把一次业务问题变成一个可以持续推进的任务：资料可以不断追加，事实和依据会被持续整理，高影响操作会进入确认流程，确认后的结果再回到同一个任务里，形成完整闭环。
-
-<p>
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-1f6feb?logo=python&logoColor=white" />
-  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Backend-0f8a72?logo=fastapi&logoColor=white" />
-  <img alt="Multimodal" src="https://img.shields.io/badge/Multimodal-Images%20%7C%20Video%20%7C%20Audio%20%7C%20Docs-253858" />
-  <img alt="Tests" src="https://img.shields.io/badge/Regression-136%20tests-1f7a5a" />
-</p>
-
-**[产品介绍](#产品介绍) · [核心价值](#为什么是-ecomevo) · [业务场景](#适用场景) · [快速启动](#快速启动) · [验证](#验证)**
-
-</div>
-
-## 产品预览
-
-![EcomEvo 商业决策工作台](docs/images/product-workbench.svg)
+<p align="center"><b>目标进入任务 · 证据持续累积 · 高影响动作始终受控</b></p>
 
 <p align="center">
-  <img src="docs/images/product-mobile.svg" alt="EcomEvo 移动端任务工作台" width="360" />
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-1f6feb?logo=python&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Backend-0f8a72?logo=fastapi&logoColor=white" />
+  <img alt="Multimodal" src="https://img.shields.io/badge/Evidence-Multimodal-344054" />
+  <a href="https://github.com/jiaweine/EcomEvo-Harness/pull/3"><img alt="Adaptive Runtime" src="https://img.shields.io/badge/Adaptive%20Runtime-PR%20%233-C76535" /></a>
 </p>
 
-## 产品介绍
+<p align="center">
+  <b><a href="docs/ARCHITECTURE.md">架构</a> · <a href="docs/DESIGN.md">设计</a> · <a href="docs/VERIFICATION_REPORT.md">验证</a> · <a href="https://github.com/jiaweine/EcomEvo-Harness/pull/3">Adaptive Runtime · PR #3</a></b>
+</p>
 
-电商运营真正困难的部分，往往不是“有没有一个模型能回答问题”，而是：**资料散、上下文长、规则复杂、系统多、责任重，而且最后还要真的执行。**
+<br />
 
-一个售后争议可能同时涉及订单、物流、聊天记录、用户上传图片、平台规则和退款金额；一个商家准入可能同时涉及主体信息、资质、品牌授权和历史风险；一次商品治理可能需要把标题、主图、详情、功效声明和证照放在一起判断。
+<p align="center">
+  <img src="docs/images/product-workbench.svg" alt="EcomEvo 商业决策工作台" width="100%" />
+</p>
 
-传统处理方式通常在工单、IM、Excel、后台页面和多个 AI 对话之间来回切换。信息很容易丢，判断依据很难复盘，高风险操作也需要人工重新确认一遍。
+<p align="center">
+  <sub><b>EcomEvo 商业决策工作台</b> · 把目标、对话、多模态资料、判断依据和待确认业务动作放进同一个持续任务。</sub>
+</p>
 
-**EcomEvo 想解决的是这整个过程，而不是其中的一次问答。**
+<br />
 
-你可以把商品、商家、订单、截图、视频、PDF、Word、Excel、CSV、日志等资料放进同一个任务，直接用自然语言说明目标。之后继续补充材料、追问、修改要求都不需要重新开一轮。工作台会围绕当前任务持续组织：
+## 一句话理解 EcomEvo
 
-- 已确认的业务事实；
-- 支撑判断的关键依据；
-- 仍然缺失或互相冲突的资料；
-- 当前结论与风险点；
-- 需要用户确认的业务操作；
-- 已执行操作及其结果。
+电商业务真正困难的部分，通常不是“模型会不会回答”，而是**信息散、证据多、规则复杂、系统多，而且最后还要对真实业务结果负责**。
 
-最终得到的不是一段“看起来很聪明”的回复，而是一个**有上下文、有依据、有确认、有执行结果的业务任务记录**。
+一次商品治理可能同时涉及主图、详情页、功效声明、资质和品牌授权；一次售后判责可能需要订单、物流、聊天记录、图片、录音与平台规则；一次商家审核则需要把主体、授权链、经营范围和历史风险放在一起判断。
 
-> **一句话理解 EcomEvo：把对话变成业务入口，把任务闭环变成产品。**
+EcomEvo 把这些材料组织成一个持续任务，而不是把每一步拆成互不相干的聊天窗口。
 
-## 为什么是 EcomEvo
+<table>
+  <tr>
+    <td width="25%" valign="top"><b>Multimodal first</b><br/><br/>图片、视频、音频、PDF、Office、表格、日志与结构化业务数据进入同一个任务空间。</td>
+    <td width="25%" valign="top"><b>Evidence oriented</b><br/><br/>不是只生成答案，而是明确事实、依据、缺口、冲突和仍需补充的材料。</td>
+    <td width="25%" valign="top"><b>Continuous task</b><br/><br/>用户可以持续补资料、追问和修改要求，不需要每次重新建立业务上下文。</td>
+    <td width="25%" valign="top"><b>Controlled action</b><br/><br/>高影响业务动作与判断过程分开，确认、权限和执行结果保留明确边界。</td>
+  </tr>
+</table>
 
-### 1. 从“给建议”走向“推进任务”
+<br />
 
-普通 AI 助手通常在一轮回答结束时停止。EcomEvo 的基本单位是**任务**：同一个任务可以持续多轮，后续新增的文件、事实、要求和执行结果都会继续留在当前上下文中。
+## 产品 · Product
 
-这意味着用户不用反复复制背景，也不用自己把不同对话中的判断重新拼起来。
+### 一面工作台，看完整任务，而不是只看一段对话
 
-### 2. 从“相信模型”走向“依据可见”
+<p align="center">
+  <img src="docs/images/product-evidence-wall.svg" alt="EcomEvo 多模态证据空间" width="94%" />
+</p>
 
-业务决策不能只靠一句结论。EcomEvo 会把关键依据、资料缺口和风险点分开呈现；当资料不足时，优先提示补充，而不是为了给出完整答案而强行下结论。
+<p align="center"><sub><b>Evidence Space</b> · 商品主图、详情、资质、授权、声明与历史风险可以被组织为同一个证据空间。</sub></p>
 
-对于治理、审核、售后和风控这类高责任场景，**“为什么这样判断”与“判断本身”同样重要。**
+<br />
 
-### 3. 从“能调用工具”走向“安全地执行”
+<table>
+  <tr>
+    <td width="52%" align="center" valign="top">
+      <img src="docs/images/product-runtime-control.svg" alt="EcomEvo 运行质量与权限控制面" width="100%" />
+      <br/><br/><sub><b>Runtime Control</b> · 让证据状态、停止条件与权限边界成为可见状态，而不是隐藏在一次模型回答里。</sub>
+    </td>
+    <td width="48%" valign="middle">
+      <h3>从“答案”转向“业务闭环”</h3>
+      <p>任务里同时存在目标、资料、事实、依据、缺口、判断与待确认动作。</p>
+      <p>用户不需要看到隐藏思维链，但应该能够知道：<b>当前材料够不够、还缺什么、判断依据是什么、最后一步由谁确认。</b></p>
+      <p>这也是 EcomEvo 与普通聊天式工具最重要的产品差异。</p>
+    </td>
+  </tr>
+</table>
 
-退款、下架、商家审核、风险升级等操作会改变真实业务状态。EcomEvo 不会把一句自然语言直接等同于执行命令，而是先形成明确的待确认操作，让用户看到将要发生什么，再确认执行。
+<br />
 
-因此，AI 可以负责推进任务，但最终控制权仍然清晰地留在业务侧。
+### 同一产品语言，覆盖五类高价值业务任务
 
-### 4. 从“绑定一个模型”走向“模型可替换”
+<p align="center">
+  <img src="docs/images/product-scenes.svg" alt="EcomEvo 五类业务场景" width="96%" />
+</p>
 
-EcomEvo 可以接入 OpenAI、DeepSeek、通义千问、豆包、Claude、Gemini，以及企业自己的 OpenAI-Compatible Endpoint。
+| 场景 | EcomEvo 组织的问题 |
+| --- | --- |
+| **商品治理** | 主图、详情、声明、品牌和资质是否彼此一致，哪里还缺证据 |
+| **商家审核** | 主体、授权链、经营范围与历史风险能否形成可信闭环 |
+| **售后判责** | 订单、物流、聊天、图片、录音和规则如何重建事实时间线 |
+| **风险核查** | 弱线索、相关性、独立证据和反证如何被清楚区分 |
+| **内容审核** | 图片、视频、音频、文案与结构化材料如何进入同一审核任务 |
 
-模型负责推理和多模态理解，但任务如何持续、资料如何组织、业务操作如何确认、失败后如何恢复，不依赖某一家模型厂商。企业可以根据成本、能力、合规或部署要求切换服务，而不需要重做整个产品流程。
+<br />
 
-### 5. 从“聊天记录”走向“业务记录”
+<table>
+  <tr>
+    <td width="64%" valign="middle">
+      <h3>桌面端是工作台，移动端仍然是同一个任务</h3>
+      <p>窄屏不是把关键能力删除，而是重新组织空间。任务、资料、证据和待确认动作仍然围绕同一个 conversation 存在。</p>
+      <p>产品设计目标不是“做一个手机版聊天框”，而是在不同屏幕上保持同一套业务语义。</p>
+    </td>
+    <td width="36%" align="center" valign="middle">
+      <img src="docs/images/product-mobile.svg" alt="EcomEvo 移动端任务工作台" width="72%" />
+      <br/><sub><b>Mobile Control</b> · 同一任务语义，不同空间组织。</sub>
+    </td>
+  </tr>
+</table>
 
-EcomEvo 的界面不把所有信息塞进聊天气泡。任务资料、关键依据、处理进度、待确认操作和执行结果各自有明确位置。
+<br />
 
-它更接近一个**能对话的业务工作台**，而不是一个披着业务皮肤的聊天机器人。
+## Adaptive Runtime Preview · PR #3
 
-## EcomEvo 与普通 AI 助手的区别
+> **这一节描述正在 PR #3 中开发和验证的 Adaptive Autonomous Runtime。它不是在暗示 `main` 已经包含全部实现。**
 
-| | 普通 AI 问答 / Chatbot | EcomEvo |
-| --- | --- | --- |
-| 核心单位 | 一次对话 | 一个持续业务任务 |
-| 输入 | 主要是文本提问 | 文本 + 图片 + 视频 + 音频 + 文档 + 表格 + 日志 |
-| 上下文 | 依赖聊天历史 | 围绕任务持续保存资料和业务状态 |
-| 输出 | 一段回答或建议 | 事实、依据、风险、结论、待确认操作、执行结果 |
-| 资料不足 | 容易继续生成答案 | 明确指出缺口并要求补充 |
-| 高影响操作 | 通常需要另行处理 | 形成待确认项，确认后再执行 |
-| 模型 | 常与单一产品绑定 | 多厂商可替换 |
-| 企业系统 | 多为通用工具调用 | 面向订单、商品、商家、风控等业务系统接入 |
-| 目标 | 回答问题 | 推进并完成业务任务 |
+下一阶段的 EcomEvo 把“持续任务”进一步推进成一个**受约束的自主证据获取 Runtime**：系统可以自己决定下一步应该查什么、是否需要反证、什么时候继续、什么时候停止；但真实业务权限始终位于学习层之外。
 
-## 它是怎么工作的
+<p align="center"><b>认知自治，权限确定。</b></p>
 
-一个典型任务会经历这样的过程：
+```mermaid
+flowchart TD
+    G[Goal] --> E[Evidence / Belief State]
+    E --> D[Observe · Decide · Route]
+    D --> T[Read-only Tools / Specialists]
+    T --> R[Review]
+    R --> V[Verifier]
+    V -->|Evidence gap| D
+    V -->|Verified| P[BusinessAction Proposal]
+    V --> C[Counterfactual Credit]
+    C --> U[Posterior Update]
+    U --> D
+    P --> A[Approver + Human Confirmation]
+    A --> X[Business Executor]
+```
 
-**1. 创建任务**  
-直接说要处理什么，例如：“这笔退款到底该不该退？”、“这批商品哪些需要下架？”、“这个商家能不能准入？”
+模型提出的认知候选先被限制在安全可行域：
 
-**2. 加入资料**  
-上传订单、物流、截图、聊天记录、证照、商品详情、图片、视频、表格或日志。资料可以一次上传，也可以在处理中继续补充。
+$$
+\boxed{
+\mathcal A_t^{\mathrm{safe}}
+=
+\hat{\mathcal A}_t
+\cap \mathcal A^{\mathrm{registered}}
+\cap \mathcal A^{\mathrm{read\text{-}only}}
+\cap \mathcal A^{\mathrm{budget}}
+\cap \mathcal A^{\mathrm{sandbox}}
+}
+$$
 
-**3. 持续核对**  
-工作台把任务里的事实、冲突、缺失项和关键依据持续整理出来，而不是只返回一段不可拆解的长文本。
+学习只负责在这个可行域里提高证据获取效率：
 
-**4. 形成结论**  
-当信息足够时，给出业务结论、风险说明和建议；信息不足时，明确告诉你还缺什么。
+$$
+\boxed{
+\pi^{\star}
+=
+\arg\max_{\pi}
+\;\mathbb E_{\pi}
+\left[\sum_t \mathrm{Credit}_t\right]
+\qquad
+\text{s.t.}\quad
+ a_t\in\mathcal A_t^{\mathrm{safe}}
+}
+$$
 
-**5. 确认操作**  
-如果结论涉及退款、下架、审核、风险升级等真实业务动作，会先生成待确认项。
+### EvoGain-APR · Adaptive Posterior Routing
 
-**6. 执行并留痕**  
-确认后的操作进入执行，结果继续写回当前任务，后续可以追问、复核或继续处理。
+Adaptive routing 把冷启动规则降级为 prior，再由真实任务 outcome 更新 contextual posterior。
 
-## 适用场景
+$$
+w\sim\mathcal N\!\left(\mu_0,\Lambda_0^{-1}\right)
+$$
 
-| 场景 | 典型任务 | EcomEvo 在其中做什么 |
-| --- | --- | --- |
-| 商品治理 | 标题、主图、详情、功效声明、资质核对 | 汇总商品资料，识别冲突与缺口，形成治理建议和待确认操作 |
-| 商家审核 | 主体信息、经营资质、品牌授权、历史风险 | 把分散材料组织成审核任务，给出通过、补件或拒绝建议 |
-| 售后判责 | 订单、物流、沟通记录、用户举证、退款金额 | 还原事实时间线，核对双方证据，形成责任判断和退款建议 |
-| 风险核查 | 交易、账户、商品、履约异常 | 区分强证据与普通线索，判断是否需要升级复核 |
-| 内容审核 | 图片、视频、文案与商品事实 | 检查素材与声明的一致性，识别需要人工确认的风险点 |
+并以并行 round 为单位更新 sufficient statistics：
 
-## 谁适合使用
+$$
+\begin{aligned}
+A_t
+&=A_0+\delta\left(A_{t-1}-A_0\right)
++\sum_{i=1}^{k}x_i x_i^{\top},\\[4pt]
+b_t
+&=b_0+\delta\left(b_{t-1}-b_0\right)
++\sum_{i=1}^{k}r_i x_i,\\[4pt]
+\mu_t&=A_t^{-1}b_t,\\[4pt]
+\sigma_t^2(x)&=x^{\top}A_t^{-1}x.
+\end{aligned}
+$$
 
-EcomEvo 更适合**有真实业务流程、有多个数据来源、需要可追踪判断与操作控制**的团队，例如：
+生产 routing 使用确定性的 UCB-style score：
 
-- 电商平台治理与运营团队；
-- 商家准入与审核团队；
-- 售后与客服运营团队；
-- 风险控制与合规团队；
-- 内容审核与商品质量团队；
-- 希望把 AI 接入现有业务后台的企业技术团队。
+$$
+\boxed{
+Q_t(x)
+=\mu_t^{\top}x
++\beta_t\sqrt{x^{\top}A_t^{-1}x}
+}
+$$
 
-如果你的需求只是“问一个问题、拿一个答案”，通用聊天助手已经足够；如果你的问题是**如何让 AI 在复杂业务上下文中持续把任务推进到完成**，EcomEvo 才是它要解决的部分。
+它不仅学习“哪个工具更值得调用”，还学习“当前状态下继续调用是否比停止更值得”：
 
-## 产品能力
+$$
+\boxed{
+\mathrm{Adv}_t(a_i\mid s_t)
+=
+Q_t(x_i)-Q_t\!\left(x_{\varnothing}(s_t)\right)
+}
+$$
 
-- **持续任务空间**：历史说明、上传资料、结论和执行结果在同一任务内持续有效。
-- **多模态资料**：支持图片、视频、音频、PDF、Word、Excel、CSV/JSON、日志与文本。
-- **多服务接入**：支持 OpenAI、DeepSeek、通义千问、豆包、Claude、Gemini，以及企业 OpenAI-Compatible Endpoint。
-- **证据优先**：资料不足时明确要求补充，不因为“回答必须完整”而生成不可靠的真实业务动作。
-- **业务确认**：退款、下架、审核、风险升级等操作必须确认，并防止重复执行。
-- **任务恢复**：工具异常、网络中断或服务重启后，可以从已保存状态继续处理。
-- **完整留痕**：任务、资料、核对结果、操作确认和执行结果都可追踪。
-- **企业工具接入**：可连接订单、商品、商家、风控等内部系统；只读查询和有副作用操作分开处理。
-- **响应式工作台**：桌面端适合高密度业务处理，移动端保留任务查看、补充资料与确认能力。
+只有当：
 
-## 产品设计原则
+$$
+\mathrm{Adv}_t(a_i\mid s_t)>0
+$$
 
-EcomEvo 对外只呈现业务用户需要理解的东西：**任务、资料、依据、风险、确认和结果。**
+候选才值得进入执行集合。
 
-它不会要求业务用户理解模型内部如何规划，也不会把技术实现术语堆在页面上。对于用户来说，最重要的是三件事：
+### Verifier Difference Credit
 
-1. **现在系统知道了什么；**
-2. **为什么得出这个判断；**
-3. **下一步会发生什么。**
+学习信号不依赖模型给自己打分，而是比较“拿掉某个工具结果后，可验证状态到底下降了多少”。
 
-因此，EcomEvo 把内部复杂度留在系统里，把控制权和可理解性留给用户。
+先定义由 verifier quality $q(v)$ 和 evidence completeness $c(v)$ 共同限制的调和势能：
 
-## 自研执行层
+$$
+\Phi(v)=
+\frac{2q(v)c(v)}{q(v)+c(v)}
+$$
 
-模型在 EcomEvo 中是**可替换的推理与多模态服务**，不是任务控制器。
+然后做 deterministic leave-one-out：
 
-任务状态维护、资料可信性检查、工具选择与组合、高影响操作确认、失败恢复和执行留痕由 EcomEvo 自己的运行层负责。更换模型厂商不会改变这套业务执行规则。
+$$
+\boxed{
+D_i
+=
+\Phi\!\left(V(R)\right)
+-
+\Phi\!\left(V(R\setminus\{r_i\})\right)
+}
+$$
 
-工程实现集中在：
+再按工具成本归一化：
 
-- `ecomevo/runtime/`：任务执行、状态记录、工具连接、复核与恢复
-- `ecomevo/product/`：多模态资料处理与产品编排
-- `ecomevo/providers/`：多厂商服务适配
-- `ecomevo/api/`：FastAPI、WebSocket、会话、附件与操作接口
-- `frontend/`：客户工作台
+$$
+\mathrm{Credit}_i
+=
+\frac{D_i}{1+\mathrm{Cost}_i}
+$$
 
-## 快速启动
+完整 Adaptive Runtime、durable execution、RBAC、MCP uncertainty 和 release-gate 工作都在 **[PR #3](https://github.com/jiaweine/EcomEvo-Harness/pull/3)** 中持续验证。
+
+<br />
+
+## 产品原则
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><b>01 · 证据优先</b><br/><br/>模型输出不是天然事实。结论应该能回到材料、结构化数据或企业工具结果。</td>
+    <td width="33%" valign="top"><b>02 · 自主认知不等于自主权限</b><br/><br/>系统可以学习如何查证，但不能通过学习获得更多业务权限。</td>
+    <td width="34%" valign="top"><b>03 · 产品状态必须可见</b><br/><br/>用户不需要隐藏思维链，但需要知道证据缺口、停止原因、待确认动作和执行结果。</td>
+  </tr>
+</table>
+
+<br />
+
+## Quick Start
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -e .
 cp .env.example .env
 uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-浏览器打开 `http://localhost:8000`。
+打开：
 
-没有配置外部服务时可以选择 **本地演示** 跑通业务流程。选择外部服务时，当前任务内容和所需资料会按你的配置发送到对应服务；页面会明确提示这一数据流向。
+```text
+http://localhost:8000
+```
 
 ### Docker
 
 ```bash
 docker build -t ecomevo .
-docker run --rm -p 8000:8000 --env-file .env -v ecomevo-data:/app/outputs ecomevo
+docker run --rm \
+  -p 8000:8000 \
+  --env-file .env \
+  -v ecomevo-data:/app/outputs \
+  ecomevo
 ```
 
-## 外部服务配置
+<br />
 
-复制 `.env.example` 后按需填写相应 Key。未配置的服务仍会显示，但不会被自动路由使用。
+## 文档
 
-企业内部兼容接口可以通过 OpenAI-Compatible 配置接入。MCP 服务可用于连接订单、商品、商家、风控等内部工具；高影响动作仍会经过产品侧确认流程。
+| 文档 | 重点 |
+| --- | --- |
+| **[ARCHITECTURE](docs/ARCHITECTURE.md)** | 当前主分支架构与组件边界 |
+| **[DESIGN](docs/DESIGN.md)** | 产品 UI、响应式、中文排版与交互原则 |
+| **[VERIFICATION REPORT](docs/VERIFICATION_REPORT.md)** | 当前主分支验证记录 |
+| **[Adaptive Runtime · PR #3](https://github.com/jiaweine/EcomEvo-Harness/pull/3)** | 自主 Runtime、EvoGain-APR、durable execution、RBAC 与最新 release gates |
 
-## 验证
-
-```bash
-pytest -q
-python scripts/e2e_smoke.py
-```
-
-真实本地网络层：
-
-```bash
-uvicorn ecomevo.api.app:app --host 127.0.0.1 --port 8000
-python scripts/live_smoke.py --base http://127.0.0.1:8000
-```
-
-当前仓库回归覆盖业务反例、并发确认、多模态证据、异常上传、长文档、任务恢复、MCP 协议、WebSocket 和响应式前端。完整范围见 [`docs/VERIFICATION_REPORT.md`](docs/VERIFICATION_REPORT.md)。
-
-## 目录
-
-```text
-.
-├── ecomevo/          # 后端与执行层
-├── frontend/         # 客户工作台
-├── docs/             # 架构、设计、部署与验证说明
-├── scripts/          # E2E / live smoke
-├── tests/            # 自动化回归
-├── Dockerfile
-├── pyproject.toml
-└── requirements.txt
-```
-
-## 生产部署
-
-当前工程按单企业工作区设计。正式公网环境建议放在企业 SSO / API Gateway / 反向代理之后，并为真实退款、下架、冻结等业务系统继续配置最小权限、幂等键和企业审计策略。
-
-## 项目定位
-
-EcomEvo 的目标不是再做一个“更会聊天的 AI”，而是探索一种更适合企业业务的产品形态：
-
-**让用户用对话委派任务，让系统在业务约束内持续工作，让关键决策有依据，让真实操作受控，让整个过程可以复盘。**
-
-通用模型会越来越强，但企业真正需要长期建设的，仍然是围绕自己的业务数据、规则、系统与责任边界形成的执行能力。EcomEvo 希望把这一层做成一个可以直接使用、可以继续扩展的电商业务工作台。
+<br />
 
 ---
 
-<p align="center">
-  <b>EcomEvo — 对话是入口，执行闭环才是产品。</b>
-</p>
-
-本地自动化测试用于验证工程行为，不替代 EComAgentBench、τ³-bench Retail、TUA-Bench 等外部基准的独立复现。
+<p align="center"><b>EcomEvo</b></p>
+<p align="center"><strong>把复杂任务组织成证据，把自主认知约束在权限边界之内。</strong></p>
+<p align="center"><sub>Adaptive cognition. Deterministic authority.</sub></p>
