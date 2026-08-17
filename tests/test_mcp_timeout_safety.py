@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from ecomevo.runtime.mcp import MCPRegistry, MCPServer
+from ecomevo.runtime.mcp import LEGACY_VERSION, MCPRegistry, MCPServer
 
 
 @pytest.mark.asyncio
@@ -29,3 +29,23 @@ def test_mcp_timeout_configuration_is_bounded(monkeypatch):
     assert MCPRegistry().timeout_s == 3.0
     monkeypatch.setenv('ECOMEVO_MCP_TIMEOUT_SECONDS', 'not-a-number')
     assert MCPRegistry().timeout_s == 30.0
+
+
+@pytest.mark.asyncio
+async def test_stale_legacy_session_never_replays_tools_call():
+    calls = []
+
+    def handler(request: httpx.Request):
+        calls.append(request)
+        return httpx.Response(404, request=request, json={'error': 'session expired'})
+
+    registry = MCPRegistry(transport=httpx.MockTransport(handler))
+    server = MCPServer(key='legacy', name='legacy', url='https://legacy.example/mcp')
+    registry.servers['legacy'] = server
+    registry._legacy_sessions['legacy'] = (LEGACY_VERSION, 'stale-session')
+
+    with pytest.raises(httpx.RemoteProtocolError):
+        await registry._call_legacy(server, 'submit_business_action', {'action_id': 'A-1'})
+
+    assert len(calls) == 1
+    assert 'legacy' not in registry._legacy_sessions
