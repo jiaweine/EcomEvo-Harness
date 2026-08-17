@@ -101,7 +101,8 @@ class AutonomousController:
             remaining = max(0.0, goal.max_tool_cost - sum(float(x.estimated_cost) for x in plan))
             raw = await self.policy.ask_controller(reasoner, observation=self.policy.observation(goal, belief, total, None, initial_skills, remaining, 0),
                                                    catalog=self.policy.tool_catalog(goal.domain.value), phase="initial")
-            extra = self.policy.sanitize(raw, goal=goal, remaining_budget=remaining, previous=[], skills=initial_skills, phase="initial")
+            extra = self.policy.sanitize(raw, goal=goal, remaining_budget=remaining, previous=[], skills=initial_skills,
+                                         phase="initial", missing_evidence=list(belief.missing_evidence) or list(goal.required_evidence))
             existing = {self.policy.call_signature(c.tool, c.args) for c in plan}
             for item in extra.calls:
                 sig = self.policy.call_signature(item.tool, item.args)
@@ -110,7 +111,8 @@ class AutonomousController:
             initial_delegations = extra.delegations; autonomy_steps += 1
             await emit("autonomy.decided", {"step": 0, "phase": "initial", "objective": extra.objective,
                                              "calls": [x.model_dump() for x in extra.calls], "delegations": extra.delegations,
-                                             "rejected": extra.rejected, "reflection": extra.reflection})
+                                             "rejected": extra.rejected, "reflection": extra.reflection,
+                                             "evogain": extra.selection_trace})
             if extra.rejected:
                 await emit("autonomy.decision_rejected", {"step": 0, "phase": "initial", "rejected": extra.rejected})
         await emit("plan.created", {"calls": [x.model_dump() for x in plan], "estimated_cost": sum(x.estimated_cost for x in plan),
@@ -138,18 +140,20 @@ class AutonomousController:
                     skills_used.append(skill.skill_id)
             raw = await self.policy.ask_controller(reasoner, observation=self.policy.observation(goal, belief, total, verification, active, remaining, step),
                                                    catalog=self.policy.tool_catalog(goal.domain.value), phase="recovery") if reasoner is not None else None
-            decision = self.policy.sanitize(raw, goal=goal, remaining_budget=remaining, previous=total, skills=active, phase="recovery"); autonomy_steps += 1
+            decision = self.policy.sanitize(raw, goal=goal, remaining_budget=remaining, previous=total, skills=active,
+                                            phase="recovery", missing_evidence=list(verification.missing_evidence)); autonomy_steps += 1
             if not decision.calls and not decision.stop:
                 decision.calls = self.policy.fallback_calls(goal, belief, assets, remaining_budget=remaining, previous=total, skills=active)
                 if decision.calls and not decision.objective:
-                    decision.objective = "根据证据缺口执行确定性兜底补充核对"
+                    decision.objective = "根据证据缺口执行高信息增益补充核对"
             if reasoner is not None and stagnant_rounds >= 1 and len(decision.delegations) < self.max_delegations:
                 decision.delegations.append({"role": "反证审查", "question": "寻找遗漏的证据来源、冲突或错误停止条件，只给下一步只读核对方向。", "focus_tools": []})
                 await emit("topology.mutated", {"step": step, "reason": "stagnation", "added_role": "反证审查", "authority": "read-only"})
             await emit("autonomy.decided", {"step": step, "phase": "recovery", "objective": decision.objective,
                                              "calls": [x.model_dump() for x in decision.calls], "delegations": decision.delegations,
                                              "stop": decision.stop, "stop_reason": decision.stop_reason, "rejected": decision.rejected,
-                                             "reflection": decision.reflection, "remaining_budget": round(remaining, 3)})
+                                             "reflection": decision.reflection, "remaining_budget": round(remaining, 3),
+                                             "evogain": decision.selection_trace})
             if decision.rejected:
                 await emit("autonomy.decision_rejected", {"step": step, "phase": "recovery", "rejected": decision.rejected})
             if decision.stop and not decision.calls and not decision.delegations:

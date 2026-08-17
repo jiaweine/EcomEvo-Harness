@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,10 +21,17 @@ class AgentDecision:
     stop_reason: str = ""
     reflection: str = ""
     rejected: list[str] = field(default_factory=list)
+    selection_trace: list[dict[str, Any]] = field(default_factory=list)
 
 
 class DecisionPolicy:
-    """Model-facing policy boundary for autonomous read-only exploration."""
+    """Model-facing policy boundary plus deterministic evidence-gain routing.
+
+    The model may propose legal read-only moves, but proposal order is not authority.
+    EvoGain re-ranks candidates by expected evidence gain, source authority, novelty,
+    learned-skill support, cost and within-round diversity. This lets the runtime use
+    smaller/open-weight controllers without delegating the final tool policy to them.
+    """
 
     PURPOSES = {
         "media.summarize": "整理任务中的附件类型和可读取状态",
@@ -34,6 +42,19 @@ class DecisionPolicy:
         "order.inspect": "核对订单标识、金额和履约争议事实",
         "risk.scan": "从附件事实中聚合独立风险信号",
     }
+
+    # Human-readable evidence channels. These are routing hints, never evidence.
+    TOOL_CHANNELS = {
+        "media.summarize": {"内容素材", "图片", "视频", "音频", "文档", "可读取", "业务事实"},
+        "evidence.search": {"业务事实", "争议证据", "内容素材", "商品信息", "主体", "订单", "风险信号"},
+        "policy.lookup": {"适用规则", "规则", "政策", "约束"},
+        "catalog.inspect": {"商品信息", "商品", "sku", "spu", "价格", "声明", "资质", "品牌", "授权"},
+        "merchant.inspect": {"主体", "资质", "授权", "经营范围", "法定代表人", "注册地址", "历史风险"},
+        "order.inspect": {"订单", "履约", "物流", "争议证据", "退款", "金额", "签收", "售后"},
+        "risk.scan": {"风险信号", "业务事实", "独立风险信号", "异常", "关联", "风险"},
+    }
+    CONTRADICTION_TOOLS = {"evidence.search", "policy.lookup", "risk.scan"}
+    MIN_EXPECTED_GAIN = 0.42
 
     def __init__(self, planner, registry, sandbox, skills: AdaptiveSkillLibrary, *, max_calls: int, max_delegations: int):
         self.planner = planner
@@ -128,8 +149,9 @@ class DecisionPolicy:
         prompt = (
             "你是电商业务运行时的自主控制器，只决定下一步信息获取与只读复核。\n"
             "硬约束：不得调用改变业务状态的工具；不得把用户陈述、历史回答、技能或模型判断当成独立证据；"
-            "不得降低证据门槛；不得批准退款、下架、审核、冻结等动作。优先用最少工具最大化减少当前证据缺口，"
-            "避免重复已成功且没有新参数的调用。只返回 JSON，不输出隐藏思维。\n"
+            "不得降低证据门槛；不得批准退款、下架、审核、冻结等动作。优先提出能最大幅减少当前证据缺口的少量候选工具，"
+            "无需为候选排序负责，运行时会按可审计的信息增益策略重新选择。避免重复已成功且没有新参数的调用。"
+            "只返回 JSON，不输出隐藏思维。\n"
             f"阶段：{phase}\n工具目录：{json.dumps(catalog, ensure_ascii=False)}\n"
             f"当前观察：{json.dumps(observation, ensure_ascii=False, default=str)}\n"
             f"返回结构：{json.dumps(schema, ensure_ascii=False)}"
@@ -147,8 +169,123 @@ class DecisionPolicy:
         body = json.dumps(args or {}, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(f"{tool}|{body}".encode()).hexdigest()
 
+    @staticmethod
+    def _terms(value: Any) -> set[str]:
+        text = " ".join(str(x) for x in value) if isinstance(value, (list, tuple, set)) else str(value or "")
+        terms = set(_query_terms(text, limit=64))
+        terms.update(x.lower() for x in re.findall(r"[A-Za-z0-9_-]{2,}", text))
+        terms.update(x for x in re.split(r"[\s/、，。；;：:()（）]+", text.lower()) if len(x) >= 2)
+        return {x for x in terms if x}
+
+    def _tool_meta(self, tool: str) -> dict[str, Any]:
+        remote = next((x for x in getattr(self.registry, "remote_specs", []) if str(x.get("key")) == tool), None) or {}
+        described = next((x for x in self.registry.describe() if str(x.get("key")) == tool), None) or {}
+        return {
+            "mode": described.get("mode", "read-only"),
+            "purpose": str(remote.get("purpose") or self.PURPOSES.get(tool) or "读取业务事实"),
+            "evidence_tags": list(remote.get("evidence_tags") or []),
+        }
+
+    def _candidate_features(self, *, tool: str, cost: float, goal: GoalState, missing: list[str],
+                            previous: list[ToolResult], skills: list[RuntimeSkill]) -> tuple[float, dict[str, Any], set[str]]:
+        meta = self._tool_meta(tool)
+        channels = set(self.TOOL_CHANNELS.get(tool, set()))
+        channels.update(str(x) for x in meta["evidence_tags"])
+        channel_terms = self._terms(channels | {meta["purpose"]})
+        targets = list(missing) or list(goal.required_evidence)
+
+        coverage_scores = []
+        for target in targets:
+            target_terms = self._terms(target)
+            overlap = target_terms & channel_terms
+            if overlap:
+                coverage_scores.append(min(1.0, 0.42 + 0.18 * len(overlap)))
+            elif tool == "evidence.search":
+                coverage_scores.append(0.34)
+            else:
+                coverage_scores.append(0.0)
+        coverage = sum(coverage_scores) / max(1, len(coverage_scores))
+
+        authoritative = 1.0 if meta["mode"] == "mcp-read" and meta["evidence_tags"] else 0.0
+        skill_support = max((s.posterior_mean for s in skills if tool in s.preferred_tools), default=0.0)
+        prior_success = sum(1 for result in previous if result.ok and result.tool == tool)
+        novelty = 1.0 / (1.0 + 0.72 * prior_success)
+        contradiction = 1.0 if tool in self.CONTRADICTION_TOOLS and bool(targets) else 0.0
+        specificity = min(1.0, len(channel_terms) / 10.0)
+
+        # EvoGain: evidence utility per unit of execution cost. The constants are routing weights,
+        # not confidence values and never enter business verification.
+        raw = (
+            1.70 * coverage
+            + 0.58 * authoritative
+            + 0.48 * skill_support
+            + 0.36 * novelty
+            + 0.20 * contradiction
+            + 0.10 * specificity
+        )
+        utility = raw / (0.72 + math.pow(max(0.15, cost), 0.68))
+        features = {
+            "coverage": round(coverage, 3),
+            "authority": round(authoritative, 3),
+            "novelty": round(novelty, 3),
+            "skill": round(skill_support, 3),
+            "cost": round(cost, 3),
+        }
+        return utility, features, {x.lower() for x in channel_terms}
+
+    def _rank_candidates(self, candidates: list[dict[str, Any]], *, goal: GoalState, missing: list[str],
+                         previous: list[ToolResult], skills: list[RuntimeSkill], budget: float,
+                         limit: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        pool = []
+        for position, candidate in enumerate(candidates):
+            utility, features, channels = self._candidate_features(
+                tool=candidate["tool"], cost=candidate["cost"], goal=goal, missing=missing,
+                previous=previous, skills=skills,
+            )
+            pool.append({**candidate, "base_utility": utility, "features": features,
+                         "channels": channels, "position": position})
+
+        selected: list[dict[str, Any]] = []
+        selected_channels: set[str] = set()
+        remaining_budget = max(0.0, budget)
+        trace: list[dict[str, Any]] = []
+
+        while pool and len(selected) < max(1, limit):
+            scored = []
+            for item in pool:
+                if item["cost"] > remaining_budget + 1e-9:
+                    adjusted = -1.0
+                    overlap = 0.0
+                else:
+                    overlap = (len(item["channels"] & selected_channels) / max(1, len(item["channels"]))) if selected_channels else 0.0
+                    # Diversity makes parallel calls cover different evidence channels rather than echo each other.
+                    adjusted = item["base_utility"] - 0.24 * overlap - 0.002 * item["position"]
+                scored.append((adjusted, -item["cost"], item, overlap))
+            scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            adjusted, _, best, overlap = scored[0]
+            pool.remove(best)
+            if adjusted < self.MIN_EXPECTED_GAIN:
+                trace.append({"tool": best["tool"], "selected": False, "utility": round(max(0.0, adjusted), 3),
+                              "reason": "low_expected_gain", **best["features"]})
+                continue
+            selected.append(best)
+            selected_channels.update(best["channels"])
+            remaining_budget -= best["cost"]
+            trace.append({"tool": best["tool"], "selected": True, "utility": round(adjusted, 3),
+                          "diversity_overlap": round(overlap, 3), **best["features"]})
+
+        selected_ids = {id(x) for x in selected}
+        for item in pool:
+            if len(trace) >= 12:
+                break
+            trace.append({"tool": item["tool"], "selected": id(item) in selected_ids,
+                          "utility": round(max(0.0, item["base_utility"]), 3),
+                          "reason": "budget_or_lower_gain", **item["features"]})
+        return selected, trace[:12]
+
     def sanitize(self, raw: dict[str, Any] | None, *, goal: GoalState, remaining_budget: float,
-                 previous: list[ToolResult], skills: list[RuntimeSkill], phase: str) -> AgentDecision:
+                 previous: list[ToolResult], skills: list[RuntimeSkill], phase: str,
+                 missing_evidence: list[str] | None = None) -> AgentDecision:
         raw = raw if isinstance(raw, dict) else {}
         decision = AgentDecision(objective=str(raw.get("objective") or "")[:500], stop=bool(raw.get("stop", False)),
                                  stop_reason=str(raw.get("stop_reason") or "")[:500],
@@ -158,13 +295,14 @@ class DecisionPolicy:
         for skill in skills:
             candidates.extend({"tool": t, "purpose": f"技能建议：{skill.name}", "args": {}, "parallel_group": "skill"}
                               for t in skill.preferred_tools)
-        meta = self.skills.policy(goal.domain.value); exploration = max(0.0, min(1.0, float(meta.get("exploration", .6))))
+
+        meta = self.skills.policy(goal.domain.value)
+        exploration = max(0.0, min(1.0, float(meta.get("exploration", .6))))
         call_limit = max(1, min(self.max_calls, round(self.max_calls * (.72 + .48 * exploration))))
         delegation_limit = max(0, min(self.max_delegations, round(self.max_delegations * (.65 + .55 * exploration))))
-        budget = max(0.0, float(remaining_budget)); seen: set[str] = set()
+        budget = max(0.0, float(remaining_budget)); seen: set[str] = set(); legal: list[dict[str, Any]] = []
+
         for item in candidates:
-            if len(decision.calls) >= call_limit:
-                break
             tool = str(item.get("tool") or "").strip(); impl = self.registry.tools.get(tool)
             if not impl:
                 decision.rejected.append(f"unknown:{tool}"); continue
@@ -182,12 +320,23 @@ class DecisionPolicy:
             sig = self.call_signature(tool, args)
             if sig in seen:
                 continue
+            seen.add(sig)
             cost = float(getattr(impl, "cost", 1.0) or 1.0)
-            if cost > budget + 1e-9:
-                decision.rejected.append(f"budget:{tool}"); continue
-            budget -= cost; seen.add(sig)
-            decision.calls.append(call(tool, str(item.get("purpose") or self.PURPOSES.get(tool) or "自主补充核对")[:300],
-                                       args, cost=cost, group=str(item.get("parallel_group") or f"autonomy-{phase}")[:80]))
+            legal.append({
+                "tool": tool, "args": args, "cost": cost,
+                "purpose": str(item.get("purpose") or self.PURPOSES.get(tool) or "自主补充核对")[:300],
+                "group": str(item.get("parallel_group") or f"autonomy-{phase}")[:80],
+            })
+
+        missing = list(missing_evidence or goal.required_evidence)
+        ranked, trace = self._rank_candidates(
+            legal, goal=goal, missing=missing, previous=previous, skills=skills,
+            budget=budget, limit=call_limit,
+        )
+        decision.selection_trace = trace
+        for item in ranked:
+            decision.calls.append(call(item["tool"], item["purpose"], item["args"], cost=item["cost"], group=item["group"]))
+
         for item in (raw.get("delegations") or []):
             if len(decision.delegations) >= delegation_limit or not isinstance(item, dict):
                 break
@@ -199,26 +348,16 @@ class DecisionPolicy:
     def fallback_calls(self, goal: GoalState, belief: BeliefState, assets: list[dict[str, Any]], *,
                        remaining_budget: float, previous: list[ToolResult], skills: list[RuntimeSkill]) -> list[ToolCall]:
         candidates = list(self.planner.plan(goal, belief, assets, recovery=True)) + list(self.registry.planned_calls(goal.domain.value, recovery=True))
-        for skill in skills:
-            for tool in skill.preferred_tools:
-                impl = self.registry.tools.get(tool)
-                if impl:
-                    candidates.append(call(tool, f"技能建议：{skill.name}", cost=float(getattr(impl, "cost", 1.0)), group="skill-recovery"))
-        successful = {r.tool for r in previous if r.ok and r.tool != "evidence.search"}
-        budget = max(0.0, float(remaining_budget)); out = []; seen = set()
+        raw_calls = []
         for item in candidates:
-            if item.tool in successful:
-                continue
+            args = item.args or {}
             if item.tool == "evidence.search":
-                item.args = {"keywords": list(dict.fromkeys(list(belief.missing_evidence) + _query_terms(goal.primary, limit=16)))[:32]}
-            sig = self.call_signature(item.tool, item.args)
-            impl = self.registry.tools.get(item.tool); gate = self.sandbox.validate_tool(item.tool)
-            if sig in seen or not impl or not gate.allowed or gate.requires_confirmation:
-                continue
-            cost = float(getattr(impl, "cost", item.estimated_cost) or item.estimated_cost)
-            if cost > budget + 1e-9:
-                continue
-            item.estimated_cost = cost; budget -= cost; seen.add(sig); out.append(item)
-            if len(out) >= self.max_calls:
-                break
-        return out
+                args = {"keywords": list(dict.fromkeys(list(belief.missing_evidence) + _query_terms(goal.primary, limit=16)))[:32]}
+            raw_calls.append({"tool": item.tool, "purpose": item.purpose, "args": args,
+                              "parallel_group": item.parallel_group})
+        decision = self.sanitize(
+            {"objective": "根据证据缺口选择最高信息增益的兜底核对", "tool_calls": raw_calls},
+            goal=goal, remaining_budget=remaining_budget, previous=previous, skills=skills, phase="fallback",
+            missing_evidence=list(belief.missing_evidence),
+        )
+        return decision.calls

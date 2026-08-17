@@ -3,29 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d1728" />
-  <meta name="description" content="EcomEvo：自主决策、自我进化、证据驱动、可控执行的商业 Agent 工作台。" />
-  <title>EcomEvo · 自进化商业 Agent 工作台</title>
+  <meta name="theme-color" content="#2b2926" />
+  <meta name="description" content="EcomEvo：面向真实电商业务的自主决策、自我进化、多模态 Agent 工作台。" />
+  <title>EcomEvo · 自主商业 Agent 工作台</title>
   <link rel="stylesheet" href="/assets/app.css" />
+  <link rel="stylesheet" href="/assets/visual.css" />
 </head>
 <body>
 <div class="app-shell">
   <header class="topbar">
     <div class="top-left">
       <button class="mobile-icon" id="navToggle" aria-label="打开业务导航" aria-expanded="false">☰</button>
-      <div class="brand" aria-label="EcomEvo 自进化商业 Agent 工作台">
+      <div class="brand" aria-label="EcomEvo 自主商业 Agent 工作台">
         <span class="brand-mark" aria-hidden="true">E</span>
-        <div class="brand-copy"><b>EcomEvo</b><small>自主商业 Agent</small></div>
+        <div class="brand-copy"><b>EcomEvo</b><small>Autonomous Commerce</small></div>
       </div>
     </div>
     <button class="command-trigger" id="commandBtn" aria-label="搜索任务和业务入口">
-      <span class="command-symbol" aria-hidden="true">⌕</span><span class="command-placeholder">搜索任务、业务入口</span><kbd>⌘ K</kbd>
+      <span class="command-symbol" aria-hidden="true">⌕</span><span class="command-placeholder">搜索任务、场景与历史记录</span><kbd>⌘ K</kbd>
     </button>
     <div class="top-actions">
       <button class="top-action" id="assetLibraryBtn"><span aria-hidden="true">▤</span><em>资料</em></button>
-      <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>服务</em></button>
-      <button class="avatar" aria-label="当前用户">运</button>
-      <button class="mobile-icon" id="detailToggle" aria-label="打开任务详情" aria-expanded="false">⋯</button>
+      <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>引擎</em></button>
+      <button class="avatar" aria-label="当前工作区">商</button>
+      <button class="mobile-icon" id="detailToggle" aria-label="打开任务控制面" aria-expanded="false">⋯</button>
     </div>
   </header>
 
@@ -35,8 +36,8 @@
     </div>
     <div class="left-scroll">
       <section class="nav-section">
-        <div class="nav-title">业务入口</div>
-        <button class="scene active" data-scene="product_governance"><span class="scene-icon">品</span><div><b>商品治理</b><small>商品信息 · 素材 · 资质</small></div></button>
+        <div class="nav-title">业务场景</div>
+        <button class="scene active" data-scene="product_governance"><span class="scene-icon">品</span><div><b>商品治理</b><small>商品事实 · 素材 · 资质</small></div></button>
         <button class="scene" data-scene="merchant_review"><span class="scene-icon">商</span><div><b>商家审核</b><small>主体 · 授权 · 经营风险</small></div></button>
         <button class="scene" data-scene="aftersales"><span class="scene-icon">售</span><div><b>售后判责</b><small>订单 · 履约 · 举证 · 退款</small></div></button>
         <button class="scene" data-scene="risk_review"><span class="scene-icon">险</span><div><b>风险核查</b><small>交易 · 账户 · 商品 · 履约</small></div></button>
@@ -48,8 +49,8 @@
       </section>
     </div>
     <div class="left-footer">
-      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>认知自治，权限确定</b><small>Agent 可自主查证和重规划；真实业务操作仍由你确认</small></p></div>
-      <button id="settingsBtn">服务状态</button>
+      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>认知自治，权限确定</b><small>自主查证、委派和重规划；真实业务动作始终受控</small></p></div>
+      <button id="settingsBtn">认知引擎状态</button>
     </div>
   </aside>
 
@@ -58,7 +59,7 @@
       <div class="task-head-main">
         <div class="eyebrow"><span id="sceneEyebrow">商品治理</span><i></i><span id="taskConnection">已同步</span></div>
         <h1 id="conversationTitle">新的业务任务</h1>
-        <p id="conversationMeta">给目标、加资料，EcomEvo 会自主规划核对路径。</p>
+        <p id="conversationMeta">交代目标并加入资料，系统会围绕证据缺口自主规划下一步。</p>
         <div class="task-chips" aria-label="任务摘要">
           <span class="task-chip"><small>资料</small><b id="assetCountChip">0</b></span>
           <span class="task-chip"><small>待确认</small><b id="actionCountChip">0</b></span>
@@ -66,25 +67,41 @@
         </div>
       </div>
       <div class="task-head-actions">
-        <label class="provider-control"><small>认知引擎</small><select id="providerSelect" aria-label="选择处理服务"><option value="auto">自动选择</option></select><span aria-hidden="true">⌄</span></label>
+        <label class="provider-control"><small>认知引擎</small><select id="providerSelect" aria-label="选择认知引擎"><option value="auto">自动编排</option></select><span aria-hidden="true">⌄</span></label>
         <button class="icon-btn" id="shareBtn" title="复制任务链接" aria-label="复制任务链接">分享</button>
       </div>
     </header>
 
-    <div class="history-notice" id="historyNotice" hidden>当前显示最近 200 条记录，较早内容仍保留在任务中。</div>
+    <div class="history-notice" id="historyNotice" hidden>当前展示最近 200 条记录，较早内容仍保留在任务审计中。</div>
 
     <div class="chat-scroll" id="chatScroll">
       <section class="welcome" id="welcomePanel">
-        <div class="welcome-badge"><span></span>Autonomous Agent</div>
-        <h2>你只给目标，EcomEvo 自己规划、查证、复核和重规划。</h2>
-        <p>它不是固定流程，也不是只会 Tool Calling 的聊天机器人。商品、商家、订单、截图、视频、表格和沟通记录可以持续追加；Runtime 会围绕证据缺口自主选择只读工具、并行核对、动态增加复核视角，并把有效经验沉淀成可复用技能。</p>
-        <div class="quick-grid">
-          <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对一批商品</b><small>自主追踪风险声明、资料缺口和治理证据</small></div><em>商品治理</em></button>
-          <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家入驻</b><small>主体、资质、授权链路和经营风险交叉复核</small></div><em>商家审核</em></button>
-          <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后争议</b><small>主动还原事实链，围绕证据缺口继续补查</small></div><em>售后判责</em></button>
-          <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查异常风险</b><small>动态反证与交叉检查，区分强证据和弱线索</small></div><em>风险核查</em></button>
+        <div class="welcome-layout">
+          <div class="welcome-copy">
+            <div class="welcome-badge"><span></span>自主任务运行时</div>
+            <h2>给目标，不给脚本。让任务自己找到下一步。</h2>
+            <p>把文字、图片、视频、音频、文档、表格和日志放进同一个任务。系统会围绕当前证据缺口选择只读工具、并行核对、派生专项复核、改变探索路径，并在证据不足时主动停止，而不是用模型置信度补事实。</p>
+            <div class="welcome-kicker">从一个真实业务目标开始</div>
+            <div class="quick-grid">
+              <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对一批商品</b><small>从声明、图片、价格和资质中主动追踪证据缺口，整理治理结论。</small></div><em>商品治理</em></button>
+              <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家入驻</b><small>交叉核对主体、授权链路与经营风险。</small></div><em>商家审核</em></button>
+              <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后争议</b><small>还原事实链，继续追查缺失订单与履约证据。</small></div><em>售后判责</em></button>
+              <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查异常风险</b><small>用反证和独立信号区分强证据、弱线索与信息缺口。</small></div><em>风险核查</em></button>
+            </div>
+            <div class="input-types" aria-label="支持的多模态输入"><span>多模态输入</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
+          </div>
+          <aside class="agent-map" aria-hidden="true">
+            <div class="agent-map-head"><b>任务路径</b><span>持续更新</span></div>
+            <div class="agent-route">
+              <div class="route-node active"><span>01</span><div><strong>理解目标</strong><small>业务域 · 约束 · 必需证据</small></div><em>GOAL</em></div>
+              <div class="route-node"><span>02</span><div><strong>查找证据</strong><small>多模态资料 · 企业数据 · 规则</small></div><em>EVIDENCE</em></div>
+              <div class="route-node"><span>03</span><div><strong>动态复核</strong><small>并行核对 · 反证 · 专项委派</small></div><em>REVIEW</em></div>
+              <div class="route-node"><span>04</span><div><strong>硬性验证</strong><small>证据门槛 · 约束 · 副作用安全</small></div><em>VERIFY</em></div>
+              <div class="route-node"><span>05</span><div><strong>受控执行</strong><small>确认后执行 · 结果留痕 · 经验沉淀</small></div><em>ACTION</em></div>
+            </div>
+            <div class="agent-map-foot"><span>策略可以变化</span><b>权限不会自我扩张</b></div>
+          </aside>
         </div>
-        <div class="input-types"><span>自主处理</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
       </section>
 
       <div id="messageList" class="message-list"></div>
@@ -97,7 +114,8 @@
     <div class="composer-zone">
       <div id="pendingAssets" class="pending-assets" hidden></div>
       <div class="composer" id="composer">
-        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="直接交代目标，例如：这笔退款到底该不该退？订单、物流和聊天记录都在这里，你自己核对清楚。" aria-label="任务问题"></textarea>
+        <div class="composer-head"><b>多模态输入</b><span>资料可以持续追加</span></div>
+        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="交代目标，例如：这笔退款到底该不该退？订单、物流、聊天记录和图片都在这里，请把证据核对清楚。" aria-label="任务目标"></textarea>
         <div class="composer-bottom">
           <div class="attach-row">
             <button class="attach" data-accept="image/*"><span aria-hidden="true">▧</span>图片</button>
@@ -106,69 +124,70 @@
             <button class="attach" data-accept=".pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span aria-hidden="true">＋</span>文档 / 表格</button>
             <button class="attach mobile-attach" data-accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span aria-hidden="true">＋</span>添加资料</button>
           </div>
-          <div class="send-row"><small>Enter 发送 · Shift+Enter 换行</small><button id="sendBtn" class="send-btn" aria-label="发送">发送</button></div>
+          <div class="send-row"><small>Enter 发送 · Shift+Enter 换行</small><button id="sendBtn" class="send-btn" aria-label="发送任务">发送</button></div>
         </div>
         <input type="file" id="fileInput" multiple hidden />
       </div>
-      <div class="composer-note">Agent 可以自主查证、组合只读工具和重规划；退款、下架、审核、冻结等真实业务动作始终需要你确认。</div>
+      <div class="composer-note">自主性用于查证、规划与复核；退款、下架、审核、冻结等会改变真实业务状态的操作仍需人工确认。</div>
     </div>
   </main>
 
-  <aside class="rightbar" id="rightbar" aria-label="任务详情">
+  <aside class="rightbar" id="rightbar" aria-label="任务控制面">
     <div class="right-head">
-      <div class="right-title"><b>任务详情</b><button class="right-close" id="rightClose" aria-label="关闭任务详情">×</button></div>
-      <div class="right-tabs" role="tablist" aria-label="任务详情分类">
-        <button class="right-tab active" data-panel="progress" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="true">进度</button>
-        <button class="right-tab" data-panel="evidence" role="tab" id="tab-evidence" aria-controls="panel-evidence" aria-selected="false" tabindex="-1">依据</button>
-        <button class="right-tab" data-panel="actions" role="tab" id="tab-actions" aria-controls="panel-actions" aria-selected="false" tabindex="-1">待确认 <i id="actionBadge" hidden>0</i></button>
+      <div class="right-title"><div><b>任务控制面</b><small>Evidence & Authority</small></div><button class="right-close" id="rightClose" aria-label="关闭任务控制面">×</button></div>
+      <div class="right-tabs" role="tablist" aria-label="任务控制分类">
+        <button class="right-tab active" data-panel="progress" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="true">轨迹</button>
+        <button class="right-tab" data-panel="evidence" role="tab" id="tab-evidence" aria-controls="panel-evidence" aria-selected="false" tabindex="-1">证据</button>
+        <button class="right-tab" data-panel="actions" role="tab" id="tab-actions" aria-controls="panel-actions" aria-selected="false" tabindex="-1">执行 <i id="actionBadge" hidden>0</i></button>
         <button class="right-tab" data-panel="assets" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">资料</button>
       </div>
     </div>
     <div class="right-scroll">
       <section class="right-panel active" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress">
         <div class="status-card">
-          <div class="status-top"><div><small>当前状态</small><b id="taskState">等待目标</b><p id="taskDetail">交代目标，或先添加资料。Agent 会自己规划下一步。</p></div><div class="status-ring"><em>本轮</em><span id="statusPercent">0</span><small>%</small></div></div>
+          <div class="status-top"><div><small>当前状态</small><b id="taskState">等待目标</b><p id="taskDetail">交代目标或先加入资料，系统会自主规划下一步。</p></div><div class="status-ring"><em>run</em><span id="statusPercent">0</span><small>%</small></div></div>
           <div class="status-line"><i id="statusBar"></i></div>
         </div>
         <div id="progressList" class="progress-list"></div>
-        <div class="follow-card"><div class="follow-title"><b>继续处理</b><small>让 Agent 深挖</small></div><div id="suggestionList" class="suggestions"></div></div>
+        <div class="follow-card"><div class="follow-title"><b>继续处理</b><small>低成本追加指令</small></div><div id="suggestionList" class="suggestions"></div></div>
       </section>
       <section class="right-panel" id="panel-evidence" role="tabpanel" aria-labelledby="tab-evidence" hidden>
-        <div class="panel-copy"><b>关键依据</b><p>只展示可以追溯、与当前结论直接相关的资料和核对结果。</p></div>
-        <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次处理后，这里会显示关键依据。</div></div>
+        <div class="panel-copy"><b>关键证据</b><p>只展示与当前判断直接相关、可以追溯的数据与资料。</p></div>
+        <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次核对后，这里会出现可追溯证据。</div></div>
       </section>
       <section class="right-panel" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden>
-        <div class="panel-copy"><b>待确认操作</b><p>Agent 可以自主思考，但会改变商品、商家、订单或风险状态的操作必须由你确认。</p></div>
-        <div id="actionList" class="action-list"><div class="empty-side">目前没有待确认操作。</div></div>
+        <div class="panel-copy"><b>执行控制</b><p>高影响动作在这里明确说明影响范围，并等待人工确认。</p></div>
+        <div id="actionList" class="action-list"><div class="empty-side">目前没有需要确认的业务操作。</div></div>
       </section>
       <section class="right-panel" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden>
-        <div class="panel-copy"><b>任务资料</b><p>资料会持续留在任务中，后续追问不需要重新描述背景。</p></div>
-        <div id="assetList" class="asset-list"><div class="empty-side">还没有添加资料。</div></div>
+        <div class="panel-copy"><b>任务资料</b><p>后续可继续追加，多轮追问仍围绕同一个任务上下文。</p></div>
+        <div id="assetList" class="asset-list"><div class="empty-side">还没有加入资料。</div></div>
       </section>
     </div>
   </aside>
   <div class="drawer-scrim" id="drawerScrim" hidden></div>
 </div>
 
-<div class="drop-mask" id="dropMask" hidden><div><span>＋</span><b>松开即可加入当前任务</b><small>支持图片、视频、音频、PDF、Word、Excel 和日志</small></div></div>
+<div class="drop-mask" id="dropMask" hidden><div><span>＋</span><b>加入当前任务</b><small>图片、视频、音频、PDF、Word、Excel、JSON 与日志都可以直接拖入</small></div></div>
 
 <div class="modal-backdrop" id="providerModal" hidden role="dialog" aria-modal="true" aria-labelledby="providerModalTitle">
   <div class="modal">
-    <div class="modal-head"><div><small>认知引擎</small><h3 id="providerModalTitle">模型服务</h3><p>模型负责推理、多模态理解和自主决策；业务证据门槛、真实操作权限和人工确认始终由 EcomEvo Runtime 掌握。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-head"><div><small>认知引擎</small><h3 id="providerModalTitle">运行能力</h3><p>只展示能力与可用状态，不在产品界面暴露底层服务品牌。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
     <div id="providerGrid" class="provider-grid"></div>
-    <div class="modal-foot"><span>模型是可替换认知引擎，不是业务权限来源。本地演示不会隐式调用外部服务。</span></div>
+    <div class="modal-foot"><span>自动编排会根据文本、图片、音频和扫描文档能力选择已配置引擎；本地受控模式不会自动出站。</span></div>
   </div>
 </div>
 
 <div class="command-backdrop" id="commandModal" hidden role="dialog" aria-modal="true" aria-labelledby="commandTitle">
   <div class="command-modal">
-    <div class="command-input"><span aria-hidden="true">⌕</span><input id="commandInput" autocomplete="off" placeholder="搜索任务或业务入口" aria-labelledby="commandTitle" /><kbd>Esc</kbd></div>
+    <div class="command-input"><span aria-hidden="true">⌕</span><input id="commandInput" autocomplete="off" placeholder="搜索任务或业务场景" aria-labelledby="commandTitle" /><kbd>Esc</kbd></div>
     <div class="command-caption" id="commandTitle">快速打开</div>
     <div id="commandResults" class="command-results"></div>
   </div>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/assets/enhancements.js"></script>
 <script type="module" src="/assets/app.js"></script>
 </body>
 </html>
