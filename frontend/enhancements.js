@@ -23,9 +23,33 @@
     connected: false,
   };
 
+  function requestUrl(input) {
+    return typeof input === 'string' ? input : (input && input.url) || '';
+  }
+
   function actionUrl(input) {
-    const value = typeof input === 'string' ? input : (input && input.url) || '';
-    return /\/api\/actions\/[^/]+\/decision(?:\?|$)/.test(value);
+    return /\/api\/actions\/[^/]+\/decision(?:\?|$)/.test(requestUrl(input));
+  }
+
+  function providerUrl(input) {
+    return /\/api\/providers(?:\?|$)/.test(requestUrl(input));
+  }
+
+  function genericProviderRows(rows) {
+    if (!Array.isArray(rows)) return rows;
+    let externalIndex = 0;
+    return rows.map(row => {
+      if (!row || typeof row !== 'object') return row;
+      if (row.key === 'auto') return { ...row, name: '自动编排', vendor: '', note: '按任务能力与可用状态自动选择' };
+      if (row.key === 'demo') return { ...row, name: '本地受控', vendor: '', note: '本地受控模式，不自动出站' };
+      externalIndex += 1;
+      return {
+        ...row,
+        name: `认知引擎 ${String(externalIndex).padStart(2, '0')}`,
+        vendor: '',
+        note: '按当前任务所需能力参与自动编排',
+      };
+    });
   }
 
   function updateApiLatency(ms) {
@@ -39,6 +63,18 @@
     try {
       const response = await nativeFetch(...args);
       updateApiLatency(performance.now() - started);
+      if (providerUrl(args[0]) && response.ok) {
+        try {
+          const payload = genericProviderRows(await response.clone().json());
+          const headers = new Headers(response.headers);
+          headers.delete('content-length');
+          return new Response(JSON.stringify(payload), {
+            status: response.status,
+            statusText: response.statusText,
+            headers,
+          });
+        } catch (_) {}
+      }
       if (actionUrl(args[0]) && response.ok) {
         try {
           const payload = await response.clone().json();
@@ -80,6 +116,35 @@
     Object.setPrototypeOf(ObservedWebSocket, NativeWebSocket);
     window.WebSocket = ObservedWebSocket;
   }
+
+  function installSceneBridge() {
+    const grid = document.querySelector('.quick-grid');
+    if (grid && !grid.querySelector('.quick-card[data-scene="content_audit"]')) {
+      const bridge = document.createElement('button');
+      bridge.type = 'button';
+      bridge.hidden = true;
+      bridge.className = 'quick-card';
+      bridge.dataset.scene = 'content_audit';
+      bridge.dataset.prompt = '帮我核对当前图片、视频和文案与商品事实是否一致，找出需要补证或修改的高风险内容。';
+      bridge.setAttribute('aria-hidden', 'true');
+      bridge.tabIndex = -1;
+      grid.appendChild(bridge);
+    }
+
+    document.addEventListener('click', event => {
+      const scene = event.target?.closest?.('.scene[data-scene]');
+      if (!scene) return;
+      const sceneKey = scene.dataset.scene;
+      const bridge = [...document.querySelectorAll('.quick-card[data-scene]')].find(node => node.dataset.scene === sceneKey);
+      if (!bridge || typeof bridge.onclick !== 'function') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      bridge.click();
+      if (matchMedia('(max-width:820px)').matches) document.getElementById('drawerScrim')?.click();
+    }, true);
+  }
+
+  installSceneBridge();
 
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
@@ -203,7 +268,7 @@
   function ensureRuntimePulse() {
     let host = document.getElementById('runtimePulse');
     if (host) return host;
-    const panel = document.getElementById('panel-trace');
+    const panel = document.getElementById('panel-progress');
     if (!panel) return null;
     host = document.createElement('section');
     host.id = 'runtimePulse';
@@ -264,7 +329,6 @@
     const root = document.querySelector('.app-shell') || document.body;
     new MutationObserver(scheduleUiPass).observe(root, {
       childList: true,
-      characterData: true,
       subtree: true,
     });
   }
@@ -280,10 +344,12 @@
   window.addEventListener('unhandledrejection', event => {
     const message = String(event.reason?.message || event.reason || '');
     if (!/请求失败|Failed to fetch|NetworkError|任务不存在|服务连接/.test(message)) return;
+    event.preventDefault();
     const toast = document.getElementById('toast');
     if (toast) {
       toast.textContent = '操作未完成，请检查连接后重试';
       toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3200);
     }
   });
 
