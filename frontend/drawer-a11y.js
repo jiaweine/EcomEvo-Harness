@@ -26,34 +26,40 @@
     return preferred || rows[0] || drawer;
   }
 
-  function activate(drawer) {
-    if (!narrow() || activeDrawer === drawer) return;
-    activeDrawer = drawer;
-    const current = document.activeElement;
-    returnFocus.set(drawer.id, current && current !== document.body ? current : triggerFor(drawer.id));
-    drawer.setAttribute('aria-modal', 'true');
-    if (!drawer.hasAttribute('role')) drawer.setAttribute('role', 'dialog');
-    requestAnimationFrame(() => firstFocus(drawer)?.focus?.());
-  }
-
-  function deactivate(drawer) {
+  function deactivate(drawer, restore = true) {
     if (activeDrawer !== drawer) return;
     activeDrawer = null;
     drawer.removeAttribute('aria-modal');
     if (drawer.getAttribute('role') === 'dialog') drawer.removeAttribute('role');
     const target = returnFocus.get(drawer.id) || triggerFor(drawer.id);
     returnFocus.delete(drawer.id);
-    if (target && document.contains(target)) requestAnimationFrame(() => target.focus());
+    if (restore && target && document.contains(target)) requestAnimationFrame(() => target.focus());
+  }
+
+  function activate(drawer) {
+    if (!narrow() || activeDrawer === drawer) return;
+    if (activeDrawer && activeDrawer !== drawer) deactivate(activeDrawer, false);
+    activeDrawer = drawer;
+    const trigger = triggerFor(drawer.id);
+    const current = document.activeElement;
+    const currentInsideClosedDrawer = drawerIds.some(id => {
+      const other = document.getElementById(id);
+      return other && other !== drawer && other.contains(current) && !other.classList.contains('open');
+    });
+    returnFocus.set(drawer.id, !currentInsideClosedDrawer && current && current !== document.body ? current : trigger);
+    drawer.setAttribute('aria-modal', 'true');
+    if (!drawer.hasAttribute('role')) drawer.setAttribute('role', 'dialog');
+    requestAnimationFrame(() => firstFocus(drawer)?.focus?.());
   }
 
   function sync() {
     if (!narrow()) {
-      if (activeDrawer) deactivate(activeDrawer);
+      if (activeDrawer) deactivate(activeDrawer, false);
       return;
     }
     const open = drawerIds.map(id => document.getElementById(id)).find(node => node?.classList.contains('open')) || null;
     if (open) activate(open);
-    else if (activeDrawer) deactivate(activeDrawer);
+    else if (activeDrawer) deactivate(activeDrawer, true);
   }
 
   document.addEventListener('keydown', event => {
