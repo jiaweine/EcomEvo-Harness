@@ -5,16 +5,18 @@ APP = (ROOT / "frontend/app.js").read_text(encoding="utf-8")
 LOADER = (ROOT / "frontend/enhancements.js").read_text(encoding="utf-8")
 CORE = (ROOT / "frontend/enhancements-core.js").read_text(encoding="utf-8")
 REALTIME = (ROOT / "frontend/realtime-reconcile.js").read_text(encoding="utf-8")
+SAFETY = (ROOT / "frontend/safety-guards.js").read_text(encoding="utf-8")
 HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend/product-polish.css").read_text(encoding="utf-8")
 
 
-def test_enhancement_loader_keeps_core_before_realtime_and_modules_exist():
+def test_enhancement_loader_keeps_core_before_realtime_and_safety_and_modules_exist():
     assert "/assets/enhancements-core.js" in LOADER
     assert "/assets/realtime-reconcile.js" in LOADER
-    assert LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/realtime-reconcile.js")
-    assert (ROOT / "frontend/enhancements-core.js").is_file()
-    assert (ROOT / "frontend/realtime-reconcile.js").is_file()
+    assert "/assets/safety-guards.js" in LOADER
+    assert LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/realtime-reconcile.js") < LOADER.index("/assets/safety-guards.js")
+    for name in ("enhancements-core.js", "realtime-reconcile.js", "safety-guards.js"):
+        assert (ROOT / "frontend" / name).is_file()
     assert 'document.readyState === \'loading\'' in LOADER
 
 
@@ -173,3 +175,20 @@ def test_realtime_reconcile_observes_message_posts_and_accepted_events():
 def test_realtime_reconcile_does_not_use_equal_text_as_message_identity():
     assert 'lastRenderedUserText' not in REALTIME
     assert 'normalize(message?.content)' not in REALTIME
+    assert 'acceptedWhilePending' in REALTIME
+    assert 'recentLocalSuccess' in REALTIME
+
+
+def test_action_network_failure_is_treated_as_uncertain_not_safe_to_retry():
+    assert 'function isActionDecision(input, options)' in SAFETY
+    assert '业务操作响应中断，实际状态待核对，请勿重复确认' in SAFETY
+    assert 'uncertain.status = 502' in SAFETY
+    assert 'retry' not in SAFETY.lower()
+
+
+def test_busy_turn_blocks_attachment_entry_points_before_upload():
+    assert 'function taskBusy()' in SAFETY
+    assert "event.target?.closest?.('.attach')" in SAFETY
+    assert "event.target?.id !== 'fileInput'" in SAFETY
+    assert "window.addEventListener('drop'" in SAFETY
+    assert '当前任务正在处理中，本轮结束后再追加资料' in SAFETY
