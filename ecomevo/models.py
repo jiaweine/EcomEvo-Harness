@@ -114,6 +114,15 @@ class RuntimeSummary(BaseModel):
     evidence: list[EvidenceRecord] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    evidence_complete: bool = False
+    missing_evidence: list[str] = Field(default_factory=list)
+    tool_cost_used: float = 0.0
+    tool_cost_budget: float = 0.0
+    tool_cost_remaining: float = 0.0
+    stop_reason: str = ""
+    stop_detail: str = ""
+    stagnated: bool = False
+    autonomy_mode: str = "deterministic_fallback"
     belief: BeliefState = Field(default_factory=BeliefState)
 
 
