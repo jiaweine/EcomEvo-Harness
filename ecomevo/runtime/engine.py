@@ -14,9 +14,10 @@ from .governance import GovernanceBoundary
 from .planner import AdaptivePlanner
 from .plugins import PluginRegistry
 from .recursive import RecursiveCoordinator
+from .resilient_executor import ResilientPTCExecutor
 from .sandbox import ActionSandbox
 from .skills import AdaptiveSkillLibrary
-from .tools import PTCExecutor, ToolRegistry
+from .tools import ToolRegistry
 from .verifier import DecisionVerifier
 
 EventSink=Callable[[str,dict[str,Any]],Awaitable[None]]
@@ -29,7 +30,7 @@ class EcomEvoEngine:
         self.planner=AdaptivePlanner()
         self.sandbox=ActionSandbox()
         self.tools=ToolRegistry(mcp)
-        self.ptc=PTCExecutor(self.tools,self.sandbox)
+        self.ptc=ResilientPTCExecutor(self.tools,self.sandbox)
         self.mcp=mcp
         self.model_gateway=model_gateway
         self.recursive=RecursiveCoordinator()
@@ -53,7 +54,7 @@ class EcomEvoEngine:
     def _register_plugins(self):
         self.plugins.register('model.gateway','model','认知引擎服务层','云端 / 企业兼容 / 开源权重 / 自托管',instance=self.model_gateway)
         self.plugins.register('agent.autonomy','agent','自主任务控制器','动态任务图、Adaptive Posterior Routing、反事实 credit、重规划与只读 specialist 委派',instance=self.autonomy)
-        self.plugins.register('tool.ptc','tool','并行工具执行器','组合并发的只读工具调用',instance=self.ptc)
+        self.plugins.register('tool.ptc','tool','并行工具执行器','有界并发、超时隔离与组合并发的只读工具调用',instance=self.ptc)
         self.plugins.register('memory.runtime','memory','任务记忆','保存同类任务的已验证结果',instance=self.memory)
         self.plugins.register('memory.skills','memory','自进化技能库','持久化技能、后验可信度、质量多样性 niche 与晋升/退役',instance=self.skills)
         self.plugins.register('sandbox.action','sandbox','操作安全区','阻止未确认的高影响动作',instance=self.sandbox)
