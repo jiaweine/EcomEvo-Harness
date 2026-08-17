@@ -58,16 +58,17 @@ def test_upload_guard_starts_before_primary_file_change_handler_and_finishes_per
     assert 'if (isAssetUpload) finishUploadItem()' in ENH
 
 
-def test_upload_guard_blocks_send_enter_and_cross_task_navigation():
+def test_upload_guard_blocks_send_enter_command_enter_and_cross_task_navigation():
     assert "#sendBtn,.scene[data-scene],.conv-item,#newTaskBtn,.command-result" in ENH
     assert "event.target?.id === 'messageInput' && event.key === 'Enter'" in ENH
+    assert "event.target?.id === 'commandInput' && event.key === 'Enter'" in ENH
     assert "event.stopImmediatePropagation()" in ENH
     assert '资料还在上传，完成后再发送' in ENH
     assert '资料还在上传，完成后再切换任务' in ENH
 
 
 def test_upload_guard_exposes_busy_state_and_restores_send_control():
-    assert "composer.setAttribute('aria-busy', String(active))" in ENH
+    assert "composer.setAttribute('aria-busy', String(uploading || remoteTurnBusy))" in ENH
     assert "send.dataset.uploadLocked = '1'" in ENH
     assert "send.textContent = uploadBatchPending > 1" in ENH
     assert 'send.disabled = sendDisabledBeforeUpload' in ENH
@@ -94,6 +95,17 @@ def test_new_turn_and_new_task_clear_previous_runtime_metrics():
     assert ENH.count('clearTurnTelemetry()') >= 3
 
 
+def test_multi_tab_turn_event_forces_busy_until_terminal_event():
+    accepted = ENH.split("if (event.type === 'message.accepted')", 1)[1].split("if (event.type === 'routing.policy.updated')", 1)[0]
+    ready = ENH.split("if (event.type === 'answer.ready')", 1)[1].split("if (event.type === 'answer.error')", 1)[0]
+    error = ENH.split("if (event.type === 'answer.error')", 1)[1].split('if (NativeWebSocket)', 1)[0]
+    assert 'remoteTurnBusy = true' in accepted
+    assert 'remoteTurnBusy = false' in ready
+    assert 'remoteTurnBusy = false' in error
+    assert "send.textContent = '任务处理中…'" in ENH
+    assert "chip.classList.add('busy')" in ENH
+
+
 def test_runtime_pulse_surfaces_structured_decision_state_not_chain_of_thought():
     for field in ('evidence_complete', 'missing_evidence', 'tool_cost_used', 'tool_cost_budget', 'tool_cost_remaining', 'stop_reason', 'autonomy_mode'):
         assert field in ENH
@@ -102,6 +114,14 @@ def test_runtime_pulse_surfaces_structured_decision_state_not_chain_of_thought()
     assert '工具预算' in ENH
     assert '运行模式' in ENH
     assert 'chain-of-thought' not in ENH.lower()
+
+
+def test_command_palette_scene_entries_reuse_scene_state_machine():
+    assert 'function navSceneForCommandResult(result)' in ENH
+    assert 'function runSceneCommand(result, event)' in ENH
+    assert 'function installCommandSceneBridge()' in ENH
+    assert "document.querySelector('#commandResults .command-result.active')" in ENH
+    assert 'scene.click()' in ENH
 
 
 def test_narrow_asset_library_opens_assets_without_toggling_open_drawer_closed():
