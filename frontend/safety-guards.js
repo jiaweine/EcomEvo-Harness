@@ -21,6 +21,15 @@
     return Boolean(chip?.classList.contains('busy') || send?.dataset.remoteLocked === '1');
   }
 
+  function isFileDrag(event) {
+    return Boolean(event.dataTransfer?.types?.includes?.('Files') || event.dataTransfer?.files?.length > 0);
+  }
+
+  function hideDropMask() {
+    const mask = document.getElementById('dropMask');
+    if (mask) mask.hidden = true;
+  }
+
   function toast(message) {
     const node = document.getElementById('toast');
     if (!node) return;
@@ -60,12 +69,20 @@
     toast('当前任务正在处理中，本轮结束后再追加资料');
   }, true);
 
+  for (const type of ['dragenter', 'dragover']) {
+    window.addEventListener(type, event => {
+      if (!taskBusy() || !isFileDrag(event)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      hideDropMask();
+    }, true);
+  }
+
   window.addEventListener('drop', event => {
-    if (!taskBusy() || !(event.dataTransfer?.files?.length > 0)) return;
+    if (!taskBusy() || !isFileDrag(event)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    const mask = document.getElementById('dropMask');
-    if (mask) mask.hidden = true;
+    hideDropMask();
     toast('当前任务正在处理中，本轮结束后再追加资料');
   }, true);
 })();
