@@ -65,10 +65,22 @@ class AutonomyOutcome:
     task_graph: dict[str, Any]
     skills_used: list[str]
     stagnated: bool = False
+    stop_reason: str = "evidence_incomplete"
+    stop_detail: str = "当前证据仍不足以完成最终验证"
 
 
 class AutonomousController:
     """Bounded observe-decide-act-review-verify loop with deterministic outer authority."""
+
+    STOP_LABELS = {
+        "verified": "证据验证完成",
+        "budget_exhausted": "只读工具预算已用尽",
+        "controller_stop": "认知控制器建议停止",
+        "no_high_value_action": "没有更高价值的下一步",
+        "stagnated": "继续补证未改变状态",
+        "step_limit": "达到自主处理步数上限",
+        "evidence_incomplete": "证据仍不完整",
+    }
 
     def __init__(self, planner, registry, executor, sandbox, verifier, reviewer, skills: AdaptiveSkillLibrary):
         self.planner = planner; self.registry = registry; self.executor = executor; self.sandbox = sandbox
@@ -90,6 +102,33 @@ class AutonomousController:
         graph = TaskGraph(); root = graph.add("goal", goal.primary[:160], payload={"domain": goal.domain.value})
         total: list[ToolResult] = []; agents: list[SubAgentResult] = []; skills_used: list[str] = []
         delegated_count = recovery_events = autonomy_steps = 0; stagnated = False
+        verification: VerificationResult | None = None
+
+        async def finish(reason: str, detail: str) -> AutonomyOutcome:
+            nonlocal verification
+            assert verification is not None
+            safe_reason = reason if reason in self.STOP_LABELS else "evidence_incomplete"
+            safe_detail = str(detail or self.STOP_LABELS[safe_reason])[:300]
+            parents = [graph.order[-1]] if graph.order else [root]
+            stop_node = graph.add("stop", self.STOP_LABELS[safe_reason], parents=parents,
+                                  payload={"reason": safe_reason, "evidence_complete": verification.evidence_complete,
+                                           "missing_evidence": list(verification.missing_evidence)})
+            graph.finish(stop_node)
+            spent = round(sum(max(0.0, float(x.cost or 0.0)) for x in total), 3)
+            await emit("autonomy.stopped", {
+                "reason": safe_reason,
+                "detail": safe_detail,
+                "evidence_complete": bool(verification.evidence_complete),
+                "missing_evidence": list(verification.missing_evidence),
+                "tool_cost_used": spent,
+                "tool_cost_budget": round(float(goal.max_tool_cost), 3),
+                "tool_cost_remaining": round(max(0.0, float(goal.max_tool_cost) - spent), 3),
+                "autonomy_steps": autonomy_steps,
+                "stagnated": bool(stagnated),
+            })
+            return AutonomyOutcome(total, agents, verification, autonomy_steps, delegated_count, recovery_events,
+                                   graph.snapshot(), list(dict.fromkeys(skills_used)), stagnated, safe_reason, safe_detail)
+
         initial_skills = self.skills.relevant(goal.domain.value, query=goal.primary, missing=belief.missing_evidence)
         skills_used.extend(x.skill_id for x in initial_skills)
         plan = list(self.planner.plan(goal, belief, assets))
@@ -125,15 +164,16 @@ class AutonomousController:
         delegated_count += delegated; await emit("review.completed", {"reviews": [x.model_dump() for x in agents]})
         verification = self.verifier.verify(goal, belief, total, agents); await emit("verification.checked", verification.model_dump())
         if verification.passed:
-            return AutonomyOutcome(total, agents, verification, autonomy_steps, delegated_count, recovery_events, graph.snapshot(), list(dict.fromkeys(skills_used)))
+            return await finish("verified", "证据和约束已通过验证")
 
         await emit("runtime.rollback", {"restored": True, "reason": verification.issues + verification.missing_evidence,
                                         "mode": "bounded_autonomous_replan"})
         belief.missing_evidence = list(verification.missing_evidence); previous_fp = self._fingerprint(verification, total); stagnant_rounds = 0
+        stop_reason = ""; stop_detail = ""
         for step in range(1, self.max_steps + 1):
             spent = sum(max(0.0, float(x.cost or 0)) for x in total); remaining = max(0.0, float(goal.max_tool_cost) - spent)
             if remaining <= .05:
-                break
+                stop_reason = "budget_exhausted"; stop_detail = "本轮只读工具预算已用尽"; break
             active = self.skills.relevant(goal.domain.value, query=goal.primary, missing=verification.missing_evidence)
             for skill in active:
                 if skill.skill_id not in skills_used:
@@ -157,9 +197,10 @@ class AutonomousController:
             if decision.rejected:
                 await emit("autonomy.decision_rejected", {"step": step, "phase": "recovery", "rejected": decision.rejected})
             if decision.stop and not decision.calls and not decision.delegations:
-                break
+                stop_reason = "controller_stop"; stop_detail = "认知控制器建议停止继续查证；最终状态仍由验证器决定"; break
             if not decision.calls and not decision.delegations:
-                stagnated = True; break
+                stop_reason = "no_high_value_action"; stop_detail = "当前预算和证据状态下没有更高价值的只读核对动作"; break
+            controller_requested_stop = bool(decision.stop)
             recovery_events += 1
             node = graph.add("replan", decision.objective or "自主补充核对", parents=[plan_node],
                              payload={"step": step, "calls": [x.tool for x in decision.calls]})
@@ -171,10 +212,15 @@ class AutonomousController:
             delegated_count += delegated; verification = self.verifier.verify(goal, belief, total, agents)
             belief.missing_evidence = list(verification.missing_evidence); await emit("verification.rechecked", {**verification.model_dump(), "step": step})
             if verification.passed:
-                break
+                stop_reason = "verified"; stop_detail = "证据和约束已通过验证"; break
+            if controller_requested_stop:
+                stop_reason = "controller_stop"; stop_detail = "认知控制器完成本轮指定核对后建议停止；最终状态仍由验证器决定"; break
             fingerprint = self._fingerprint(verification, total)
             stagnant_rounds = stagnant_rounds + 1 if fingerprint == previous_fp else 0; previous_fp = fingerprint
             if stagnant_rounds >= 2:
-                stagnated = True; await emit("autonomy.stagnated", {"step": step, "missing_evidence": verification.missing_evidence}); break
-        return AutonomyOutcome(total, agents, verification, autonomy_steps, delegated_count, recovery_events,
-                               graph.snapshot(), list(dict.fromkeys(skills_used)), stagnated)
+                stagnated = True; stop_reason = "stagnated"; stop_detail = "连续补证没有改变可验证状态"
+                await emit("autonomy.stagnated", {"step": step, "missing_evidence": verification.missing_evidence}); break
+        if not stop_reason:
+            stop_reason = "step_limit" if not verification.passed else "verified"
+            stop_detail = "已达到本轮自主处理步数上限" if stop_reason == "step_limit" else "证据和约束已通过验证"
+        return await finish(stop_reason, stop_detail)
