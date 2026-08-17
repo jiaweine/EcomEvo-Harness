@@ -29,16 +29,27 @@ jobs:
         run: pytest -q
       - name: Frontend syntax
         run: |
-          node --check frontend/app.js
-          node --check frontend/enhancements.js
+          for file in frontend/*.js; do
+            node --check "$file"
+          done
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
-          html = Path('frontend/index.html').read_text()
+          import re
+
+          frontend = Path('frontend')
+          html = (frontend / 'index.html').read_text(encoding='utf-8')
+          loader = (frontend / 'enhancements.js').read_text(encoding='utf-8')
           HTMLParser().feed(html)
           assert html.count('id="') == len({part.split('"',1)[0] for part in html.split('id="')[1:]}), 'duplicate DOM id'
+
+          modules = re.findall(r"/assets/([A-Za-z0-9._-]+\.js)", loader)
+          assert modules, 'enhancement loader references no modules'
+          for module in modules:
+              assert (frontend / module).is_file(), f'missing loader module: {module}'
+
           for css_path in ('frontend/visual.css', 'frontend/product-polish.css'):
-              css = Path(css_path).read_text()
+              css = Path(css_path).read_text(encoding='utf-8')
               assert css.count('{') == css.count('}'), f'unbalanced {css_path}'
           print('frontend static checks ok')
           PY
