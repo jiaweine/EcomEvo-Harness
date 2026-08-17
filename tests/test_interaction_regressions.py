@@ -182,16 +182,29 @@ def test_realtime_reconcile_uses_persisted_message_id_not_text_or_time_windows()
     assert "payload?.message?.id" in REALTIME
 
 
-def test_action_network_failure_is_treated_as_uncertain_not_safe_to_retry():
-    assert 'function isActionDecision(input, options)' in SAFETY
+def test_action_network_failure_is_uncertain_and_blocks_immediate_duplicate_confirmation():
+    assert 'function actionDecisionId(input, options)' in SAFETY
+    assert 'const blockedActionIds = new Set()' in SAFETY
+    assert 'blockedActionIds.add(actionId)' in SAFETY
+    assert "blockedActionIds.has(action.dataset.action)" in SAFETY
     assert '业务操作响应中断，实际状态待核对，请勿重复确认' in SAFETY
     assert 'uncertain.status = 502' in SAFETY
     assert 'retry' not in SAFETY.lower()
 
 
-def test_busy_turn_blocks_attachment_entry_points_before_upload():
+def test_approved_and_uncertain_actions_override_misleading_completed_chip():
+    assert "function setTaskAttention(kind)" in SAFETY
+    assert "chip.innerHTML = '<i></i><b>执行中</b>'" in SAFETY
+    assert "chip.innerHTML = '<i></i><b>执行待核对</b>'" in SAFETY
+    assert ".action-status.uncertain" in SAFETY
+    assert ".action-status.approved" in SAFETY
+    assert 'new MutationObserver(scheduleActionSafetySync)' in SAFETY
+
+
+def test_busy_turn_blocks_attachment_and_drag_entry_points_before_upload():
     assert 'function taskBusy()' in SAFETY
     assert "event.target?.closest?.('.attach')" in SAFETY
     assert "event.target?.id !== 'fileInput'" in SAFETY
+    assert "for (const type of ['dragenter', 'dragover'])" in SAFETY
     assert "window.addEventListener('drop'" in SAFETY
     assert '当前任务正在处理中，本轮结束后再追加资料' in SAFETY
