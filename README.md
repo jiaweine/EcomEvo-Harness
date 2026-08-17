@@ -153,7 +153,7 @@ Score_t(x)=
 \eta_tQ_t(x)
 \]
 
-\(\eta_t\) 随样本量和残差置信度上升，最高约 0.96。也就是说，冷启动先验不会成为永久认知天花板。
+\(\eta_t\) 随样本量和残差置信度上升，最高约 0.96。也就是说，cold-start prior 不会成为永久认知天花板。
 
 ### Verifier Difference Credit
 
@@ -354,16 +354,19 @@ Side-effect MCP
 | Cognitive delegation | 80 / 80 |
 | Event-chain failures | 0 |
 
-这些是本地工程记录，不是第三方 benchmark 排名，也不能单独证明整体智能能力优于其它系统。
+这些是 adaptive posterior routing 加入前的本地工程记录，不是新算法吞吐 benchmark，也不能单独证明整体智能能力优于其它系统。
 
-新增 adaptive posterior routing 另外做了本地专项 smoke：
+新增 adaptive posterior routing 已做专项 smoke：
 
-- posterior 从 shadow 进入 adaptive；
+- posterior 能从 shadow 进入 adaptive；
 - domain/global posterior 持久化；
 - tool reliability Beta posterior 更新；
-- counterfactual verifier credit 为正时写入 routing outcome；
+- counterfactual verifier credit 写入 routing outcome；
 - `routing.policy.updated` 事件正常产生；
-- learner error 不改变 live task 的安全执行路径。
+- learner error 不改变 live task 的安全执行路径；
+- synthetic outcome 可把工具排序从 cold-start 的 A>B 学成 B>A。
+
+最新 adaptive head 仍需要完整 regression、并发复测和 gold-set evaluation，详见 [验证报告](docs/VERIFICATION_REPORT.md)。
 
 ---
 
