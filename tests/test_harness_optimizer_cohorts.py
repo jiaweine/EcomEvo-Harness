@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 from ecomevo.runtime.harness_evolution import HarnessEvolutionOptimizer
 
 
@@ -49,7 +51,7 @@ def test_harmonic_reward_requires_both_quality_and_completeness(tmp_path):
     assert optimizer.verifier_potential(1.0, 0.0) == 0.0
     balanced = optimizer.verifier_potential(0.8, 0.8)
     imbalanced = optimizer.verifier_potential(0.99, 0.25)
-    assert balanced == 0.8
+    assert balanced == pytest.approx(0.8)
     assert imbalanced < balanced
 
 
