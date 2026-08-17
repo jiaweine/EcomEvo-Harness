@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -49,3 +51,53 @@ async def test_stale_legacy_session_never_replays_tools_call():
 
     assert len(calls) == 1
     assert 'legacy' not in registry._legacy_sessions
+
+
+@pytest.mark.asyncio
+async def test_modern_tool_call_5xx_is_ambiguous_and_never_falls_back_or_replays():
+    calls = []
+
+    def handler(request: httpx.Request):
+        payload = json.loads(request.content.decode('utf-8'))
+        calls.append(payload['method'])
+        if payload['method'] == 'tools/list':
+            return httpx.Response(200, request=request, json={
+                'jsonrpc': '2.0', 'id': payload['id'],
+                'result': {'tools': [{'name': 'submit_business_action', 'inputSchema': {'type': 'object'}}]},
+            })
+        return httpx.Response(503, request=request, json={
+            'jsonrpc': '2.0', 'id': payload['id'],
+            'error': {'code': -32000, 'message': 'upstream unavailable'},
+        })
+
+    registry = MCPRegistry(transport=httpx.MockTransport(handler))
+    registry.servers['core'] = MCPServer(key='core', name='core', url='https://core.example/mcp')
+
+    with pytest.raises(httpx.RemoteProtocolError):
+        await registry.call_tool('core', 'submit_business_action', {'action_id': 'A-2'})
+
+    assert calls == ['tools/list', 'tools/call']
+
+
+@pytest.mark.asyncio
+async def test_modern_tool_call_explicit_4xx_remains_explicit_failure():
+    def handler(request: httpx.Request):
+        payload = json.loads(request.content.decode('utf-8'))
+        if payload['method'] == 'tools/list':
+            return httpx.Response(200, request=request, json={
+                'jsonrpc': '2.0', 'id': payload['id'],
+                'result': {'tools': [{'name': 'submit_business_action', 'inputSchema': {'type': 'object'}}]},
+            })
+        return httpx.Response(422, request=request, json={
+            'jsonrpc': '2.0', 'id': payload['id'],
+            'error': {'code': -32602, 'message': 'invalid arguments'},
+        })
+
+    registry = MCPRegistry(transport=httpx.MockTransport(handler))
+    registry.servers['core'] = MCPServer(key='core', name='core', url='https://core.example/mcp')
+
+    with pytest.raises(RuntimeError) as exc:
+        await registry.call_tool('core', 'submit_business_action', {'action_id': 'bad'})
+
+    assert not isinstance(exc.value, httpx.RemoteProtocolError)
+    assert '422' in str(exc.value)
