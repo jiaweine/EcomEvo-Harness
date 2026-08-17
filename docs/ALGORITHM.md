@@ -2,23 +2,24 @@
 
 ## 摘要
 
-EcomEvo 将企业 Agent 建模为一个**受硬安全约束的序贯证据获取过程**。语言模型负责提出候选认知动作，但没有工具执行权、证据裁决权或业务动作授权权。Runtime 负责合法动作过滤、证据路由、预算约束、验证、反事实 credit assignment、在线后验更新和安全停止。
+EcomEvo 将企业 Agent 建模为一个**受硬安全约束的序贯证据获取与受控决策过程**。语言模型负责提出候选认知动作，但不拥有工具执行权、证据裁决权或业务动作授权权；Runtime 负责合法动作过滤、上下文路由、预算控制、验证、反事实 credit assignment、在线后验更新和停止。
 
-当前核心算法由五个互相独立但闭环协作的部分组成：
+当前核心算法由六个闭环组件构成：
 
-1. **EvoLoop**：Observe → Decide → Route → Act → Review → Verify → Replan / Stop；
-2. **EvoGain-APR**：Adaptive Posterior Routing，基于层级 Bayesian posterior 的可学习工具路由；
-3. **Verifier Difference Credit**：使用 leave-one-out verifier 反事实估计工具的边际证据贡献；
-4. **Bayesian Skill Evolution**：成功/失败轨迹持续更新可复用技能后验；
-5. **Deterministic Authority**：Sandbox、Verifier、BusinessAction 和人工确认位于学习系统之外。
+1. **EvoLoop**：Observe → Decide → Route → Act → Review → Verify → Learn / Replan / Stop；
+2. **EvoGain-APR**：Adaptive Posterior Routing，以层级 Bayesian contextual posterior 学习只读工具选择；
+3. **Contextual Abstention**：不再使用固定 absolute utility floor，而是比较工具与同状态 no-op 的后验优势；
+4. **Verifier Difference Credit**：用 leave-one-out deterministic verifier 估计工具的边际证据贡献；
+5. **Bayesian Reliability + Skill Evolution**：分别学习工具运行稳定性与长期可复用认知策略；
+6. **Deterministic Authority**：Registry、Sandbox、Verifier、Governance 与人工确认完全位于学习参数空间之外。
 
-这意味着 EcomEvo 可以学习“下一步查什么”，但不能学习“如何绕过权限”。
+核心原则是：**系统可以学习“下一步查什么”，但不能学习“如何获得更多权限”。**
 
 ---
 
 ## 1. 问题定义
 
-设业务任务为
+设一个业务任务为
 
 \[
 \mathcal T=(g,d,\mathcal C,\mathcal E^{req},B)
@@ -30,7 +31,7 @@ EcomEvo 将企业 Agent 建模为一个**受硬安全约束的序贯证据获取
 - \(d\)：业务域；
 - \(\mathcal C\)：不可学习、不可降低的硬约束；
 - \(\mathcal E^{req}\)：完成任务需要的证据类别；
-- \(B\)：当前任务可使用的工具预算。
+- \(B\)：工具成本预算。
 
 第 \(t\) 步 Runtime 维护状态
 
@@ -38,239 +39,181 @@ EcomEvo 将企业 Agent 建模为一个**受硬安全约束的序贯证据获取
 s_t=(F_t,R_t,U_t,M_t,q_t,H_t)
 \]
 
-其中：
+其中 \(F_t\) 为已核验事实，\(R_t\) 为风险，\(U_t\) 为不确定性，\(M_t\) 为缺失证据，\(q_t\in[0,1]\) 为 Verifier score，\(H_t\) 为工具、任务图、技能和 recovery 历史。
 
-- \(F_t\)：已确认事实；
-- \(R_t\)：风险；
-- \(U_t\)：不确定性；
-- \(M_t\)：当前缺失证据集合；
-- \(q_t\in[0,1]\)：Verifier score；
-- \(H_t\)：已执行工具、specialist、技能和任务图历史。
-
-模型输出、memory、skill、历史回答和 specialist opinion 都属于**认知状态**，不自动成为独立业务证据。
+模型回复、memory、skill 与 specialist opinion 都属于认知状态，不自动成为独立业务证据。
 
 ---
 
-## 2. 合法动作空间
+## 2. 合法动作空间先于学习
 
-语言模型或确定性 Planner 可以提出候选工具集合 \(\hat{\mathcal A}_t\)。真正可以进入排序器的动作必须满足：
+模型或 Planner 可以提出候选集合 \(\hat{\mathcal A}_t\)，但进入 adaptive routing 前必须先经过确定性过滤：
 
 \[
 \mathcal A_t=
 \hat{\mathcal A}_t
-\cap \mathcal A^{registered}
-\cap \mathcal A^{read\text{-}only}
-\cap \mathcal A^{budget}
-\cap \mathcal A^{sandbox}
+\cap\mathcal A^{registered}
+\cap\mathcal A^{read-only}
+\cap\mathcal A^{budget}
+\cap\mathcal A^{sandbox}
 \]
 
-任何 unknown tool、side-effect tool、requires-confirmation tool、超预算调用和禁止的参数都会在进入学习策略之前被拒绝。
-
-因此在线学习只能改变
+因此学习系统只允许改变
 
 \[
 \pi(a\mid s),\quad a\in\mathcal A_t
 \]
 
-而不能改变 \(\mathcal A_t\) 本身的安全边界。
+而不能扩大 \(\mathcal A_t\)。unknown tool、side-effect tool、requires-confirmation tool、越权参数和超预算动作在学习器之前就被拒绝。
 
 ---
 
-## 3. EvoGain-APR：Adaptive Posterior Routing
+## 3. EvoGain-APR 上下文表示
 
-### 3.1 为什么不再使用固定价值函数
-
-旧实现使用固定线性系数计算工具价值。它适合作为冷启动，但不能适应：
-
-- 不同业务域的证据结构；
-- 新增 MCP 工具；
-- 工具质量变化；
-- 模型能力变化；
-- 历史技能质量变化；
-- 任务从初始查证进入 recovery 后的策略变化。
-
-因此当前实现把人工系数降级成**先验均值** \(\mu_0\)，真实任务不断更新 posterior。随着样本增多，先验影响自然衰减。
-
-### 3.2 Context feature
-
-对候选工具 \(a_i\)，当前实现构造 12 维上下文特征：
+对候选工具 \(a_i\)，Runtime 构造 12 维可审计 feature：
 
 \[
-x_i=[
-1,
-C_i,
-A_i,
-S_i,
-N_i,
-X_i,
-P_i,
-L_i,
-K_i,
-D_i,
-G_i,
-R_i
-]^T
+x_i=[1,C_i,A_i,S_i,N_i,X_i,P_i,L_i,K_i,D_i,G_i,R_i]^T
 \]
 
-分别表示：
+其中：
 
-- \(C_i\)：missing evidence coverage；
-- \(A_i\)：authority，企业 MCP read-only 且有 evidence tags 时更高；
-- \(S_i\)：相关已验证 skill 的 posterior support；
-- \(N_i\)：novelty，重复成功调用会降低；
-- \(X_i\)：counter-evidence / contradiction value；
-- \(P_i\)：工具 purpose/evidence channel specificity；
+- \(C_i\)：当前 missing evidence coverage；
+- \(A_i\)：可信企业 read tool / evidence tags 的 authority；
+- \(S_i\)：相关已验证 skill posterior support；
+- \(N_i\)：novelty；
+- \(X_i\)：counter-evidence / contradiction potential；
+- \(P_i\)：purpose 与 evidence channel specificity；
 - \(L_i\)：tool reliability posterior；
 - \(K_i\)：cost pressure；
 - \(D_i\)：与本轮已选工具的 evidence-channel redundancy；
-- \(G_i\)：当前 evidence gap pressure；
-- \(R_i\)：是否处于 recovery context。
+- \(G_i\)：evidence gap pressure；
+- \(R_i\)：recovery context。
 
-这些特征来自 Runtime 可审计状态，不来自模型隐藏推理。
+这些 feature 来自 Runtime 结构化状态，不来自隐藏 chain-of-thought。
 
 ---
 
-## 4. Bayesian 线性后验
+## 4. 冷启动 prior，而不是固定价值函数
 
-### 4.1 冷启动先验
-
-定义参数
+参数使用 Gaussian prior：
 
 \[
 w\sim\mathcal N(\mu_0,\Lambda_0^{-1})
 \]
 
-实现中 \(\Lambda_0=\lambda I\)，初始统计量为
+实现维护 sufficient statistics：
 
 \[
-A_0=\Lambda_0
+A_0=\Lambda_0,\qquad b_0=\Lambda_0\mu_0
 \]
 
-\[
-b_0=\Lambda_0\mu_0
-\]
+当前 \(\mu_0\) 是保守 cold-start engineering prior，只在数据不足时提供方向。它不是业务置信度，也不是永久价值函数。
 
-\(\mu_0\) 只承担 cold-start prior 的作用，不是永久价值函数。
-
-### 4.2 在线更新
-
-若观察到一个工具上下文 \(x_t\) 和 credit \(r_t\)，标准线性 Bayesian sufficient statistics 为
-
-\[
-A_t=A_{t-1}+x_tx_t^T
-\]
-
-\[
-b_t=b_{t-1}+r_tx_t
-\]
-
-posterior mean 为
+posterior mean：
 
 \[
 \mu_t=A_t^{-1}b_t
 \]
 
-预测不确定性为
+预测 epistemic uncertainty：
 
 \[
 \sigma_t^2(x)=x^TA_t^{-1}x
 \]
 
-EcomEvo 不依赖额外 ML runtime；当前 12 维矩阵在 Runtime 内完成确定性求逆和更新。
+固定 feature dimension 为 \(d=12\)，因此无需引入大型 ML runtime。
 
 ---
 
-## 5. Non-stationary adaptation
+## 5. Parallel-batch Bayesian update
 
-生产工具生态并非平稳分布。一个 MCP 服务可能变慢、数据质量可能下降，新模型可能改变候选工具分布。
-
-因此实现使用保留先验质量的指数遗忘：
+Agent 一轮通常并行选择多个只读工具。若同一批次包含 \(k\) 个 credit 样本 \((x_i,r_i)\)，当前实现**每轮只执行一次 non-stationary decay**，再批量吸收该轮信息：
 
 \[
-A_t=A_0+\delta(A_{t-1}-A_0)+x_tx_t^T
+A_t=A_0+\delta(A_{t-1}-A_0)+\sum_{i=1}^{k}x_ix_i^T
 \]
 
 \[
-b_t=b_0+\delta(b_{t-1}-b_0)+r_tx_t
+b_t=b_0+\delta(b_{t-1}-b_0)+\sum_{i=1}^{k}r_ix_i
 \]
 
-当前 \(\delta=0.997\)。
+而不是对同一个并行批次重复 \(k\) 次 decay。
 
-旧轨迹会缓慢衰减，但不会把系统退化成无先验状态。
+当前 \(\delta=0.997\)。旧证据缓慢衰减，使策略能适应工具质量、MCP 数据源、模型候选分布和任务分布的变化。
 
-同时维护 reward residual EWMA：
+### 5.1 Writer-hot-path drift signal
+
+SQLite writer lock 内不执行矩阵求逆。为了避免昂贵 posterior inference 延长单 writer 持锁时间，热写路径维护 outcome-surprise EWMA：
 
 \[
-e_t=|r_t-\hat r_t|
+e_t=|r_t-\bar r_{t-1}|
 \]
 
 \[
-\bar e_t=0.9\bar e_{t-1}+0.1e_t
+\bar r_t=0.92\bar r_{t-1}+0.08r_t
 \]
 
-残差升高意味着当前 posterior 与新环境不一致。Runtime 会降低已学习策略的激活强度并提高 epistemic exploration，而不是盲目相信旧策略。
+\[
+\bar e_t=0.90\bar e_{t-1}+0.10e_t
+\]
+
+完整 posterior mean / covariance / UCB 仍在只读 scoring 路径精确计算。换言之，**写路径优化不牺牲 ranking posterior 的数学形式**。
 
 ---
 
-## 6. Global → Domain 层级迁移
+## 6. Global → Domain hierarchical transfer
 
-每次工具 credit 同时更新：
+同时维护全局 posterior 与业务域 posterior：
 
-- 全局 posterior \(p(w_g\mid D)\)；
-- 当前业务域 posterior \(p(w_d\mid D_d)\)。
+\[
+p(w_g\mid D),\qquad p(w_d\mid D_d)
+\]
 
-对业务域样本数 \(n_d\)，定义收缩系数
+业务域样本数为 \(n_d\) 时：
 
 \[
 \tau_d=\frac{n_d}{n_d+\kappa}
 \]
 
-当前 \(\kappa=24\)。
-
-组合预测均值：
+当前 \(\kappa=24\)。组合预测均值：
 
 \[
-\hat\mu_d(x)=
-(1-\tau_d)\mu_g^Tx+
-\tau_d\mu_d^Tx
+\hat\mu_d(x)=(1-\tau_d)\mu_g^Tx+\tau_d\mu_d^Tx
 \]
 
-新业务域不会从零开始，但也不会直接继承成熟业务域的全部策略。
-
-当本域仍在 shadow、但全局样本已经充足时，只允许很小比例的 global transfer。
+因此新业务域可以使用少量全局经验，但不会直接继承成熟领域的完整策略。
 
 ---
 
-## 7. Deterministic UCB，而不是随机在线探索
+## 7. Deterministic UCB
 
-为了兼顾探索与可复现性，生产路由不使用随机 Thompson Sampling，而使用 deterministic upper confidence bound：
+生产路由使用确定性 UCB，而非随机 Thompson Sampling：
 
 \[
 Q_t(x)=\hat\mu_t(x)+\beta_t\hat\sigma_t(x)
 \]
 
-其中 \(\beta_t\) 随领域 exploration policy 与 residual drift 调整。
+\(\beta_t\) 由领域 exploration policy 与当前 drift 调节。
 
-这样：
+这样同时满足：
 
-- 高均值工具倾向被利用；
-- 高不确定但合法的工具仍有机会被探索；
-- 相同 posterior 与相同任务状态得到相同排序；
-- 审计可以解释“因为 posterior uncertainty 而探索”，而不是依赖不可复现随机数。
+- exploitation：高 posterior mean 工具有优先权；
+- exploration：合法但不确定的工具可以获得机会；
+- reproducibility：相同 posterior + state 得到相同分数；
+- auditability：可以记录 posterior、uncertainty 与 activation，而不记录隐藏推理。
 
 ---
 
 ## 8. Shadow → Adaptive activation
 
-学习系统不能在只有少量轨迹时立即接管路由。
+年轻 posterior 不能立即接管生产路由。
 
-设本域 posterior 样本数为 \(n\)。当前生产策略：
+样本不足时：
 
 \[
-\eta=0,\quad n<n_0
+\eta=0
 \]
-
-其中 \(n_0=12\)。
 
 进入 adaptive 后：
 
@@ -282,172 +225,204 @@ Q_t(x)=\hat\mu_t(x)+\beta_t\hat\sigma_t(x)
 \right)
 \]
 
-其中：
+其中当前 \(n_0=12\)，\(\eta_{max}=0.96\)。
+
+最终 score：
 
 \[
-Conf_t=
-clip\left(
-\frac{1}{1+1.8\bar e_t},
-0.30,
-1
-\right)
+Score_t(x)=(1-\eta_t)\mu_0^Tx+\eta_tQ_t(x)
 \]
 
-当前 \(\eta_{max}=0.96\)。
-
-最终工具评分为
-
-\[
-Score_t(x)=
-(1-\eta_t)\mu_0^Tx+
-\eta_tQ_t(x)
-\]
-
-因此固定系数只在冷启动阶段占主导；成熟后最多约 96% 由后验策略决定。
-
-为避免年轻 posterior 突然大幅偏离，在较早样本阶段还会限制单次 learned score 相对 prior 的最大跳变。
+在本域尚未成熟、全局样本已经足够时，只允许有界 global transfer。
 
 ---
 
-## 9. Verifier Difference Credit
+## 9. Contextual Abstention：学习“什么时候不调用”
 
-### 9.1 不使用手工 reward 权重拼接
+旧实现使用固定 absolute utility floor。这会产生尺度问题：posterior 可以改变 ranking，却仍可能被旧阈值截断。
 
-如果用
+当前实现定义一个与任务状态一致的 **no-op / abstain context** \(x_{\varnothing}(s_t)\)。它保留当前 gap pressure、recovery context 和中性的未观察工具先验，但不携带具体工具 evidence feature。
+
+对候选动作定义：
+
+\[
+Adv_t(a_i\mid s_t)=Score_t(x_i)-Score_t(x_{\varnothing}(s_t))
+\]
+
+只在
+
+\[
+Adv_t(a_i\mid s_t)>0
+\]
+
+时选择该工具。
+
+因此停止边界与 posterior 使用同一标尺，不再依赖一个永久的 `0.42` 常数。这里的 abstention 只影响只读认知动作，不能跳过业务 required evidence gate。
+
+---
+
+## 10. Verifier Difference Credit
+
+### 10.1 为什么不用手工 reward 拼接
+
+若使用
 
 \[
 r=\alpha\Delta score+\beta\Delta gap-\gamma cost+\cdots
 \]
 
-那么只是把“固定价值函数”问题转移到“固定奖励函数”。
+只是把固定价值函数问题搬到奖励函数。
 
-生产 EcomEvo 因此使用 verifier leave-one-out difference reward。
+当前生产路径使用 deterministic leave-one-out verifier difference reward。
 
-### 9.2 Verification potential
+### 10.2 Harmonic verification potential
 
-对 VerificationResult \(v\)，定义：
-
-\[
-\Phi(v)=q(v)+Completeness(v)
-\]
-
-其中
+令 evidence completeness：
 
 \[
-Completeness(v)=
-clip\left(
-1-\frac{|M(v)|}{\max(1,|\mathcal E^{req}|)},
-0,
-1
-\right)
+c(v)=clip\left(1-\frac{|M(v)|}{\max(1,|\mathcal E^{req}|)},0,1\right)
 \]
 
-Verifier score 与 evidence completeness 本身都已归一到 \([0,1]\)，因此这里不额外引入人工混合权重。
-
-### 9.3 Leave-one-out marginal contribution
-
-设当前所有工具结果为 \(R\)，本轮自适应策略选中的结果为 \(r_i\)。
-
-Runtime 额外执行一次只读 deterministic verifier：
+Verifier score 为 \(q(v)\in[0,1]\)。验证势能采用调和形式：
 
 \[
-D_i=
-\Phi(V(R))-\Phi(V(R\setminus\{r_i\}))
+\Phi(v)=
+\begin{cases}
+\frac{2q(v)c(v)}{q(v)+c(v)}, & q(v)+c(v)>0\\
+0, & otherwise
+\end{cases}
 \]
 
-再按实际工具成本归一化：
+它具有关键性质：**高 score 无法补偿很差的 evidence completeness，反之亦然。**
+
+### 10.3 Leave-one-out marginal contribution
+
+当前所有工具结果为 \(R\)，本轮被 adaptive router 选择的结果为 \(r_i\)：
+
+\[
+D_i=\Phi(V(R))-\Phi(V(R\setminus\{r_i\}))
+\]
+
+按工具成本归一化：
 
 \[
 credit_i=\frac{D_i}{1+cost_i}
 \]
 
-这个 credit 用于更新 routing posterior。
+\(\Phi\in[0,1]\)，因此 difference credit 天然有界。
 
-它不是严格的因果识别，也不是完整 Shapley value；它是一个**有界、可解释、低成本的 difference reward**。因为每轮自主工具数有硬上限，额外 verifier 计算量同样有界。
+这不是严格因果识别，也不是完整 Shapley value；它是有界、确定性、可解释且计算成本受每轮工具上限约束的 counterfactual credit。
 
-Specialist 自然语言不会进入这次 counterfactual credit，避免“模型说得更像真的”被误当成证据贡献。
+Specialist 自然语言不进入该 credit verifier，避免模型表达风格成为奖励来源。
 
 ---
 
-## 10. Tool Reliability Posterior
+## 11. Tool Reliability Posterior
 
-证据价值和工具稳定性是两件不同的事。
+证据价值与工具运行稳定性分开建模。
 
-每个 domain/tool 维护：
+每个 domain/tool：
 
 \[
 p_{d,a}\sim Beta(\alpha_{d,a},\beta_{d,a})
 \]
 
-成功调用：
+成功：
 
 \[
 \alpha\leftarrow\alpha+1
 \]
 
-失败调用：
+失败：
 
 \[
 \beta\leftarrow\beta+1
 \]
 
-工具可靠性使用全局与领域 posterior 的收缩组合：
+全局与本域 reliability 用样本数驱动 shrinkage，而不是永久固定 35/65 混合：
 
 \[
-L_{d,a}=0.35\,E[p_{global,a}]+0.65\,E[p_{d,a}]
+\tau^{rel}_{d,a}=\frac{n_{d,a}}{n_{d,a}+\kappa_{rel}}
 \]
 
-它作为 routing context feature，而不是业务证据。
+\[
+L_{d,a}=(1-\tau^{rel}_{d,a})E[p_{g,a}]+\tau^{rel}_{d,a}E[p_{d,a}]
+\]
 
-因此一个工具可以“业务上很相关，但运行不稳定”，也可以“非常稳定，但对当前证据缺口没价值”。两者不会被一个混合 reward 混为一谈。
+当前 \(\kappa_{rel}=12\)。新工具先借用全局稳定性，随后由本域真实使用覆盖。
 
 ---
 
-## 11. Budget-aware set selection
+## 12. Budget-aware diverse set selection
 
-单工具高分并不代表一组工具组合最优。
-
-每选择一个工具后，Runtime 重新计算剩余候选与已选 evidence channels 的 overlap：
+对已经选择的 evidence channels \(C_S\)，候选工具通道重叠：
 
 \[
-D_i=
-\frac{|Channel_i\cap Channel_{selected}|}
-{\max(1,|Channel_i|)}
+D_i=\frac{|C_i\cap C_S|}{\max(1,|C_i|)}
 \]
 
-该值进入 posterior feature `redundancy`，因此“多样性惩罚”本身也可以被真实 outcome 学习，而不再是永久固定减分项。
+`redundancy` 作为 posterior feature，因此同轮多样性影响也可以从真实 outcome 学习，而不是永久固定减分项。
 
-选择过程满足：
+选择始终满足：
 
 \[
 \sum_{a_i\in S_t}cost_i\le B_t
 \]
 
-并受每步最大工具数硬限制。
+并受每步最大工具数硬上限约束。
 
 ---
 
-## 12. Dynamic Task Graph 与 Stagnation
+## 13. 单轮一致性与数据库事务
 
-如果连续 verification fingerprint 没有改变，Runtime 认为当前认知拓扑可能停滞。
+同一 routing round 使用一个 immutable scoring snapshot：
 
-fingerprint 由：
+```text
+read global posterior
+read domain posterior
+read all candidate tool reliability
+        ↓
+compute posterior + UCB once
+        ↓
+rank whole candidate set
+```
+
+因此同一轮不会因为前一个候选的读取副作用改变后一个候选的 posterior。
+
+学习写入则合并为一个事务：
+
+```text
+BEGIN IMMEDIATE
+  update global sufficient statistics
+  update domain sufficient statistics
+  insert all routing outcomes
+  update all tool reliability posteriors
+COMMIT
+```
+
+事务数量从旧设计近似 \(O(2k)\) / round 降为 \(O(1)\) / round。
+
+矩阵求逆不发生在 SQLite writer lock 内。
+
+---
+
+## 14. Dynamic Task Graph 与 Stagnation
+
+如果连续 verification fingerprint 没有变化，Runtime 认为当前认知拓扑可能停滞。
+
+fingerprint 包含：
 
 - missing evidence；
 - 已成功工具类别；
-- 企业 evidence tags
+- enterprise evidence tags。
 
-构成。
-
-连续停滞时可以新增只读反证 specialist；再次无进展则停止，而不是无限 retry。
-
-拓扑可以改变，但 specialist 仍然只有 cognition 权限。
+停滞时可以增加只读 counter-evidence specialist、切换证据通道，连续无进展后停止，而不是无限 retry。
 
 ---
 
-## 13. Bayesian Skill Evolution
+## 15. Bayesian Skill Evolution
 
-Routing posterior 学“下一步工具策略”，Skill Library 学“可复用业务认知模式”。两者分开更新。
+Routing posterior 学“当前状态下一步查什么”；Skill Library 学“长期可复用的业务认知模式”。
 
 每个 skill：
 
@@ -455,28 +430,24 @@ Routing posterior 学“下一步工具策略”，Skill Library 学“可复用
 p_k\sim Beta(\alpha_k,\beta_k)
 \]
 
-其 posterior mean：
+posterior mean：
 
 \[
 \mu_k=\frac{\alpha_k}{\alpha_k+\beta_k}
 \]
 
-Skill ranking 综合 posterior、shadow replay 和 trigger relevance；同一 pathology niche 只保留更强代表，避免 archive 无限膨胀。
-
-Skill 可以改变信息获取和 specialist 方向，但不能成为 evidence，也不能给自己增加 side-effect 权限。
+Skill 经过 shadow replay / regression gate、Quality-Diversity niche 竞争、promotion / retirement。Skill 可以改变认知策略，但不能成为业务证据，也不能获得 side-effect authority。
 
 ---
 
-## 14. Deterministic Authority
-
-整个学习系统位于硬权限边界上方：
+## 16. Deterministic Authority
 
 ```text
 LLM / Open-weight Controller
         ↓
 Candidate cognition
         ↓
-EvoGain-APR posterior routing
+EvoGain-APR
         ↓
 Read-only tools / specialists
         ↓
@@ -491,95 +462,115 @@ Human confirmation
 Business executor
 ```
 
-下面这些内容不参与 posterior 学习：
+不可学习内容包括：
 
+- registered tool set；
 - side-effect prohibition；
-- tool registration；
-- credential scope；
-- budget hard ceiling；
+- credential / tenant scope；
+- hard budget ceiling；
 - required evidence gate；
-- tenant / approval authority；
+- human approval identity；
 - confirmation requirement。
 
-即使 routing posterior 学坏，也只能导致“查证策略变差”，不能变成“生产权限扩大”。
+即使 routing policy 学坏，最坏结果应被限制在“查证策略变差”，而不是“权限变大”。
 
 ---
 
-## 15. 复杂度
+## 17. 复杂度
 
-设 feature dimension 为 \(d=12\)，本轮候选工具数为 \(m\)，最终选择 \(k\)。
+设 feature dimension \(d=12\)，候选工具数 \(m\)，本轮最多选择 \(k\)。
 
-Posterior preparation 主要成本为两个 \(d\times d\) 矩阵求逆：
+两个 posterior inverse：
 
 \[
 O(d^3)
 \]
 
-因为 \(d\) 固定且很小，这一成本相对外部模型和 MCP 网络调用可以忽略。
+在固定 \(d=12\) 下为小型本地 CPU 成本。
 
-候选重排约为：
+Greedy set ranking：
 
 \[
 O(kmd^2)
 \]
 
-Counterfactual credit 最多额外执行 \(k\) 次 deterministic verifier：
+Counterfactual credit 最多额外运行 \(k\) 次 deterministic verifier：
 
 \[
-O(k\cdot V)
+O(kV)
 \]
 
-其中 \(k\) 被 Runtime 每步工具上限严格限制。
+数据库学习事务：
+
+\[
+O(1)\ \text{transactions / round}
+\]
+
+而不是按工具产生多个独立 writer transactions。
 
 ---
 
-## 16. 与前沿 Agent 学习方向的关系
+## 18. 已执行的专项性能实验
 
-当前设计吸收但没有照搬以下研究方向：
+以下为**隔离 routing-learning-store 压测**，不是完整 Runtime / 模型 / MCP 的端到端 QPS。
 
-- **Agent Lightning**：长轨迹需要 credit assignment，训练/执行应解耦；
-- **AutoTool**：工具选择应成为可优化的 ranking policy，而不是固定 inventory 上的 prompt heuristic；
-- **ToRL / ReTool**：工具使用时机和策略可以从 outcome 学习；
-- **language world model / agent simulator**：可用于未来 shadow replay 和大规模离线策略评估。
+240 个并发 routing rounds、每轮 4 个 learning samples 的旧逐工具双事务实现，在 64 workers 下约：
 
-EcomEvo 的不同点是：当前系统不要求在线更新 LLM 参数，而是先学习**Runtime 级 read-only routing policy**。这样可以更快更新、更容易审计，也更容易保持企业权限边界。
+- 59 rounds/s；
+- p95 约 2.60 s。
+
+改成单轮单事务，但 writer lock 内仍做 posterior inverse 后，吞吐显著提高；进一步把矩阵求逆完全移出 writer lock 后，隔离结果为：
+
+| Workers | Throughput | p50 | p95 | p99 |
+| ---: | ---: | ---: | ---: | ---: |
+| 16 | ~256.5 rounds/s | 0.061 s | 0.116 s | 0.160 s |
+| 64 | ~299.5 rounds/s | 0.202 s | 0.421 s | 0.449 s |
+| 120 | ~351.5 rounds/s | 0.306 s | 0.549 s | 0.611 s |
+
+这说明 adaptive 数学本身不是主要瓶颈；SQLite writer transaction 粒度与持锁时间才是当前单节点 learning state 的主要性能变量。
+
+这些脚本只在临时环境执行，不提交仓库。
 
 ---
 
-## 17. 当前实现与研究扩展
+## 19. 当前研究边界与下一阶段
 
-### 已实现
+已经实现：
 
-- cold-start prior → online posterior；
+- fixed heuristic → cold-start prior → online posterior；
 - global/domain hierarchical transfer；
 - deterministic UCB；
-- shadow activation；
+- contextual abstention advantage；
+- shadow → adaptive activation；
 - non-stationary decay；
-- residual drift；
-- tool reliability Beta posterior；
-- verifier leave-one-out difference credit；
-- persistent routing outcomes；
+- batched writer path；
+- outcome-surprise drift EWMA；
+- sample-shrunk tool reliability posterior；
+- harmonic verifier leave-one-out credit；
 - budget/diversity set selection；
-- routing audit trace；
-- learner failure 与业务执行隔离。
+- learner failure 与业务 authority 隔离；
+- routing/runtime telemetry。
 
-### 下一阶段值得研究
+下一阶段值得研究：
 
-1. **Doubly-robust off-policy evaluation**：在不扩大线上 exploration 风险的情况下评估候选 policy；
-2. **World-model shadow replay**：用可控 agent environment simulator 产生 counterfactual trajectory，再由真实 verifier 筛选；
-3. **Non-linear posterior head**：数据规模足够后，将线性 posterior 升级为低秩或 neural contextual bandit，但仍保留可解释 safety features；
-4. **Tool-set generalization**：对动态 MCP schema 构造 learned semantic embedding，同时保留 registration/sandbox hard gate；
-5. **Policy promotion gate**：用真实 gold set 和离线 replay 比较 posterior policy 与 cold-start prior，达到统计门槛后再提高 activation ceiling。
+1. **Doubly-robust off-policy evaluation**：在不扩大线上 exploration 风险时比较候选 policy；
+2. **Gold-set policy promotion gate**：posterior 相对 prior 的收益达到统计门槛后才提高 activation；
+3. **World-model shadow replay**：只用于认知策略评估，不拥有真实业务 authority；
+4. **Incremental verifier sufficient statistics**：长轨迹中降低 leave-one-out 复核成本；
+5. **Shared transactional policy store**：多节点高写入场景迁出 SQLite；
+6. **Non-linear posterior head**：真实 gold set 足够大后再研究低秩或 neural contextual bandit，并保留可解释 safety features。
 
-这些研究方向属于 cognition policy，不改变 deterministic authority。
+这些扩展仍只作用于 cognition policy。
 
 ---
 
-## 18. 参考方向
+## 20. 相关前沿方向
 
-- Luo et al., *Agent Lightning: Train ANY AI Agents with Reinforcement Learning*, arXiv:2508.03680.
-- Zou et al., *AutoTool: Dynamic Tool Selection and Integration for Agentic Reasoning*, arXiv:2512.13278.
-- Li et al., *ToRL: Scaling Tool-Integrated RL*, arXiv:2503.23383.
-- Feng et al., *ReTool: Reinforcement Learning for Strategic Tool Use in LLMs*, arXiv:2504.11536.
+当前设计与以下研究方向相关，但并非直接复制：
 
-这些论文用于说明相关研究方向；EcomEvo 的 posterior routing、deterministic UCB、verifier difference credit、企业 authority separation 是当前 Runtime 自己的系统组合与实现选择。
+- Agent trajectory / turn-level credit assignment；
+- learned tool routing / tool-use reinforcement learning；
+- contextual bandit routing；
+- agent world model / simulator for shadow evaluation。
+
+EcomEvo 的系统选择是：**先学习一个小型、可审计、read-only 的 Runtime policy，再把大模型能力当作可替换候选生成器。**这样模型升级不会抹掉 Runtime 已积累的路由经验，也不会把业务权限交给学习器。
