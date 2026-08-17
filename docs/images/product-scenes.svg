@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f8f9fb"/><stop offset="1" stop-color="#eef3f8"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#14213b" flood-opacity="0.08"/></filter></defs>
+  <rect width="1200" height="760" rx="30" fill="url(#bg)"/>
+  <text x="62" y="74" font-family="system-ui,-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif" font-size="27" font-weight="760" fill="#111827">一个 Runtime，覆盖五类高价值业务任务</text>
+  <text x="62" y="110" font-family="system-ui,-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif" font-size="15" fill="#667085">同一套证据、验证、学习和权限框架，不需要为每个场景重新造一个 Agent</text>
+
+  <g transform="translate(62 154)" font-family="system-ui,-apple-system,Segoe UI,PingFang SC,Microsoft YaHei,sans-serif">
+    <g>
+      <rect width="336" height="230" rx="22" fill="#fff" stroke="#e5e7eb" filter="url(#s)"/>
+      <rect x="22" y="22" width="46" height="46" rx="14" fill="#e9f0ff"/><text x="45" y="53" text-anchor="middle" font-size="18" font-weight="760" fill="#315fb8">品</text>
+      <text x="22" y="104" font-size="19" font-weight="760" fill="#1f2937">商品治理</text>
+      <text x="22" y="134" font-size="13" fill="#667085">主图 · 详情 · 资质 · 声明</text>
+      <text x="22" y="170" font-size="13" fill="#475467">把素材和声明放入同一证据链，</text><text x="22" y="192" font-size="13" fill="#475467">识别冲突、缺口和治理动作。</text>
+    </g>
+    <g transform="translate(366 0)">
+      <rect width="336" height="230" rx="22" fill="#fff" stroke="#e5e7eb" filter="url(#s)"/>
+      <rect x="22" y="22" width="46" height="46" rx="14" fill="#edf6f1"/><text x="45" y="53" text-anchor="middle" font-size="18" font-weight="760" fill="#2f7d5b">商</text>
+      <text x="22" y="104" font-size="19" font-weight="760" fill="#1f2937">商家审核</text>
+      <text x="22" y="134" font-size="13" fill="#667085">主体 · 授权 · 经营风险</text>
+      <text x="22" y="170" font-size="13" fill="#475467">持续追踪主体、品牌授权与企业数据，</text><text x="22" y="192" font-size="13" fill="#475467">证据不闭合时不会假装完成。</text>
+    </g>
+    <g transform="translate(732 0)">
+      <rect width="336" height="230" rx="22" fill="#fff" stroke="#e5e7eb" filter="url(#s)"/>
+      <rect x="22" y="22" width="46" height="46" rx="14" fill="#fff4e7"/><text x="45" y="53" text-anchor="middle" font-size="18" font-weight="760" fill="#a86519">售</text>
+      <text x="22" y="104" font-size="19" font-weight="760" fill="#1f2937">售后判责</text>
+      <text x="22" y="134" font-size="13" fill="#667085">订单 · 物流 · 聊天 · 举证</text>
+      <text x="22" y="170" font-size="13" fill="#475467">重建事实时间线，主动补物流和证据缺口，</text><text x="22" y="192" font-size="13" fill="#475467">退款建议与真实执行严格分离。</text>
+    </g>
+
+    <g transform="translate(183 264)">
+      <rect width="336" height="230" rx="22" fill="#fff" stroke="#e5e7eb" filter="url(#s)"/>
+      <rect x="22" y="22" width="46" height="46" rx="14" fill="#fbecec"/><text x="45" y="53" text-anchor="middle" font-size="18" font-weight="760" fill="#a64a43">险</text>
+      <text x="22" y="104" font-size="19" font-weight="760" fill="#1f2937">风险核查</text>
+      <text x="22" y="134" font-size="13" fill="#667085">交易 · 账户 · 商品 · 履约</text>
+      <text x="22" y="170" font-size="13" fill="#475467">把弱线索和独立风险证据分开，</text><text x="22" y="192" font-size="13" fill="#475467">避免把相关性误当成业务事实。</text>
+    </g>
+    <g transform="translate(549 264)">
+      <rect width="336" height="230" rx="22" fill="#fff" stroke="#e5e7eb" filter="url(#s)"/>
+      <rect x="22" y="22" width="46" height="46" rx="14" fill="#f1edfb"/><text x="45" y="53" text-anchor="middle" font-size="18" font-weight="760" fill="#6c56a4">审</text>
+      <text x="22" y="104" font-size="19" font-weight="760" fill="#1f2937">内容审核</text>
+      <text x="22" y="134" font-size="13" fill="#667085">图片 · 视频 · 文案 · 一致性</text>
+      <text x="22" y="170" font-size="13" fill="#475467">多模态事实进入统一验证空间，</text><text x="22" y="192" font-size="13" fill="#475467">模型提取事实，但不能单独决定处罚。</text>
+    </g>
+  </g>
+</svg>
