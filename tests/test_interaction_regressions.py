@@ -172,11 +172,14 @@ def test_realtime_reconcile_observes_message_posts_and_accepted_events():
     assert 'scheduleCurrentTaskRefresh()' in REALTIME
 
 
-def test_realtime_reconcile_does_not_use_equal_text_as_message_identity():
+def test_realtime_reconcile_uses_persisted_message_id_not_text_or_time_windows():
     assert 'lastRenderedUserText' not in REALTIME
     assert 'normalize(message?.content)' not in REALTIME
-    assert 'acceptedWhilePending' in REALTIME
-    assert 'recentLocalSuccess' in REALTIME
+    assert 'recentLocalSuccess' not in REALTIME
+    assert 'localAcceptedIds' in REALTIME
+    assert 'acceptedIds' in REALTIME
+    assert 'response.clone().json()' in REALTIME
+    assert "payload?.message?.id" in REALTIME
 
 
 def test_action_network_failure_is_treated_as_uncertain_not_safe_to_retry():
