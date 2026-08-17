@@ -50,9 +50,9 @@ def test_empty_task_scene_switching_contract_still_exists_in_primary_app():
     assert "method:'PATCH'" in APP
 
 
-def test_upload_guard_starts_before_primary_file_change_handler_and_finishes_per_request():
+def test_upload_guard_starts_on_file_selection_and_finishes_per_upload_request():
     assert "document.addEventListener('change'" in ENH
-    assert "event.target?.id !== 'fileInput'" in ENH
+    assert "event.target?.id === 'fileInput'" in ENH
     assert 'beginUploadBatch(event.target.files?.length || 0)' in ENH
     assert 'const isAssetUpload = assetUploadUrl(input, options)' in ENH
     assert 'if (isAssetUpload) finishUploadItem()' in ENH
@@ -78,7 +78,7 @@ def test_upload_guard_exposes_busy_state_and_restores_send_control():
 def test_runtime_telemetry_restores_from_historical_conversation():
     assert 'function latestRuntimeFromConversation(payload)' in ENH
     assert 'function restoreConversationTelemetry(payload, expectedConversationId)' in ENH
-    assert 'restoreConversationTelemetry(payload, conversationIdFromRequest(input))' in ENH
+    assert 'restoreConversationTelemetry(payload, cid)' in ENH
     assert "message?.payload?.runtime" in ENH
 
 
@@ -135,3 +135,17 @@ def test_mobile_runtime_pulse_uses_two_column_six_cell_layout():
     assert '@media(max-width:620px)' in CSS
     assert '.runtime-pulse-grid{grid-template-columns:repeat(2,minmax(0,1fr))}' in CSS
     assert '.runtime-pulse-grid>div:nth-child(odd)' in CSS
+
+
+def test_websocket_resume_cursor_is_scoped_per_conversation_and_bounded():
+    assert 'const eventCutoffs = new Map()' in ENH
+    assert 'function rememberEventCutoff(conversationId, eventId)' in ENH
+    assert 'eventCutoffs.size > 100' in ENH
+    assert 'rememberConversationEvents(payload, cid)' in ENH
+    assert 'rememberEventCutoff(event.conversation_id, event.id)' in ENH
+
+
+def test_websocket_reconnect_adds_after_id_only_when_cursor_exists():
+    assert "parsed.pathname.match(/\\/ws\\/conversations\\/([^/]+)$/)" in ENH
+    assert "parsed.searchParams.set('after_id', String(cutoff))" in ENH
+    assert 'if (cutoff > 0)' in ENH
