@@ -9,6 +9,7 @@ import asyncio
 import sys
 from PIL import Image
 
+from ecomevo.identity import IdentityMiddleware
 from . import application as _application
 from .upload_security import validate_raster as _validate_raster
 
@@ -35,11 +36,13 @@ async def _compat_emit(cid: str, event_type: str, payload: dict):
     return event
 
 
-# Preserve established monkeypatch/test hooks without moving upload logic back into
-# the API module. PIL.Image is the same module object used by upload_security.
 _application.Image = Image
 _application._validate_raster = _validate_raster
 _application.emit = _compat_emit
 _application.job_worker.emit = _compat_emit
+
+if not getattr(_application.app.state, "identity_middleware_installed", False):
+    _application.app.add_middleware(IdentityMiddleware, store=_application.store)
+    _application.app.state.identity_middleware_installed = True
 
 sys.modules[__name__] = _application
