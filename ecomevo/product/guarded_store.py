@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
@@ -10,24 +9,17 @@ from fastapi import HTTPException
 from .store import ConversationStore as BaseConversationStore
 
 
-class _DurableWakeEvent(dict):
-    """Queue payload that forces the websocket loop onto the durable event-log path.
-
-    The API's process-local queue is only a low-latency wake signal. Directly sending its
-    payload can skip an earlier event written by another worker. The websocket loop already
-    handles ``asyncio.TimeoutError`` by draining SQLite in event-id order, so the queue-facing
-    ``get('id')`` deliberately enters that existing durable branch. Normal mapping access
-    (``event['id']``) remains unchanged for callers and tests.
-    """
-
-    def get(self, key, default=None):
-        if key == "id":
-            raise asyncio.TimeoutError
-        return super().get(key, default)
-
-
 class ConversationStore(BaseConversationStore):
-    """Product store with atomic turn/asset and durable-event consistency guards."""
+    """Product store with atomic turn/asset consistency guards."""
+
+    def has_active_turn(self, cid) -> bool:
+        now = time.time()
+        with self._conn() as c:
+            row = c.execute(
+                "SELECT expires_at FROM turn_leases WHERE conversation_id=?",
+                (cid,),
+            ).fetchone()
+        return bool(row and float(row["expires_at"]) > now)
 
     def add_asset(self, cid, *, name, mime, path, size, meta):
         aid = f"asset-{uuid.uuid4().hex[:12]}"
@@ -66,7 +58,3 @@ class ConversationStore(BaseConversationStore):
             if cid:
                 c.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, cid))
         return self.get_asset(aid)
-
-    def add_event(self, cid, type_, payload):
-        event = super().add_event(cid, type_, payload)
-        return _DurableWakeEvent(event)
