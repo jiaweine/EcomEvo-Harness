@@ -53,6 +53,12 @@
     return /\/api\/conversations\/[^/?]+(?:\?|$)/.test(requestUrl(input)) && requestMethod(options) === 'GET';
   }
 
+  function conversationIdFromRequest(input) {
+    const match = requestUrl(input).match(/\/api\/conversations\/([^/?]+)(?:\?|$)/);
+    if (!match) return '';
+    try { return decodeURIComponent(match[1]); } catch (_) { return match[1]; }
+  }
+
   function showInteractionToast(message) {
     const node = document.getElementById('toast');
     if (!node) return;
@@ -170,12 +176,16 @@
     return null;
   }
 
-  function restoreConversationTelemetry(payload) {
-    telemetry.runtime = latestRuntimeFromConversation(payload);
-    telemetry.routing = telemetry.runtime?.belief?.facts?.routing_policy || null;
-    telemetry.counterfactualMs = null;
-    pulseSignature = '';
-    scheduleUiPass();
+  function restoreConversationTelemetry(payload, expectedConversationId) {
+    setTimeout(() => {
+      const currentConversationId = new URLSearchParams(location.search).get('conversation') || '';
+      if (!expectedConversationId || currentConversationId !== expectedConversationId) return;
+      telemetry.runtime = latestRuntimeFromConversation(payload);
+      telemetry.routing = telemetry.runtime?.belief?.facts?.routing_policy || null;
+      telemetry.counterfactualMs = null;
+      pulseSignature = '';
+      scheduleUiPass();
+    }, 0);
   }
 
   function updateApiLatency(ms) {
@@ -207,7 +217,10 @@
       if (conversationCreateUrl(input, options) && response.ok) {
         clearTurnTelemetry();
       } else if (conversationDetailUrl(input, options) && response.ok) {
-        try { restoreConversationTelemetry(await response.clone().json()); } catch (_) {}
+        try {
+          const payload = await response.clone().json();
+          restoreConversationTelemetry(payload, conversationIdFromRequest(input));
+        } catch (_) {}
       }
       if (actionUrl(input) && response.ok) {
         try {
@@ -245,7 +258,7 @@
       return;
     }
     if (event.type === 'answer.error') {
-      clearTurnTelemetry({ keepRouting: false });
+      clearTurnTelemetry();
     }
   }
 
