@@ -73,7 +73,8 @@ class EcomEvoEngine:
             try:reasoner=self.model_gateway.current_provider()
             except Exception:reasoner=None
         sid=f'run-{uuid.uuid4().hex[:12]}';goal=self.planner.parse_goal(text,assets,domain_hint=domain_hint);belief=self.planner.initial_belief(goal,assets)
-        belief.facts['autonomy_mode']='model_controller' if reasoner is not None else 'deterministic_fallback'
+        autonomy_mode='model_controller' if reasoner is not None else 'deterministic_fallback'
+        belief.facts['autonomy_mode']=autonomy_mode
         if context_text:
             from .tools import _query_terms
             belief.facts['conversation_context_terms']=_query_terms(context_text,limit=20)
@@ -124,7 +125,22 @@ class EcomEvoEngine:
 
         evidence=GovernanceBoundary.evidence(assets,tool_results);actions=GovernanceBoundary.actions(goal.domain,findings,risks,verification)
         final_verify=self.verifier.verify(goal,belief,tool_results,agents,actions);await self._emit(sid,'action.proposed',{'actions':[x.model_dump() for x in actions],'verification':final_verify.model_dump()},sink)
-        belief.facts.update({'tool_results':len([x for x in tool_results if x.ok]),'review_count':len(agents),'autonomy_steps':outcome.autonomy_steps,'delegations':outcome.delegations,'skill_count':len(outcome.skills_used)})
+        tool_cost_used=round(sum(max(0.0,float(x.cost or 0.0)) for x in tool_results),3)
+        tool_cost_budget=round(max(0.0,float(goal.max_tool_cost)),3)
+        tool_cost_remaining=round(max(0.0,tool_cost_budget-tool_cost_used),3)
+        if final_verify.passed:
+            stop_reason='verified';stop_detail='证据和约束已通过最终验证'
+        elif outcome.stagnated:
+            stop_reason='stagnated';stop_detail='连续补证没有改变可验证状态'
+        elif tool_cost_remaining<=0.05:
+            stop_reason='budget_exhausted';stop_detail='本轮只读工具预算已用尽'
+        elif outcome.recovery_events>=self.autonomy.max_steps:
+            stop_reason='step_limit';stop_detail='已达到本轮自主补证步数上限'
+        else:
+            stop_reason='evidence_incomplete'
+            details=list(final_verify.missing_evidence or final_verify.issues or [])
+            stop_detail=('；'.join(str(x) for x in details[:3])[:300] if details else '当前证据仍不足以完成最终验证')
+        belief.facts.update({'tool_results':len([x for x in tool_results if x.ok]),'review_count':len(agents),'autonomy_steps':outcome.autonomy_steps,'delegations':outcome.delegations,'skill_count':len(outcome.skills_used),'tool_cost_used':tool_cost_used,'tool_cost_budget':tool_cost_budget,'tool_cost_remaining':tool_cost_remaining,'stop_reason':stop_reason,'evidence_complete':bool(final_verify.evidence_complete)})
         try:
             routing=self.autonomy.policy.routing.snapshot(goal.domain.value)
             belief.facts['routing_policy']={
@@ -136,8 +152,8 @@ class EcomEvoEngine:
             pass
         belief.facts['runtime_elapsed_ms']=round((time.perf_counter()-started)*1000.0,2)
         belief.risks=list(dict.fromkeys(risks))[:10];belief.uncertainties=final_verify.missing_evidence;belief.missing_evidence=final_verify.missing_evidence;belief.confidence=round(final_verify.score,3)
-        self.skills.record_outcome(outcome.skills_used,success=bool(final_verify.passed),score=final_verify.score,session_id=sid,context={'domain':goal.domain.value,'missing':final_verify.missing_evidence,'recovery_events':outcome.recovery_events})
+        self.skills.record_outcome(outcome.skills_used,success=bool(final_verify.passed),score=final_verify.score,session_id=sid,context={'domain':goal.domain.value,'missing':final_verify.missing_evidence,'recovery_events':outcome.recovery_events,'stop_reason':stop_reason})
         if not outcome.skills_used:self.skills.note_run(goal.domain.value,success=bool(final_verify.passed),skill_used=False)
         if final_verify.passed:self.memory.add({'session_id':sid,'domain':goal.domain.value,'goal':text[:160],'score':final_verify.score,'risks':belief.risks})
-        summary=RuntimeSummary(session_id=sid,domain=goal.domain,status='completed' if final_verify.passed else 'needs_evidence',tool_calls=len(tool_results),subagents=len(agents),recovery_events=outcome.recovery_events,verifier_score=final_verify.score,evolved=evolved,event_chain_valid=True,autonomy_steps=outcome.autonomy_steps,delegations=outcome.delegations,evolution_events=evolution_events,skills_used=outcome.skills_used,task_graph=outcome.task_graph,proposed_actions=actions,evidence=evidence,findings=list(dict.fromkeys(findings))[:12],risks=list(dict.fromkeys(risks))[:10],belief=belief)
+        summary=RuntimeSummary(session_id=sid,domain=goal.domain,status='completed' if final_verify.passed else 'needs_evidence',tool_calls=len(tool_results),subagents=len(agents),recovery_events=outcome.recovery_events,verifier_score=final_verify.score,evolved=evolved,event_chain_valid=True,autonomy_steps=outcome.autonomy_steps,delegations=outcome.delegations,evolution_events=evolution_events,skills_used=outcome.skills_used,task_graph=outcome.task_graph,proposed_actions=actions,evidence=evidence,findings=list(dict.fromkeys(findings))[:12],risks=list(dict.fromkeys(risks))[:10],evidence_complete=bool(final_verify.evidence_complete),missing_evidence=list(final_verify.missing_evidence),tool_cost_used=tool_cost_used,tool_cost_budget=tool_cost_budget,tool_cost_remaining=tool_cost_remaining,stop_reason=stop_reason,stop_detail=stop_detail,stagnated=bool(outcome.stagnated),autonomy_mode=autonomy_mode,belief=belief)
         await self._emit(sid,'run.completed',summary.model_dump(mode='json'),sink);summary.event_chain_valid=self.events.verify_chain(sid);return summary
