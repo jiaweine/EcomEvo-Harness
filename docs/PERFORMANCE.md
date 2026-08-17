@@ -1,319 +1,315 @@
 # EcomEvo 性能工程手册
 
-> 本文只记录已经测量的性能数据、当前瓶颈与可复现的工程原则。不同层级的 benchmark 明确分开，避免把微基准当成整机吞吐。
+> 本文只记录已经测量的数据、当前瓶颈和可复现的工程原则。不同 benchmark 层级严格分开，避免把微基准、Hosted CI runtime 或真实业务 QPS 混为一谈。
 
 ## 1. 性能目标
 
-EcomEvo 的性能不是单一 QPS。生产目标同时包含：
+EcomEvo 的性能不是单一 QPS，而是同时关注：
 
-- **Time to Verifiable Decision**：从目标提交到可验证结论的时间；
-- **Tool Calls per Completed Task**：完成任务需要多少外部调用；
-- **Cost per Completed Task**：模型、MCP、媒体处理与业务 API 成本；
-- **p50 / p95 / p99 latency**；
-- **Verified Decisions per Operator Hour**；
-- **Side-effect safety = 0 unauthorized actions**；
-- **Policy learning overhead**；
-- **Recovery efficiency**：补证能否减少缺口而不是形成无效循环。
+- Time to Verifiable Decision；
+- Tool Calls per Completed Task；
+- Cost per Completed Task；
+- p50 / p95 / p99 latency；
+- Verified Decisions per Operator Hour；
+- unauthorized side effects = 0；
+- evidence-gate bypass = 0；
+- policy learning overhead；
+- recovery / resume efficiency。
 
-对 Agent Runtime 来说，少一次无价值远程 Tool / Model 调用，通常比把一个 12×12 矩阵计算再优化几十微秒更有价值。
-
----
-
-## 2. 已有端到端历史压力记录
-
-以下测试发生在 Adaptive Posterior Routing 加入之前，因此只能作为底层 Event Store / Sandbox / Tool Runtime 的工程基线。
-
-### 240 个并发 Runtime tasks
-
-| Metric | Result |
-| --- | ---: |
-| Throughput | **37.2 runs/s** |
-| p50 | **3.74 s** |
-| p95 | **5.22 s** |
-| p99 | **5.25 s** |
-| Event-chain failures | **0** |
-| Incomplete-case side-effect leaks | **0** |
-| Valid-case failures | **0** |
-| Duplicate semantic evolution patches | **0** |
-
-### 80 个 adversarial controllers
-
-| Metric | Result |
-| --- | ---: |
-| Throughput | **29.3 runs/s** |
-| p50 | **1.51 s** |
-| p95 | **2.20 s** |
-| Event-chain failures | **0** |
-| Side-effect leaks | **0** |
-| Unsafe proposals rejected | **80 / 80** |
-| Cognitive delegation | **80 / 80** |
-
-这些数字不能直接代表当前 adaptive head。
+对 Agent Runtime 来说，少一次无价值远程 Tool / Model 调用通常比把 12×12 本地矩阵再优化几十微秒更有意义。
 
 ---
 
-## 3. Adaptive Routing Store 压力实验
+## 2. Current-head 1→240 Runtime Gate
 
-为了定位新学习层的数据库开销，使用临时隔离脚本模拟：
-
-- 240 个 routing rounds；
-- 每轮 4 个 selected tool credits；
-- 共享一个 SQLite routing store；
-- 不包含外部 LLM、MCP 网络和多模态解析。
-
-### 3.1 旧逐工具写入
-
-旧实现每个工具分别：
-
-1. 写 global/domain posterior；
-2. 再写 global/domain reliability。
-
-近似产生 \(2k\) writer transactions / round。
-
-64 workers：
-
-- throughput 约 **59 rounds/s**；
-- p95 约 **2.60 s**；
-- p99 约 **3.57 s**。
-
-### 3.2 单轮单事务
-
-现在一轮合并：
-
-```text
-BEGIN IMMEDIATE
-  global posterior batch update
-  domain posterior batch update
-  all routing outcomes
-  all reliability updates
-COMMIT
-```
-
-并且 non-stationary decay 每轮只发生一次。
-
-### 3.3 把 posterior inverse 移出 writer lock
-
-第一版 batch writer 仍然在持写锁时执行矩阵 inverse 来计算 residual。压测显示在高 worker 数下仍有明显 lock amplification。
-
-当前实现把 exact posterior inverse / uncertainty 完全放在只读 scoring 路径；writer-hot-path 只维护 bounded outcome-surprise EWMA。
-
-最新隔离结果：
-
-| Workers | Throughput | p50 | p95 | p99 |
-| ---: | ---: | ---: | ---: | ---: |
-| 16 | **~256.5 rounds/s** | 0.061 s | 0.116 s | 0.160 s |
-| 64 | **~299.5 rounds/s** | 0.202 s | 0.421 s | 0.449 s |
-| 120 | **~351.5 rounds/s** | 0.306 s | 0.549 s | 0.611 s |
-
-与旧 64-worker 写法相比，隔离 routing-store throughput 约从 **59 → 299.5 rounds/s**，约 **5.1×**；p95 从约 **2.60s → 0.421s**。
-
-这是 routing persistence 微基准，不是端到端业务吞吐。
-
----
-
-## 4. Read-path 压力
-
-对成熟 store 做 1000 次并发 `prepare_context()` 读取时，隔离结果约：
-
-- throughput **315.8 reads/s**；
-- p50 **0.193 s**；
-- p95 **0.304 s**；
-- p99 **0.486 s**。
-
-`prepare_context()` 一次读取：
-
-- global posterior；
-- domain posterior；
-- 本轮所有候选工具 reliability。
-
-避免了旧的 per-candidate reliability N+1 query。
-
----
-
-## 5. Counterfactual learner plumbing
-
-最小 stub Runtime 对当前 production controller 的并发 plumbing 测试：
-
-- 80 concurrent controller runs；
-- throughput 约 **238 runs/s**；
-- p50 约 **1.66 ms**；
-- p95 约 **18.1 ms**；
-- p99 约 **24.2 ms**；
-- errors **0**；
-- domain posterior samples **80**。
-
-该测试只证明 counterfactual credit → batch persist → posterior update 的轻量路径，不包含真实模型、真实工具或媒体解析。
-
----
-
-## 6. 当前主要成本模型
-
-一个任务的近似墙钟时间：
-
-\[
-T_{task}\approx
-\sum_t
-\max_{a\in S_t}T_{tool}(a)
-+
-\sum_t T_{controller,t}
-+
-\sum_t T_{review,t}
-+
-T_{local}
-\]
-
-其中并行工具组主要由最慢工具决定，而不是工具时间简单求和。
-
-当前 `T_local` 包括：
-
-- 12×12 posterior preparation；
-- greedy contextual ranking；
-- deterministic verifier；
-- leave-one-out verifier；
-- SQLite event / skill / routing persistence。
-
-真正可能达到秒级的通常是外部认知引擎、企业 MCP、媒体语义提取和业务 API，而不是 posterior 数学本身。
-
----
-
-## 7. Counterfactual credit 开销上界
-
-每轮最多选 \(k\) 个 adaptive tools。
-
-Difference credit 最多增加：
-
-\[
-O(kV)
-\]
-
-次 deterministic verifier，其中 \(V\) 是一次本地 verifier 成本。
-
-默认每步工具上限 4，因此单轮 counterfactual 额外 verifier 数量有硬上限。
-
-当前 UI 会显示 `counterfactual_ms`，用于真实任务中观察这部分是否开始成为热点。
-
----
-
-## 8. Runtime Pulse
-
-右侧任务控制面增加“运行质量”状态，但不展示隐藏思维：
-
-- 任务用时；
-- routing policy samples；
-- API RTT EWMA；
-- routing drift；
-- counterfactual verifier time。
-
-这些值用于判断：
-
-- 慢在网络还是本地；
-- policy 是否仍处于 cold start；
-- 数据分布是否变化；
-- counterfactual learning 是否产生异常开销。
-
----
-
-## 9. Frontend performance
-
-前端性能优化包括：
-
-1. 多个 MutationObserver 合并为一个；
-2. DOM 维护通过 `requestAnimationFrame` 合并；
-3. Runtime Pulse 有 signature guard，避免自己更新 DOM 再触发无限 observer loop；
-4. observer 不监听 attribute mutation；
-5. 长任务消息使用 `content-visibility:auto`，减少离屏消息 paint；
-6. motion 主要使用 opacity / transform；
-7. `prefers-reduced-motion` 下关闭非必要动画。
-
-性能目标是让“任务越来越长”时，UI 不因为历史消息数线性增加重绘压力。
-
----
-
-## 10. SQLite 的明确边界
-
-WAL 可以让 reader 与 writer 并发，但 SQLite 仍是单 writer。
-
-因此当前优化路线是：
-
-```text
-减少事务数量
-→ 缩短 writer lock
-→ 批量 sufficient statistics
-→ 批量 reliability
-→ 只读 snapshot scoring
-```
-
-如果未来 deployment 需要多节点、高频并发 learner writes，应把 routing/event/skill state 迁移到真正的 multi-writer transactional store 或 durable stream，而不是继续把单节点 SQLite 调参当水平扩展方案。
-
----
-
-## 11. CI release gate
-
-当前分支加入 `.github/workflows/ci.yml`，自动执行：
-
-- editable packaging install；
-- Python compile；
-- full `pytest -q`；
-- `app.js` / `enhancements.js` syntax；
-- HTML parse / DOM id uniqueness；
-- CSS brace checks。
-
-CI 不等于 performance benchmark，但它保证后续性能优化不能靠破坏正确性换取数字。
-
----
-
-## 12. 下一轮完整 performance gate
-
-在生产候选合并前，应重新运行当前 adaptive head 的完整压力矩阵：
-
-### Runtime concurrency
+当前 CI 已对最新 adaptive runtime 自动运行：
 
 ```text
 1 / 8 / 32 / 64 / 120 / 240 concurrent tasks
 ```
 
-记录：
+在 GitHub-hosted Ubuntu 24.04 / Python 3.11，head `aa968aa...` 的一次已记录成功 run：
 
-- throughput；
-- p50 / p95 / p99；
-- SQLite lock wait；
-- routing prepare/write/counterfactual time；
-- event-chain failures；
-- unauthorized side effects；
-- tool calls/task；
-- cost/task。
+| 并发 | Throughput | p50 | p95 | p99 | Safety failures |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 26.604 tasks/s | 0.0375 s | 0.0375 s | 0.0375 s | 0 |
+| 8 | 34.602 tasks/s | 0.1838 s | 0.2006 s | 0.2006 s | 0 |
+| 32 | 34.896 tasks/s | 0.6956 s | 0.7376 s | 0.7442 s | 0 |
+| 64 | 38.417 tasks/s | 1.2793 s | 1.3820 s | 1.3899 s | 0 |
+| 120 | 39.508 tasks/s | 2.3034 s | 2.5656 s | 2.5849 s | 0 |
+| 240 | 35.402 tasks/s | 4.6831 s | 5.7819 s | 5.8138 s | 0 |
 
-### Quality-performance frontier
+每个 level 硬检查：
 
-性能不能只追求更快。还要在同一 gold set 上比较：
+- session id 唯一；
+- event chain 有效；
+- stop reason 非空；
+- tool cost 不越预算；
+- status 合法；
+- evidence-incomplete 不产生 action；
+- side-effect action 必须 requires_confirmation；
+- runtime 不得自主把 action 推进成 executed/approved。
+
+这些是**当前代码的本地 runtime 压力**。它们不包含真实外部模型、MCP 网络、复杂媒体解析或企业数据库，不能作为真实业务 QPS 宣传。
+
+---
+
+## 3. 历史 Runtime 基线
+
+Adaptive Posterior Routing 加入前，历史 240 task 底层 Runtime 压力记录：
+
+| Metric | Result |
+| --- | ---: |
+| Throughput | 37.2 runs/s |
+| p50 | 3.74 s |
+| p95 | 5.22 s |
+| p99 | 5.25 s |
+| Event-chain failures | 0 |
+| Incomplete-case side-effect leaks | 0 |
+| Valid-case failures | 0 |
+| Duplicate semantic evolution patches | 0 |
+
+历史 80 adversarial controllers：
+
+| Metric | Result |
+| --- | ---: |
+| Throughput | 29.3 runs/s |
+| p50 | 1.51 s |
+| p95 | 2.20 s |
+| Event-chain failures | 0 |
+| Side-effect leaks | 0 |
+| Unsafe proposals rejected | 80 / 80 |
+| Cognitive delegation | 80 / 80 |
+
+这些历史数字只作为底层工程演进背景，不能拿来冒充当前 adaptive head 的结果。
+
+---
+
+## 4. Adaptive Routing Store 微基准
+
+为了定位 learner persistence 开销，曾使用隔离 routing-store 压测：
+
+- 240 routing rounds；
+- 每轮 4 selected-tool credits；
+- 共享 SQLite routing store；
+- 不包含外部认知引擎、MCP、媒体处理。
+
+旧逐工具写法在 64 workers 下约：
+
+- 59 rounds/s；
+- p95 2.60 s；
+- p99 3.57 s。
+
+当前 batch writer + inverse-outside-writer-lock 隔离结果：
+
+| Workers | Throughput | p50 | p95 | p99 |
+| ---: | ---: | ---: | ---: | ---: |
+| 16 | ~256.5 rounds/s | 0.061 s | 0.116 s | 0.160 s |
+| 64 | ~299.5 rounds/s | 0.202 s | 0.421 s | 0.449 s |
+| 120 | ~351.5 rounds/s | 0.306 s | 0.549 s | 0.611 s |
+
+64-worker 隔离 throughput 约从 59 → 299.5 rounds/s，约 5.1×。这是 persistence microbenchmark，不是完整 Runtime QPS。
+
+主要变化：
+
+- 一轮 posterior/outcome/reliability 使用一次 writer transaction；
+- non-stationary decay 每 parallel batch 只发生一次；
+- exact posterior inverse 在 read/scoring path，不占 SQLite writer lock；
+- candidate reliability 批量读取，避免 N+1。
+
+---
+
+## 5. Read-path / Counterfactual Plumbing
+
+成熟 routing store 上，1000 次并发 `prepare_context()` 历史隔离结果约：
+
+- 315.8 reads/s；
+- p50 0.193 s；
+- p95 0.304 s；
+- p99 0.486 s。
+
+80 concurrent minimal counterfactual-controller plumbing：
+
+- ~238 runs/s；
+- p50 ~1.66 ms；
+- p95 ~18.1 ms；
+- p99 ~24.2 ms；
+- errors 0；
+- domain posterior samples 80。
+
+两类数据都只证明本地 routing/credit/persistence plumbing，不包含真实远程依赖。
+
+---
+
+## 6. Durable Execution 的性能语义
+
+当前消息路径：
+
+```text
+request
+→ asset snapshot integrity check
+→ turn lease
+→ atomic user/message.accepted/durable-job commit
+→ low-latency BackgroundTasks claim OR polling worker claim
+→ cognitive runtime
+→ atomic assistant/action/answer.ready/job-success commit
+```
+
+性能设计重点：
+
+- `BackgroundTasks` 只是低延迟触发器，不决定可靠性；
+- durable worker poll 默认 1s，代码 clamp 0.25..10s；
+- job lease 默认 120s，代码 clamp 60..600s；
+- job crash 后可被其他 worker reclaim；
+- asset SHA snapshot 防止 resume 时证据被静默替换；
+- active job/turn 阻止当前 evidence snapshot 被新上传资料改变。
+
+真正生产多节点时，SQLite WAL 的单 writer 仍是容量边界；不要把跨进程 reclaim 误解成无限水平扩展。
+
+---
+
+## 7. WebSocket / Frontend 性能
+
+WebSocket 的权威顺序来自 SQLite `task_events`：
+
+- process-local queue 只做低延迟 wake hint；
+- `after_id` 支持 reconnect 增量续传；
+- queue/poll 唤醒后都按 SQLite id drain；
+- backlog 超过一批时立即继续 drain，不人为等待下一个 poll；
+- 跨 worker 写入不会被本进程更快的 queue event 跳过。
+
+前端性能硬化包括：
+
+- MutationObserver 工作合并并通过 `requestAnimationFrame` 批处理；
+- Runtime Pulse signature guard；
+- 不观察 attribute mutation；
+- 长对话 `content-visibility:auto`；
+- 动效以 opacity/transform 为主；
+- `prefers-reduced-motion` 硬降级；
+- WebSocket cursor 按 conversation 有界缓存；
+- 多标签页只在需要时 reconcile 当前 conversation。
+
+---
+
+## 8. Browser Performance / Interaction Gate
+
+CI 使用真实 Chromium + Playwright 启动 Uvicorn，覆盖：
+
+- 首屏；
+- provider UI；
+- scene switching；
+- durable message round；
+- Runtime Pulse；
+- keyboard command palette；
+- 390×844 drawer；
+- same-conversation two-tab reconciliation；
+- page/console errors。
+
+这个 gate 的目标不是给浏览器 FPS 做微基准，而是防止性能/状态优化引入用户可见交互回归。
+
+---
+
+## 9. 成本模型
+
+一个任务近似墙钟时间：
 
 \[
-\frac{Verified\ Task\ Success}
-{Latency\times Tool\ Cost}
+T_{task}\approx
+\sum_t\max_{a\in S_t}T_{tool}(a)
++\sum_t T_{controller,t}
++\sum_t T_{review,t}
++T_{local}
 \]
 
-以及 posterior policy 相对 cold-start prior 是否减少无效工具调用和 recovery rounds。
+其中并行工具组主要由最慢工具决定。
 
-### Real dependency matrix
+`T_local` 包括：
 
-还需要：
+- posterior/context preparation；
+- contextual ranking；
+- deterministic verifier；
+- leave-one-out verifier；
+- event/skill/routing/job persistence。
 
-- slow / failing MCP；
-- model timeout / 429；
-- large PDF / image / video；
-- WebSocket reconnect；
-- long conversation history；
-- downstream action `uncertain`；
-- process interruption / resume。
+实际企业部署中，秒级延迟通常更多来自真实 provider、MCP、媒体语义提取和业务 API，而不是 posterior 数学。
+
+---
+
+## 10. SQLite 的明确边界
+
+当前 WAL 路线：
+
+```text
+减少事务数量
+→ 缩短 writer lock
+→ batch sufficient statistics
+→ batch reliability
+→ durable job lease
+→ read-only snapshot scoring
+```
+
+SQLite 仍是单 writer。如果目标部署需要多节点、高频并发 learner/job writes，应迁移 routing/event/skill/job state 到合适的生产 transactional store / durable stream，并重新跑现有 Gold Set、authority、pressure 和 browser gates。
+
+---
+
+## 11. CI Performance / Release Gates
+
+当前 `.github/workflows/ci.yml` 有三条独立 job：
+
+### regression
+
+- editable install；
+- Python compile；
+- full pytest；
+- Gold Set fresh + persisted replay；
+- adversarial authority；
+- all production JS syntax；
+- loader/HTML/DOM/CSS static checks。
+
+### pressure
+
+- 1 / 8 / 32 / 64 / 120 / 240 current-head runtime；
+- correctness / budget / authority invariants；
+- 输出 throughput + p50/p95/p99；
+- 不用 hosted-runner QPS 阈值制造 flaky gate。
+
+### browser-e2e
+
+- real Chromium；
+- durable UI round；
+- mobile + keyboard + multi-tab；
+- page/console error gate；
+- 失败时上传 trace/screenshot。
+
+---
+
+## 12. 仍需真实环境测量
+
+仓库内 current-head gate 已完成；下一层必须来自目标部署环境：
+
+- real provider latency / timeout / 429 / cost；
+- real MCP auth/schema/idempotency/downstream reconciliation；
+- large/hostile PDF/image/video/audio；
+- Safari / Edge target devices；
+- enterprise proxy/SSO；
+- multi-node production DB/queue；
+- real business Gold Set 的 decision-quality frontier。
+
+最终优化目标应同时看：
+
+\[
+\frac{Verified\ Task\ Success}{Latency\times Tool\ Cost}
+\]
+
+不能为了吞吐牺牲 evidence completeness 或 authority safety。
 
 ---
 
 ## 13. 当前性能结论
 
-当前数据支持以下判断：
-
-1. **Adaptive posterior 的 12×12 数学不是主要 CPU 瓶颈。**
-2. **旧 adaptive writer 的事务放大曾是明确瓶颈，batching + lock-shortening 已在隔离压测中显著改善。**
-3. **真实端到端性能仍主要受外部模型、MCP、媒体处理和 SQLite 单 writer 共同决定。**
-4. **最新 adaptive head 仍需要完整 current-head 240 concurrency 重跑，旧 37.2 runs/s 不能直接继承。**
-5. **决策性能最终必须和业务 gold set 一起测；减少一次错误远程调用通常比局部 CPU 微优化更重要。**
+1. adaptive posterior 的小矩阵数学不是主要 CPU 瓶颈；
+2. writer transaction amplification 曾是明确瓶颈，batching/lock shortening 已改善；
+3. current-head 1→240 runtime gate 已自动化并成功运行；
+4. 240 并发在记录 run 中为 35.402 tasks/s、p95 5.7819s、0 safety failures；
+5. 真 Chromium 交互 E2E 已成为持续 gate；
+6. 真实生产性能仍必须在真实 provider/MCP/media/DB 环境重新测量。

@@ -1,81 +1,147 @@
 # EcomEvo 产品体检与下一阶段路线
 
-> 角色：高级产品经理 / Agent 产品负责人
->
-> 目标：让 EcomEvo 从“技术上很强的自主运行时”变成“用户能稳定理解、信任、纠正并持续使用的生产产品”。
+> 目标：让 EcomEvo 的自主性持续可验证、可恢复、可治理，而不是只证明 Agent “能自主”。
 
 ## 当前判断
 
-EcomEvo 已经形成几条明确产品能力：多模态业务任务、EvoLoop + Dynamic Task Graph、EvoGain-APR Adaptive Posterior Routing、verifier leave-one-out counterfactual credit、Bayesian skill evolution、deterministic authority、Evidence & Authority 操作台和人工确认高影响动作。
+EcomEvo 已经形成可回归的产品闭环：多模态任务、动态查证/复核、EvoGain-APR adaptive routing、deterministic Verifier/Governance、durable execution、tenant/RBAC/审批审计、Evidence & Authority 控制面、Gold Set / adversarial release gates、current-head 1→240 pressure gate 与真实 Chromium E2E。
 
-当前最大问题不再是“Agent 是否能自主”，而是这种自主性是否能被持续证明、跨故障运行、被组织治理并形成真实业务效率。
+当前最大问题已经从“关键工程护栏是否存在”转为“如何把这些能力接入真实企业身份、真实数据源和更大业务 Gold Set，并持续证明决策效率”。
 
 ## North Star
 
 **Verified Decisions per Operator Hour（每人时完成的可验证决策数）**
 
-硬护栏：Unauthorized side effects = 0；Evidence-gate bypass = 0。
+硬护栏：
 
-配套指标包括 Median time to verifiable decision、Evidence-complete rate、Needs-evidence recovery rate、Replan success rate、Human correction rate、Correction-to-resolution time、Proposed → executed conversion、`uncertain` action rate、Cost per completed task、Resume-after-interruption success rate、Multimodal extraction failure rate、Routing posterior regret / baseline delta、Adaptive routing activation by domain、Tool reliability posterior drift 和 Skill promotion / retirement quality。
+- Unauthorized side effects = 0；
+- Evidence-gate bypass = 0；
+- Cross-tenant data leak = 0；
+- Blind retry after uncertain side effect = 0。
 
-## P0
+配套指标包括 Time to Verifiable Decision、Evidence-complete rate、Needs-evidence recovery rate、Human correction rate、Correction-to-resolution time、`uncertain` action rate、Cost per completed task、Resume-after-interruption success rate、Multimodal extraction failure rate、routing residual/drift、tool reliability posterior 和 skill promotion/retirement quality。
 
-### Agent Gold Set + CI Eval Gate
+---
 
-建立 50–100 个高价值标注任务，覆盖 Evidence extraction、Tool routing、Verification、Final decision、Side-effect safety、Recovery / stagnation 和 Counterfactual routing credit sanity。每次 Runtime、Verifier、模型配置、posterior strategy 或 skill policy 变化都必须评估，并比较 cold-start prior policy 与 candidate posterior policy。
+## 已落地的 P0
 
-### Posterior Policy Promotion Gate
+### Gold Set + CI Promotion Gate
 
-正式生产增加离线 promotion gate：同一 gold set、同一预算下比较 completion、evidence coverage、tool cost 与 safety，并用 bootstrap confidence interval 判断是否允许提高 adaptive activation ceiling。在线学习不能等价于“自动越学越敢”。
+已落地 9 个确定性业务 case，覆盖五个产品域，并在每次 CI 中跑 fresh priors + persisted replay 两阶段。门禁检查 domain/status、evidence gaps、event chain、stop reason、tool budget、side-effect confirmation 与 incomplete-evidence action leak。
+
+这已经是可扩展的 promotion infrastructure；生产业务团队仍应把 Gold Set 扩到更大的真实标注集，而不是把 9 个工程 fixture 当最终业务代表性。
+
+### Adversarial Authority Gate
+
+恶意 controller 会显式要求绕过证据、调用非法副作用工具、谎称已完成；CI 要求 Verifier/Governance/Sandbox 保持最终权限，并记录非法候选被拒绝。
 
 ### Durable Execution
 
-API → Durable Queue → Read-only Cognitive Worker → Checkpoint → Resume on any worker。Side-effect worker 与 read-only cognition worker 分离，每一步具备 idempotency key。
+消息、accepted event 与 durable job 原子落盘；worker 使用 cross-process lease；输入和 asset SHA snapshot 固化；崩溃后可 reclaim；assistant/action/terminal event 原子提交。`BackgroundTasks` 只保留低延迟触发角色，不再是任务存在性的唯一载体。
 
 ### Tenant / Identity / Approval Chain
 
-明确 tenant isolation、user / reviewer / approver、per-tool permission、approval actor audit、credential isolation 和 SSO / gateway integration。
+已实现：
 
-### 最新 adaptive head 完整回归
+- tenant isolation；
+- viewer/operator/approver/admin；
+- HMAC trusted-proxy identity boundary；
+- approval actor audit；
+- global runtime/evolution admin gate；
+- hardened session→tenant trace ownership。
 
-Release gate 包含 full pytest、latest-head concurrency pressure、malicious-controller pressure、browser visual regression 和 provider/MCP failure injection。
+尚未伪装成完成的是具体企业 IdP/SSO 产品接入；这需要真实部署方的网关和身份平台。
 
-## P1
+### Latest-head Release Matrix
 
-### Intent-first
+当前 CI 已拆为三条独立 job：
 
-用户先给目标，Runtime 识别业务场景，用户必要时修正。业务 taxonomy 应成为系统解释，而不是开始任务前必须掌握的字段。
+1. regression + Gold Set + adversarial gate；
+2. current-head 1 / 8 / 32 / 64 / 120 / 240 pressure；
+3. real Chromium E2E，包括双标签页与窄屏交互。
 
-### Structured correction / Evidence dispute
+---
 
-把“继续追证 / 检查反证”继续结构化为证据错误、证据缺失、规则不适用、结论过度推断和动作不合适，并支持标记证据不可靠、排除附件、替换过期资料和指定证据重验证。这些信号进入 eval dataset。
+## 已落地的产品信任体验
 
-### Explainable runtime state
+### Intent / Scene
 
-右侧控制面回答：现在在做什么、为什么调用这个工具、还缺什么、为什么停止、posterior 处于 shadow / transfer / adaptive 哪种状态，以及 routing uncertainty 是否异常升高。展示可审计策略摘要，不展示隐藏 chain-of-thought。
+空任务切场景复用当前任务，不制造垃圾历史；命令面板、快捷卡与左导航复用同一状态机。
 
-### MCP Connection Control Plane / Task Collaboration
+### Runtime Transparency
 
-企业用户需要管理数据源、read/write scope、evidence tags、health、latency、recent failure、idempotency 和 credential owner；任务需要 owner、watcher、reviewer、approver、comment / mention、handoff、decision export 和 audit export。
+控制面展示 evidence completeness / gaps、tool budget、autonomy steps、stop reason、autonomy mode 与运行质量指标，不展示隐藏 chain-of-thought。
 
-## P2
+### Correction affordances
+
+回答区提供“继续追证 / 检查反证”，把纠错成本压低；这些入口要求系统继续围绕可核验证据工作，而不是用模型自信代替证据。
+
+### Multimodal critical section
+
+上传期间不能先发送；当前 turn 运行期间不能悄悄追加资料改变 evidence snapshot；后端事务仍是最终兜底。
+
+### Multi-tab / reconnect
+
+WebSocket 使用 durable SQLite event log + `after_id` 增量补拉；process-local queue 只做 wake hint；跨 worker/多标签页不会因为消息乱序漏事件或出现孤立 assistant reply。
+
+### Side-effect uncertainty
+
+MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明副作用未发生的结果统一进入 `uncertain`，不会 blind replay；浏览器确认后断网也提示先核对业务状态。
+
+---
+
+## 下一阶段 P1：真实业务产品化
+
+这些不是当前代码缺陷，而是下一阶段需要真实组织/业务环境共同完成的产品工作。
+
+### 扩大 Structured Correction / Evidence Dispute
+
+现有“继续追证 / 检查反证”应进一步结构化为：证据错误、证据缺失、规则不适用、结论过度推断、动作不合适、附件过期/不可靠。纠错信号应进入 eval dataset 和运营分析。
+
+### Enterprise MCP Control Plane
+
+需要在真实企业环境管理 data source、read/write scope、credential owner、health、latency、failure rate、evidence tags、idempotency 与 schema change；当前代码已经有受控 MCP runtime，但不是完整企业连接管理产品。
+
+### Collaboration / Decision Export
+
+真实组织通常需要 owner、watcher、reviewer、approver、comment/mention、handoff、decision export 与 audit export。当前审批身份链已经有底层 actor audit，但协作产品面仍可扩展。
+
+### Business Gold Set Expansion
+
+把工程 fixture 扩展到由业务专家裁决的真实 case，覆盖不同市场、规则版本、媒体质量和异常分布。任何 adaptive activation 放大都继续走同一 promotion gate。
+
+---
+
+## 下一阶段 P2：质量控制与多节点扩展
 
 ### Routing Quality Control Tower
 
-按业务域持续观察 posterior samples、posterior residual、adaptive activation、baseline-vs-adaptive regret、tool reliability drift、evidence gain / tool call、cost / completed task、stagnation rate、tool-set diversity 和 failed-call rate。
+持续观测 posterior samples、residual/drift、adaptive activation、tool reliability、evidence gain/call、cost/completed task、stagnation、tool diversity 和 failed-call rate。
 
 ### Off-policy Evaluation
 
-收集 routing log 后增加 doubly-robust / replay evaluation，先在历史轨迹上评估候选 posterior policy，再决定是否扩大线上 activation。
+在真实 routing log 足够后增加 replay / doubly-robust evaluation，用于候选 policy 的离线风险评估，而不是让在线 learner 自己决定扩大权限。
 
-### World-model Shadow Environment
+### Production Multi-node Control Plane
 
-研究用 open-weight agent world model / simulator 构造 MCP-like、browser / terminal / structured data 的 shadow enterprise environment，并注入 failure 和 tool schema mutation。Simulator 只产生训练/回放候选，不能替代真实 verifier 或业务 approval。
+当前 durable control plane 基于 SQLite WAL，已经能跨进程 reclaim，但仍有单 writer 边界。需要大规模多节点时，应迁移到适合的 transactional database / durable stream，然后重跑现有所有 correctness/authority gates。
 
-### Dynamic Tool Embedding
+### Shadow Environment
 
-未来 MCP 工具规模变大时可从 Tool schema / description 生成 semantic tool embedding，再进入 learned contextual router；registry、sandbox、credential scope 和 confirmation gate 继续保持硬边界。
+可研究 MCP-like / browser / terminal / structured-data 的 shadow enterprise simulator，用于 failure/schema mutation replay。Simulator 只能产生训练/回放候选，不能替代真实 Verifier 或业务 approval。
+
+---
 
 ## Product Gate
 
-EcomEvo 进入成熟生产平台定位前至少满足：真实业务 gold set 持续通过；adaptive policy 有 baseline promotion gate；跨进程任务可恢复；用户能纠正证据与结论；身份与审批链完整；每个业务域有结果指标与 routing quality 指标；主要企业接入不依赖工程师手改配置；routing / skill 可以学习，但 deterministic authority 从未被学习系统修改。
+当前仓库已经满足“可自动化工程门禁”的主要条件：Gold Set、adversarial authority、durable execution、tenant/RBAC、approval audit、1→240 pressure、Chromium E2E。
+
+成熟企业生产定位仍要求真实部署继续满足：
+
+- 企业 IdP / Gateway 接入；
+- 真实 provider/MCP auth/rate-limit/idempotency/failure matrix；
+- Safari/Edge 与目标设备；
+- 真实大媒体和真实业务 Gold Set；
+- 目标规模下的生产数据库/队列拓扑。
+
+始终不变的产品原则：**routing / skill 可以学习，deterministic authority 不由学习系统修改。**
