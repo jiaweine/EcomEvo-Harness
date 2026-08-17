@@ -113,6 +113,9 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     document.documentElement.dataset.ui = 'ecomevo';
+    // The mobile engine control is absolutely positioned inside the task header.
+    // Make the header its explicit containing block instead of relying on the workspace ancestor.
+    document.querySelector('.task-head')?.style.setProperty('position', 'relative');
     installObservers();
     genericizeProviders();
     genericizeAnswerFooters();
