@@ -328,13 +328,14 @@ class AdaptiveRoutingStore:
                 a[i][j] = prior_a[i][j] + self.DECAY * (a[i][j] - prior_a[i][j])
             b[i] = prior_b[i] + self.DECAY * (b[i] - prior_b[i])
 
-        mean_before = self._matvec(self._inverse(a), b)
         reward_ewma = float(state["reward_ewma"])
         residual_ewma = float(state["residual_ewma"])
         for item in rows:
             vector = item["vector"]
             reward = item["reward"]
-            residual = abs(reward - self._dot(mean_before, vector))
+            # Drift is outcome-surprise EWMA. Keep matrix inversion off the SQLite writer lock;
+            # posterior uncertainty remains exact on the read/scoring path.
+            residual = abs(reward - reward_ewma)
             for i, xi in enumerate(vector):
                 b[i] += reward * xi
                 for j, xj in enumerate(vector):
