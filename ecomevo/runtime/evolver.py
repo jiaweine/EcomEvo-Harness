@@ -11,12 +11,13 @@ from .skills import AdaptiveSkillLibrary, RuntimeSkill
 
 
 class FailureDrivenEvolver:
-    """Generate bounded cognition candidates from failure and recovery trajectories.
+    """Distill failure/recovery trajectories without a hand-written business value model.
 
-    This layer no longer owns promotion. It deliberately has no business-specific tool map,
-    replay-score table, or fixed value threshold. It distills a falsifiable candidate from
-    the current verifier trajectory; EvoHarness-VCO / skill posteriors own later validation
-    and promotion. Safety invariants remain deterministic and external to learned utility.
+    Verifier-discovered missing evidence may be merged as a *monotonic* planner hardening:
+    it can only add a required check, never remove one. Performance-oriented Prompt / Tool /
+    Memory / Delegation changes are merely candidates; EvoHarness-VCO owns their shadow
+    evaluation and posterior promotion. There is no business-specific tool map, synthetic
+    replay-score table, or fixed performance threshold in this layer.
     """
 
     FORBIDDEN_WEAKENING = {
@@ -76,14 +77,14 @@ class FailureDrivenEvolver:
             "preferred_tools": [],
             "trigger_terms": missing,
             "guidance": guidance,
-            "behavior": "把失败轨迹作为认知候选，不自动改变 evidence gate、tool authority 或 approval 权限",
-            "candidate_only": True,
-            "validation_method": "verifier_grounded_shadow_posterior",
+            "behavior": "只把 verifier 已确认的缺口加入未来 planner required-check；性能型策略仍需 shadow 验证",
+            "candidate_only": False,
+            "validation_method": "monotonic_evidence_gate",
             "safety_invariants": [
                 "evidence_gate_monotonic",
                 "read_only_exploration",
                 "side_effect_authority_external",
-                "shadow_before_live",
+                "performance_edits_shadow_before_live",
             ],
         }
         score = max(0.0, min(1.0, float(verification.score)))
@@ -96,7 +97,8 @@ class FailureDrivenEvolver:
             replay_cases=0,
             regression_before=score,
             regression_after=score,
-            accepted=False,
+            # This acceptance is safety-monotonic, not a claim of performance superiority.
+            accepted=True,
         )
 
     @staticmethod
@@ -132,6 +134,9 @@ class FailureDrivenEvolver:
         if patch is None or reasoner is None:
             return patch
 
+        # The model can annotate a future performance candidate, but these fields are not
+        # promoted by this layer. The only live effect of this accepted planner patch is the
+        # monotonic add_required_checks list above.
         schema = {
             "name": "可复用认知候选名",
             "guidance": "task-agnostic、只读、可回滚的策略",
@@ -142,7 +147,7 @@ class FailureDrivenEvolver:
             "你在为一个受 deterministic verifier 约束的 Agent Harness 从失败轨迹生成候选认知策略。"
             "只能改进信息获取、只读工具选择、上下文整理和 specialist 委派；"
             "不得降低证据门槛、修改 Sandbox/Verifier/RBAC、扩大凭证范围或绕过人工确认。"
-            "候选不会自动上线，而会进入 verifier-grounded shadow evaluation。只返回 JSON。\n"
+            "候选性能策略不会由这里自动上线，而会进入 verifier-grounded shadow evaluation。只返回 JSON。\n"
             f"业务域：{domain}\n"
             f"证据缺口：{json.dumps(verification.missing_evidence, ensure_ascii=False)}\n"
             f"当前注册的合法只读工具：{json.dumps(sorted(available_tools), ensure_ascii=False)}\n"
@@ -173,16 +178,16 @@ class FailureDrivenEvolver:
                 12,
             )
             if guidance and self._safe_guidance(guidance):
-                patch.patch["name"] = str(candidate.get("name") or "失败轨迹认知候选")[:120]
-                patch.patch["guidance"] = guidance
-                patch.patch["preferred_tools"] = preferred
-                patch.patch["trigger_terms"] = triggers
+                patch.patch["candidate_name"] = str(candidate.get("name") or "失败轨迹认知候选")[:120]
+                patch.patch["candidate_guidance"] = guidance
+                patch.patch["candidate_preferred_tools"] = preferred
+                patch.patch["candidate_trigger_terms"] = triggers
         except Exception:
             pass
         return patch
 
     def ingest(self, patch: EvolutionPatch) -> RuntimeSkill | None:
-        """Legacy hook kept for compatibility; unvalidated failure candidates never go live."""
+        """Legacy hook: a planner hardening is not automatically promoted into a live skill."""
         return None
 
     def distill_success(
