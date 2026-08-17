@@ -6,28 +6,63 @@
 
 `ecomevo/api/`：FastAPI、WebSocket、会话、附件、动作确认、并发任务租约和异常恢复。
 
-`ecomevo/product/`：资料解析、多媒体事实提取缓存、历史任务上下文、面向客户的结果编排。
+`ecomevo/product/`：资料解析、多媒体事实提取缓存、历史任务上下文、面向客户的结果编排。产品层先选择本轮模型服务；该选择通过 task-local 上下文传给 Runtime，因此并发任务不会串模型，显式“本地演示”也不会发生隐式外部调用。
 
-`ecomevo/providers/`：多厂商模型能力路由。最终业务状态由 Runtime 决定；证据不足时外部模型不能覆盖受控结论。
+`ecomevo/providers/`：多厂商模型能力路由。模型既可承担多媒体事实提取和结果表达，也可在安全边界内作为自主控制器；最终业务状态仍由 Runtime 决定。
 
-## Runtime layer
+## Autonomous runtime
 
-`ecomevo/runtime/event_store.py`：append-only 事件、hash chain、JSON checkpoint、fork/replay、改进项存储。
+`ecomevo/runtime/autonomy.py`：受控自主任务循环。维护动态 Task Graph 和 Belief / Progress / Experience 状态，根据每轮工具结果、证据缺口、预算、历史技能与当前验证结果自主决定下一批只读工具、并行组合、specialist 委派、反思、停止或继续。固定 Planner 只作为安全和证据覆盖下限，不再是唯一决策者。
 
-`planner.py`：场景目标解析、成本门禁、证据检索计划、失败改进项加载。
+`planner.py`：业务域、强制证据、成本约束和确定性兜底计划。已验证的进化检查会继续进入这里，保证即使模型不可用也能安全运行。
 
-`tools.py`：本地只读工具、企业 MCP 只读工具、并行工具组合。
+`tools.py`：本地只读工具、企业 MCP 只读工具、并行工具组合。自主控制器只能从已注册、已允许且预算内的工具目录选择；MCP 参数模板由服务端配置持有，不由模型任意生成。
 
-`recursive.py`：第一层并行专业复核 + 条件触发的第二层交叉复核。
+`recursive.py`：确定性规则/证据/风险/业务复核。自主控制器可额外派生只读 specialist，但这些 specialist 只产生认知复核，不产生独立业务证据，也不能拥有动作权限。
 
-`verifier.py`：业务证据硬门槛、当前问题特定证据条件、副作用安全检查。
+`verifier.py`：业务证据硬门槛、当前问题特定证据条件、副作用安全检查。任何模型、技能、历史记忆或自主决策都不能降低这里的门槛。
 
-`evolver.py`：失败生成小 patch，隔离回放与 regression gate 后合并。
+## Self-evolution
 
-`mcp.py`：企业工具发现/调用、现代协议与 legacy fallback、动作映射。
+`ecomevo/runtime/skills.py`：持久化自进化技能库。每个技能保存适用业务域、触发条件、只读策略、偏好工具、shadow replay 分数和 Beta 后验。运行结果持续更新技能可信度，低表现技能会退役；同一失败模式只保留质量更高的活跃代表，避免技能无限堆积。
+
+技能库还维护按业务域独立的元进化策略：晋升门槛、退役门槛和探索强度会根据实际成功/失败结果缓慢调整，但始终被硬范围限制。
+
+`evolver.py`：失败诊断 + 成功轨迹蒸馏。候选技能先经过 deterministic shadow replay、工具存在性检查和安全不变量检查，只有不降低回归结果且达到当前晋升门槛时才进入活跃技能库。模型可以提出候选策略，但不能修改 verifier、sandbox、approval gate 或直接修改源代码。
+
+`event_store.py`：append-only 事件、hash chain、JSON checkpoint、fork/replay、进化项存储。进化项带语义 fingerprint，并发任务产生相同候选时只保留一份，避免竞争条件导致策略重复。
+
+## Safety authority
+
+自主性与业务权限刻意分离：
+
+- 模型可以决定下一步查什么、如何组合只读工具、是否派生 specialist、何时反思和停止；
+- 技能可以改变只读探索策略和工具优先级；
+- 模型输出、历史回复、技能和 memory 都不能成为独立业务证据；
+- 证据完整性、成本约束和副作用安全由 deterministic verifier 强制；
+- 退款、下架、审核、风险升级等 BusinessAction 仍必须进入人工确认；
+- 下游执行结果不确定时进入 `uncertain`，禁止自动盲重试。
+
+即：**认知自治，权限确定。**
 
 ## Data flow
 
-用户消息与任务资料 → 文件指纹核验 → 多媒体可追溯事实提取/缓存 → Runtime 规划 → 并行工具核对 → 递归交叉复核 → 证据硬验证 → 必要时恢复/重规划 → 形成受控结果 → 可选模型润色 → 生成待确认业务操作。
+用户消息与任务资料
+→ 文件指纹核验
+→ 多媒体可追溯事实提取/缓存
+→ Runtime 建立目标与 belief
+→ 召回已验证技能和元进化策略
+→ 自主控制器建立动态任务图
+→ Planner 给出强制安全/证据底线
+→ 模型控制器按观察动态增加只读工具和 specialist
+→ 并行工具核对
+→ 确定性复核 + 可选只读认知委派
+→ Verifier 检查真实证据硬门槛
+→ 未通过时自主补证、拓扑调整、停滞检测与重规划
+→ 失败/成功轨迹进入 shadow-gated 自进化
+→ 形成受控结果
+→ 可选模型润色
+→ 生成待确认业务操作
+→ 用户确认后才允许进入真实业务系统。
 
-模型润色不拥有业务状态决定权；资料不足时直接使用服务器受控结论。
+模型润色和自主控制都不拥有业务状态决定权；资料不足时直接使用服务器受控结论。
