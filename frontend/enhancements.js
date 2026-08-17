@@ -44,14 +44,12 @@
       [...grid.querySelectorAll('.provider-card')].forEach((card, index) => {
         const logo = card.querySelector('.provider-logo');
         const title = card.querySelector('b');
-        const copy = card.querySelector('p');
-        if (logo) logo.textContent = String(index + 1).padStart(2, '0');
-        if (title) title.textContent = `认知引擎 ${String(index + 1).padStart(2, '0')}`;
-        if (copy) {
-          const source = copy.textContent || '';
-          const capabilities = ['图片', '音频', '扫描文档'].filter(item => source.includes(item));
-          copy.textContent = capabilities.length ? `支持 ${capabilities.join(' · ')}` : '文本规划 · 工具协作';
+        if (!title || !logo) return;
+        if ((title.textContent || '').trim() === '本地受控') {
+          logo.textContent = '本';
+          return;
         }
+        logo.textContent = String(index + 1).padStart(2, '0');
       });
     }
   }
