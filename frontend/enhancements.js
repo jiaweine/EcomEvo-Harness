@@ -2,9 +2,9 @@
   'use strict';
 
   const modules = [
+    '/assets/safety-guards.js',
     '/assets/enhancements-core.js',
     '/assets/realtime-reconcile.js',
-    '/assets/safety-guards.js',
   ];
 
   function fallbackLoad(index = 0) {
@@ -24,8 +24,8 @@
   }
 
   if (document.readyState === 'loading') {
-    // This file is parser-blocking and sits immediately before app.js. document.write keeps
-    // fetch/provider/WebSocket/safety guards installed before the main module starts executing.
+    // This file is parser-blocking and sits immediately before app.js. Safety capture handlers
+    // install first, then core fetch/WebSocket/telemetry guards, then cross-tab reconciliation.
     document.write(modules.map(src => `<script src="${src}"><\/script>`).join(''));
   } else {
     fallbackLoad();
