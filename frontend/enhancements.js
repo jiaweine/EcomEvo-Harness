@@ -29,22 +29,26 @@
     return response;
   };
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
   function genericizeProviders() {
     const select = document.getElementById('providerSelect');
     if (select) {
       let externalIndex = 0;
       [...select.options].forEach(option => {
         if (option.value === 'auto') {
-          option.textContent = '自动编排';
+          setText(option, '自动编排');
           return;
         }
         if (option.value === 'demo') {
-          option.textContent = '本地受控';
+          setText(option, '本地受控');
           return;
         }
         externalIndex += 1;
         const unavailable = /未配置/.test(option.textContent || '');
-        option.textContent = `认知引擎 ${String(externalIndex).padStart(2, '0')}${unavailable ? ' · 未配置' : ''}`;
+        setText(option, `认知引擎 ${String(externalIndex).padStart(2, '0')}${unavailable ? ' · 未配置' : ''}`);
       });
     }
 
@@ -57,22 +61,22 @@
         if (!title || !logo) return;
         const titleText = (title.textContent || '').trim();
         if (/本地|演示/.test(titleText)) {
-          logo.textContent = '本';
-          title.textContent = '本地受控';
+          setText(logo, '本');
+          setText(title, '本地受控');
           return;
         }
         externalIndex += 1;
-        logo.textContent = String(externalIndex).padStart(2, '0');
-        title.textContent = `认知引擎 ${String(externalIndex).padStart(2, '0')}`;
+        setText(logo, String(externalIndex).padStart(2, '0'));
+        setText(title, `认知引擎 ${String(externalIndex).padStart(2, '0')}`);
         const note = card.querySelector('p');
-        if (note) note.textContent = '按当前任务所需能力参与自动编排';
+        setText(note, '按当前任务所需能力参与自动编排');
       });
     }
   }
 
   function genericizeAnswerFooters(root = document) {
     root.querySelectorAll?.('.answer-provider').forEach(node => {
-      node.textContent = '受控运行时 · 已完成';
+      setText(node, '受控运行时 · 已完成');
     });
   }
 
@@ -156,7 +160,7 @@
     const progress = document.getElementById('progressList');
     if (progress) {
       markCurrentProgress();
-      new MutationObserver(markCurrentProgress).observe(progress, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      new MutationObserver(markCurrentProgress).observe(progress, { childList: true, subtree: true });
     }
 
     reduced.addEventListener?.('change', event => {
