@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ecomevo.models import EvolutionPatch, RuntimeSummary
-from .autonomy import AutonomousController
+from .counterfactual_routing import CounterfactualAdaptiveAutonomousController
 from .event_store import EventStore
 from .evolver import FailureDrivenEvolver
 from .memory import RuntimeMemory
@@ -35,7 +35,9 @@ class EcomEvoEngine:
         self.verifier=DecisionVerifier()
         self.evolver=FailureDrivenEvolver(self.skills)
         self.memory=RuntimeMemory()
-        self.autonomy=AutonomousController(self.planner,self.tools,self.ptc,self.sandbox,self.verifier,self.recursive,self.skills)
+        self.autonomy=CounterfactualAdaptiveAutonomousController(
+            self.planner,self.tools,self.ptc,self.sandbox,self.verifier,self.recursive,self.skills
+        )
         self.plugins=PluginRegistry();self._register_plugins()
         for patch_row in reversed(self.events.list_patches(300)):
             self.planner.apply_evolution_patch(patch_row)
@@ -48,15 +50,15 @@ class EcomEvoEngine:
             self.memory.add({'session_id':row.get('session_id'),'domain':payload.get('domain'),'score':payload.get('verifier_score',0),'risks':belief.get('risks') or []})
 
     def _register_plugins(self):
-        self.plugins.register('model.gateway','model','多模型服务层','OpenAI / DeepSeek / Qwen / Doubao / Claude / Gemini / Custom',instance=self.model_gateway)
-        self.plugins.register('agent.autonomy','agent','自主任务控制器','动态工具选择、任务图、反思、重规划与只读 specialist 委派',instance=self.autonomy)
+        self.plugins.register('model.gateway','model','认知引擎服务层','云端 / 企业兼容 / 开源权重 / 自托管',instance=self.model_gateway)
+        self.plugins.register('agent.autonomy','agent','自主任务控制器','动态任务图、Adaptive Posterior Routing、反事实 credit、重规划与只读 specialist 委派',instance=self.autonomy)
         self.plugins.register('tool.ptc','tool','并行工具执行器','组合并发的只读工具调用',instance=self.ptc)
         self.plugins.register('memory.runtime','memory','任务记忆','保存同类任务的已验证结果',instance=self.memory)
         self.plugins.register('memory.skills','memory','自进化技能库','持久化技能、后验可信度、质量多样性 niche 与晋升/退役',instance=self.skills)
         self.plugins.register('sandbox.action','sandbox','操作安全区','阻止未确认的高影响动作',instance=self.sandbox)
         self.plugins.register('verifier.decision','verifier','结果复核器','检查证据、约束与副作用',instance=self.verifier)
         self.plugins.register('evolver.failure','skill','自进化执行层','失败诊断、成功轨迹蒸馏、shadow replay 与回归门禁',instance=self.evolver)
-        self.plugins.register('mcp.remote','tool','MCP 连接器','接入企业内部工具与数据服务',instance=self.mcp)
+        self.plugins.register('mcp.remote','tool','企业工具连接器','接入企业内部工具与数据服务',instance=self.mcp)
 
     async def _emit(self,sid:str,t:str,p:dict[str,Any],sink:EventSink|None):
         ev=self.events.append(sid,t,p)
