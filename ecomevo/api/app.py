@@ -231,6 +231,7 @@ def conversation_get(cid:str):
 async def asset_upload(file:UploadFile=File(...),conversation_id:str=Form(...)):
     try:store.get_conversation(conversation_id)
     except KeyError:raise HTTPException(404,'任务不存在')
+    if store.has_active_turn(conversation_id):raise HTTPException(409,'当前任务正在处理中，请在本轮完成后再追加资料')
     existing=store.list_assets(conversation_id)
     if len(existing)>=120:raise HTTPException(409,'单个任务最多保留 120 份资料，请新建任务或整理现有资料')
     task_bytes=sum(int(x.get('size') or 0) for x in existing);task_cap=2*1024*1024*1024
@@ -358,7 +359,7 @@ async def action_decide(action_id:str,req:ActionDecision):
             result=await mcp.call_tool(mcp_server,mcp_tool,claimed['payload'].get('arguments',{}));payload_patch.update({'execution_mode':'mcp','execution_result':result,'execution_outcome':'confirmed'})
         else:payload_patch.update({'execution_result':{'queued':True,'message':'已进入业务处理队列（本地演示执行器）'},'execution_outcome':'confirmed'})
         row=store.update_action(action_id,'executed',payload_patch);await emit(a['conversation_id'],'action.updated',row);return row
-    except (httpx.ReadTimeout,httpx.WriteTimeout,httpx.WriteError,httpx.RemoteProtocolError,httpx.ReadError) as exc:
+    except httpx.TransportError as exc:
         logger.exception('business action result is uncertain: %s',action_id);row=store.update_action(action_id,'uncertain',{'execution_error':'与业务系统通信中断，暂无法确认下游是否已执行；请先核对业务系统结果，不要直接重复操作。','execution_outcome':'unknown'});await emit(a['conversation_id'],'action.updated',row);raise HTTPException(502,'业务系统响应中断，当前操作结果暂无法确认，请先核对实际业务状态') from exc
     except Exception as exc:
         logger.exception('business action execution failed: %s',action_id);row=store.update_action(action_id,'failed',{'execution_error':'下游业务服务明确返回执行失败','execution_outcome':'failed'});await emit(a['conversation_id'],'action.updated',row);raise HTTPException(502,'业务操作执行失败') from exc
@@ -381,18 +382,19 @@ async def conversation_ws(ws:WebSocket,cid:str,after_id:int=0):
             await ws.send_json(ev);cutoff=max(cutoff,event_id)
         last_heartbeat=time.monotonic()
         while True:
+            pending=store.list_events(cid,after_id=cutoff,limit=200)
+            if pending:
+                for ev in pending:
+                    event_id=int(ev.get('id',0) or 0)
+                    if event_id<=cutoff:continue
+                    await ws.send_json(ev);cutoff=max(cutoff,event_id)
+                continue
             try:
-                item=await asyncio.wait_for(q.get(),timeout=WS_POLL_SECONDS);item_id=int(item.get('id',0) or 0)
-                if item_id<=cutoff:continue
-                await ws.send_json(item);cutoff=max(cutoff,item_id)
+                # Process-local queues are wake signals only. SQLite task_events is the
+                # authoritative cross-worker ordering source and is always drained above.
+                await asyncio.wait_for(q.get(),timeout=WS_POLL_SECONDS)
+                continue
             except asyncio.TimeoutError:
-                pending=store.list_events(cid,after_id=cutoff,limit=200)
-                if pending:
-                    for ev in pending:
-                        event_id=int(ev.get('id',0) or 0)
-                        if event_id<=cutoff:continue
-                        await ws.send_json(ev);cutoff=max(cutoff,event_id)
-                    continue
                 recovered=store.recover_interrupted_turn(cid)
                 if recovered:
                     event_id=int(recovered.get('id',0) or 0)
