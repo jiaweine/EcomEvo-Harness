@@ -7,12 +7,12 @@ from .tools import ToolRegistry, PTCExecutor
 from .evolver import FailureDrivenEvolver
 from .autonomy import AutonomousController, TaskGraph
 from .skills import AdaptiveSkillLibrary
-from .adaptive_routing import AdaptiveAutonomousController, AdaptiveDecisionPolicy, AdaptiveRoutingStore
+from .adaptive_routing import AdaptiveDecisionPolicy, AdaptiveRoutingStore
 from .counterfactual_routing import CounterfactualAdaptiveAutonomousController, CounterfactualAdaptiveDecisionPolicy
 
 __all__=[
     'EcomEvoEngine','EventStore','AdaptivePlanner','DecisionVerifier','ActionSandbox',
     'ToolRegistry','PTCExecutor','FailureDrivenEvolver','AutonomousController','TaskGraph',
-    'AdaptiveSkillLibrary','AdaptiveAutonomousController','AdaptiveDecisionPolicy','AdaptiveRoutingStore',
+    'AdaptiveSkillLibrary','AdaptiveDecisionPolicy','AdaptiveRoutingStore',
     'CounterfactualAdaptiveAutonomousController','CounterfactualAdaptiveDecisionPolicy'
 ]
