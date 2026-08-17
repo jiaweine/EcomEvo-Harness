@@ -44,25 +44,36 @@ EcomEvo 是一个给高频运营、审核、客服与风控人员长期使用的
 
 ## Typography
 
-界面使用系统级高质量可变字体优先栈，不从第三方 CDN 拉字体：
+EcomEvo 不依赖公网字体 CDN。字体策略首先保证中文、英文、数字和业务长文本在 macOS、Windows 与 Linux/CJK 环境中稳定，而不是追求某个“流行字体名字”。
 
-```text
-Aptos / SF Pro / Segoe UI Variable / PingFang SC / Noto Sans CJK SC / Microsoft YaHei / system-ui
+实际 UI 栈：
+
+```css
+font-family: system-ui, -apple-system, BlinkMacSystemFont,
+  "Segoe UI Variable Text", "Segoe UI",
+  "PingFang SC", "Hiragino Sans GB",
+  "Microsoft YaHei UI", "Noto Sans CJK SC",
+  "Source Han Sans SC", sans-serif;
 ```
 
-角色：
+排版角色：
 
-- Display：任务标题、首屏主标题、重要业务结论；
-- UI Text：操作、正文、说明；
-- Mono：阶段标签、计数、时间、运行状态与技术性短标签。
+- Display：首屏主标题和任务标题，只使用 UI family 的 600 weight；
+- Body：业务回答、用户输入、重要说明，目标字号 16px 级；
+- Supporting UI：导航、卡片说明、状态文案，原则上不低于 12px；
+- Mono：只用于数字、快捷键和短状态编码，不用于中文段落。
+
+类型尺度：`12 / 13 / 14 / 16 / 20 / 26 / display clamp`。
 
 规则：
 
-- 中文正文不低于 12px；
-- 10px 以下只允许出现在元信息；
-- 标题通过字号和字重建立层级，不用渐变文字；
-- 长正文宽度保持在约 65–75 个西文字符的阅读尺度；
-- 大标题采用更紧字距，但正文不做过度 tracking。
+- 中文大标题优先 600，不使用过重的 700 制造“粗黑块”；
+- 正文行高约 1.6–1.65，标题约 1.1–1.2；
+- 长正文控制在约 65–75 个西文字符的视觉长度；
+- 标题允许轻微负字距，中文正文不做装饰性 tracking；
+- 不使用 9px 级业务正文；
+- 不把两套相似 sans 混成“高级字体搭配”；
+- `product-polish.css` 必须在 `visual.css` 之后加载，它是字体和 motion 的最终覆盖层。
 
 ## Layout
 
@@ -84,7 +95,7 @@ Aptos / SF Pro / Segoe UI Variable / PingFang SC / Noto Sans CJK SC / Microsoft 
 - 右侧：Goal → Evidence → Review → Verify → Action 的任务路径图；
 - 任务路径图是信息架构提示，不模拟隐藏 chain-of-thought。
 
-大屏显示路径图；窄屏自动收敛到单列任务入口。
+大屏显示完整路径图；中屏与移动端保留可横向浏览的路径，不直接删除 Agent 心智模型。
 
 ### Right control surface
 
@@ -112,8 +123,8 @@ Aptos / SF Pro / Segoe UI Variable / PingFang SC / Noto Sans CJK SC / Microsoft 
 - hover / focus：140–180ms；
 - panel / drawer：180–240ms；
 - progress / state：180–260ms；
-- easing：`cubic-bezier(.16,1,.3,1)`；
-- 不动画宽高等高成本 layout 属性；
+- easing：`cubic-bezier(.23,1,.32,1)`；
+- 主要动画仅使用 opacity / transform；
 - 不使用 bounce / elastic；
 - `prefers-reduced-motion` 时关闭空间移动，只保留即时状态反馈。
 
@@ -188,7 +199,8 @@ Aptos / SF Pro / Segoe UI Variable / PingFang SC / Noto Sans CJK SC / Microsoft 
 - 历史的等尺寸任务卡墙被非对称任务入口替代；
 - 右栏从普通详情栏调整为 Agent 控制面；
 - 网络/任务创建失败通过全局兜底提示避免无反馈；
-- 旧的侧边彩条式 active state 在新视觉层中被完整面和边界状态替代。
+- 旧的侧边彩条式 active state 在新视觉层中被完整面和边界状态替代；
+- 字体最终覆盖层改为 HTML 静态加载，避免运行时插入样式造成首屏排版闪动。
 
 ## Shipping rule
 
