@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -66,6 +67,7 @@ class EcomEvoEngine:
         return ev
 
     async def run(self,text:str,assets:list[dict[str,Any]],sink:EventSink|None=None,domain_hint:str|None=None,context_text:str|None=None,reasoner=None)->RuntimeSummary:
+        started=time.perf_counter()
         if reasoner is None and self.model_gateway is not None and hasattr(self.model_gateway,'current_provider'):
             try:reasoner=self.model_gateway.current_provider()
             except Exception:reasoner=None
@@ -122,6 +124,16 @@ class EcomEvoEngine:
         evidence=GovernanceBoundary.evidence(assets,tool_results);actions=GovernanceBoundary.actions(goal.domain,findings,risks,verification)
         final_verify=self.verifier.verify(goal,belief,tool_results,agents,actions);await self._emit(sid,'action.proposed',{'actions':[x.model_dump() for x in actions],'verification':final_verify.model_dump()},sink)
         belief.facts.update({'tool_results':len([x for x in tool_results if x.ok]),'review_count':len(agents),'autonomy_steps':outcome.autonomy_steps,'delegations':outcome.delegations,'skill_count':len(outcome.skills_used)})
+        try:
+            routing=self.autonomy.policy.routing.snapshot(goal.domain.value)
+            belief.facts['routing_policy']={
+                'samples':routing.get('samples',0),
+                'reward_ewma':routing.get('reward_ewma',0.0),
+                'residual_ewma':routing.get('residual_ewma',0.0),
+            }
+        except Exception:
+            pass
+        belief.facts['runtime_elapsed_ms']=round((time.perf_counter()-started)*1000.0,2)
         belief.risks=list(dict.fromkeys(risks))[:10];belief.uncertainties=final_verify.missing_evidence;belief.missing_evidence=final_verify.missing_evidence;belief.confidence=round(final_verify.score,3)
         self.skills.record_outcome(outcome.skills_used,success=bool(final_verify.passed),score=final_verify.score,session_id=sid,context={'domain':goal.domain.value,'missing':final_verify.missing_evidence,'recovery_events':outcome.recovery_events})
         if not outcome.skills_used:self.skills.note_run(goal.domain.value,success=bool(final_verify.passed),skill_used=False)
