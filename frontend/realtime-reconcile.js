@@ -6,16 +6,17 @@
   if (!UpstreamWebSocket) return;
 
   const seenMessages = new Set();
+  const localAcceptedIds = new Set();
   const inflightTurns = new Map();
-  const recentLocalSuccess = new Map();
   let refreshScheduled = false;
 
-  function remember(messageId) {
-    const id = String(messageId || '');
-    if (!id || seenMessages.has(id)) return false;
-    seenMessages.add(id);
-    if (seenMessages.size > 120) seenMessages.delete(seenMessages.values().next().value);
-    return true;
+  function rememberBounded(set, value, limit = 120) {
+    const id = String(value || '');
+    if (!id) return false;
+    const fresh = !set.has(id);
+    if (fresh) set.add(id);
+    while (set.size > limit) set.delete(set.values().next().value);
+    return fresh;
   }
 
   function currentConversationId() {
@@ -54,7 +55,7 @@
   function turnState(conversationId) {
     let state = inflightTurns.get(conversationId);
     if (!state) {
-      state = { count: 0, acceptedWhilePending: 0 };
+      state = { count: 0, acceptedIds: [] };
       inflightTurns.set(conversationId, state);
     }
     return state;
@@ -78,24 +79,25 @@
     const state = turnState(conversationId);
     state.count += 1;
     let response;
-    let succeeded = false;
+    let localMessageId = '';
     try {
       response = await UpstreamFetch(...args);
-      succeeded = Boolean(response?.ok);
+      if (response?.ok) {
+        try {
+          const payload = await response.clone().json();
+          localMessageId = String(payload?.message?.id || '');
+          if (localMessageId) rememberBounded(localAcceptedIds, localMessageId);
+        } catch (_) {}
+      }
       return response;
     } finally {
       state.count = Math.max(0, state.count - 1);
-      const acceptedDuringThisRequest = state.acceptedWhilePending > 0;
-      if (acceptedDuringThisRequest) state.acceptedWhilePending -= 1;
-
-      if (succeeded) {
-        if (!acceptedDuringThisRequest) recentLocalSuccess.set(conversationId, Date.now() + 10000);
-      } else if (acceptedDuringThisRequest && conversationId === currentConversationId()) {
-        // Another tab won the lease while this tab's POST was still pending.
-        scheduleCurrentTaskRefresh();
+      const acceptedIds = state.acceptedIds.splice(0);
+      if (acceptedIds.length && conversationId === currentConversationId()) {
+        const hasRemoteAccepted = acceptedIds.some(id => !localMessageId || id !== localMessageId);
+        if (hasRemoteAccepted) scheduleCurrentTaskRefresh();
       }
-
-      if (state.count === 0 && state.acceptedWhilePending === 0) inflightTurns.delete(conversationId);
+      if (state.count === 0 && state.acceptedIds.length === 0) inflightTurns.delete(conversationId);
     }
   };
 
@@ -105,23 +107,20 @@
     if (!event || event.type !== 'message.accepted') return;
     if (!conversationId || conversationId !== currentConversationId()) return;
 
-    const messageId = event.payload?.message?.id || event.payload?.message_id;
-    if (!remember(messageId)) return;
+    const messageId = String(event.payload?.message?.id || event.payload?.message_id || '');
+    if (!messageId || !rememberBounded(seenMessages, messageId)) return;
+
+    if (localAcceptedIds.has(messageId)) {
+      localAcceptedIds.delete(messageId);
+      return;
+    }
 
     const state = inflightTurns.get(conversationId);
     if (state?.count > 0) {
-      // Do not guess by message text. Wait for the local POST result: success means this
-      // accepted event is ours; 409/network failure means another tab won and we refresh.
-      state.acceptedWhilePending += 1;
+      state.acceptedIds.push(messageId);
       return;
     }
 
-    const localUntil = Number(recentLocalSuccess.get(conversationId) || 0);
-    if (localUntil > Date.now()) {
-      recentLocalSuccess.delete(conversationId);
-      return;
-    }
-    recentLocalSuccess.delete(conversationId);
     scheduleCurrentTaskRefresh();
   }
 
