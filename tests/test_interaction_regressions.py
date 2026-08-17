@@ -10,11 +10,11 @@ HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend/product-polish.css").read_text(encoding="utf-8")
 
 
-def test_enhancement_loader_keeps_core_before_realtime_and_safety_and_modules_exist():
+def test_enhancement_loader_runs_safety_before_upload_bookkeeping_and_realtime():
     assert "/assets/enhancements-core.js" in LOADER
     assert "/assets/realtime-reconcile.js" in LOADER
     assert "/assets/safety-guards.js" in LOADER
-    assert LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/realtime-reconcile.js") < LOADER.index("/assets/safety-guards.js")
+    assert LOADER.index("/assets/safety-guards.js") < LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/realtime-reconcile.js")
     for name in ("enhancements-core.js", "realtime-reconcile.js", "safety-guards.js"):
         assert (ROOT / "frontend" / name).is_file()
     assert 'document.readyState === \'loading\'' in LOADER
