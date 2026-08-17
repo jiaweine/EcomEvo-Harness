@@ -1,7 +1,6 @@
 (() => {
   'use strict';
 
-  // Load the final refinement layer before the module application boots.
   if (!document.querySelector('link[data-ecomevo-polish]')) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -11,23 +10,76 @@
   }
 
   const nativeFetch = window.fetch.bind(window);
+  const NativeWebSocket = window.WebSocket;
   let lastActionResult = null;
+  let uiScheduled = false;
+  let pulseSignature = '';
+  const telemetry = {
+    apiEwmaMs: null,
+    apiLastMs: null,
+    runtime: null,
+    routing: null,
+    counterfactualMs: null,
+    connected: false,
+  };
 
   function actionUrl(input) {
     const value = typeof input === 'string' ? input : (input && input.url) || '';
     return /\/api\/actions\/[^/]+\/decision(?:\?|$)/.test(value);
   }
 
+  function updateApiLatency(ms) {
+    telemetry.apiLastMs = ms;
+    telemetry.apiEwmaMs = telemetry.apiEwmaMs == null ? ms : (0.82 * telemetry.apiEwmaMs + 0.18 * ms);
+    scheduleUiPass();
+  }
+
   window.fetch = async (...args) => {
-    const response = await nativeFetch(...args);
-    if (actionUrl(args[0]) && response.ok) {
-      try {
-        const payload = await response.clone().json();
-        if (payload && typeof payload === 'object') lastActionResult = payload;
-      } catch (_) {}
+    const started = performance.now();
+    try {
+      const response = await nativeFetch(...args);
+      updateApiLatency(performance.now() - started);
+      if (actionUrl(args[0]) && response.ok) {
+        try {
+          const payload = await response.clone().json();
+          if (payload && typeof payload === 'object') lastActionResult = payload;
+        } catch (_) {}
+      }
+      return response;
+    } catch (error) {
+      updateApiLatency(performance.now() - started);
+      throw error;
     }
-    return response;
   };
+
+  function captureSocketEvent(raw) {
+    let event;
+    try { event = JSON.parse(raw); } catch (_) { return; }
+    if (!event || typeof event !== 'object') return;
+    if (event.type === 'routing.policy.updated') {
+      telemetry.routing = event.payload?.policy || event.payload || null;
+      telemetry.counterfactualMs = Number(event.payload?.counterfactual_ms ?? null);
+      scheduleUiPass();
+      return;
+    }
+    if (event.type === 'answer.ready') {
+      telemetry.runtime = event.payload?.result?.runtime || event.payload?.message?.payload?.runtime || null;
+      scheduleUiPass();
+    }
+  }
+
+  if (NativeWebSocket) {
+    function ObservedWebSocket(...args) {
+      const socket = new NativeWebSocket(...args);
+      socket.addEventListener('open', () => { telemetry.connected = true; scheduleUiPass(); });
+      socket.addEventListener('close', () => { telemetry.connected = false; scheduleUiPass(); });
+      socket.addEventListener('message', event => captureSocketEvent(event.data));
+      return socket;
+    }
+    ObservedWebSocket.prototype = NativeWebSocket.prototype;
+    Object.setPrototypeOf(ObservedWebSocket, NativeWebSocket);
+    window.WebSocket = ObservedWebSocket;
+  }
 
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
@@ -38,14 +90,8 @@
     if (select) {
       let externalIndex = 0;
       [...select.options].forEach(option => {
-        if (option.value === 'auto') {
-          setText(option, '自动编排');
-          return;
-        }
-        if (option.value === 'demo') {
-          setText(option, '本地受控');
-          return;
-        }
+        if (option.value === 'auto') return setText(option, '自动编排');
+        if (option.value === 'demo') return setText(option, '本地受控');
         externalIndex += 1;
         const unavailable = /未配置/.test(option.textContent || '');
         setText(option, `认知引擎 ${String(externalIndex).padStart(2, '0')}${unavailable ? ' · 未配置' : ''}`);
@@ -68,21 +114,17 @@
         externalIndex += 1;
         setText(logo, String(externalIndex).padStart(2, '0'));
         setText(title, `认知引擎 ${String(externalIndex).padStart(2, '0')}`);
-        const note = card.querySelector('p');
-        setText(note, '按当前任务所需能力参与自动编排');
+        setText(card.querySelector('p'), '按当前任务所需能力参与自动编排');
       });
     }
   }
 
   function genericizeAnswerFooters(root = document) {
-    root.querySelectorAll?.('.answer-provider').forEach(node => {
-      setText(node, '受控运行时 · 已完成');
-    });
+    root.querySelectorAll?.('.answer-provider').forEach(node => setText(node, '受控运行时 · 已完成'));
   }
 
   function rewriteActionToast(node) {
     if (!node || node.textContent !== '操作已完成并留痕' || !lastActionResult) return;
-    const status = lastActionResult.status;
     const messages = {
       executed: '操作已执行并留痕',
       approved: '已确认，正在等待业务系统返回结果',
@@ -91,7 +133,7 @@
       proposed: '操作仍在等待确认',
       rejected: '本次操作已取消',
     };
-    node.textContent = messages[status] || '操作状态已更新';
+    node.textContent = messages[lastActionResult.status] || '操作状态已更新';
     lastActionResult = null;
   }
 
@@ -127,14 +169,16 @@
 
   function markCurrentProgress() {
     const rows = [...document.querySelectorAll('#progressList .progress-item')];
-    rows.forEach(row => {
-      row.classList.remove('current');
-      row.removeAttribute('aria-current');
-    });
-    const current = [...rows].reverse().find(row => !row.classList.contains('done'));
-    if (current) {
-      current.classList.add('current');
-      current.setAttribute('aria-current', 'step');
+    let current = null;
+    for (const row of rows) {
+      const active = !row.classList.contains('done');
+      row.classList.toggle('current', active && current == null);
+      if (active && current == null) {
+        current = row;
+        row.setAttribute('aria-current', 'step');
+      } else {
+        row.removeAttribute('aria-current');
+      }
     }
   }
 
@@ -147,54 +191,90 @@
     });
   }
 
-  function installMotion() {
-    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
-    if (!reduced.matches) requestAnimationFrame(() => document.documentElement.classList.add('ui-motion-ready'));
+  function fmtLatency(ms) {
+    if (!Number.isFinite(ms)) return '—';
+    return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
+  }
 
+  function runtimeFacts() {
+    return telemetry.runtime?.belief?.facts || telemetry.runtime?.runtime?.belief?.facts || {};
+  }
+
+  function ensureRuntimePulse() {
+    let host = document.getElementById('runtimePulse');
+    if (host) return host;
+    const panel = document.getElementById('panel-trace');
+    if (!panel) return null;
+    host = document.createElement('section');
+    host.id = 'runtimePulse';
+    host.className = 'runtime-pulse';
+    host.setAttribute('aria-label', '运行质量');
+    const first = panel.firstElementChild;
+    if (first) first.after(host); else panel.prepend(host);
+    return host;
+  }
+
+  function renderRuntimePulse() {
+    const host = ensureRuntimePulse();
+    if (!host) return;
+    const facts = runtimeFacts();
+    const routing = facts.routing_policy || telemetry.routing || {};
+    const runtimeMs = Number(facts.runtime_elapsed_ms ?? NaN);
+    const samples = Number(routing.samples ?? routing.policy?.samples ?? 0);
+    const drift = Number(routing.residual_ewma ?? routing.policy?.residual_ewma ?? NaN);
+    const sync = telemetry.connected || /已同步/.test(document.getElementById('taskConnection')?.textContent || '');
+    const html = `
+      <div class="runtime-pulse-head">
+        <div><span class="runtime-live ${sync ? 'ok' : ''}"></span><b>运行质量</b></div>
+        <small>只读策略 · 可审计</small>
+      </div>
+      <div class="runtime-pulse-grid">
+        <div><small>任务用时</small><strong>${fmtLatency(runtimeMs)}</strong></div>
+        <div><small>策略样本</small><strong>${samples > 0 ? String(samples) : '冷启动'}</strong></div>
+        <div><small>API RTT</small><strong>${fmtLatency(telemetry.apiEwmaMs)}</strong></div>
+      </div>
+      <div class="runtime-pulse-foot">
+        <span>${Number.isFinite(drift) ? `分布漂移 ${drift.toFixed(3)}` : '等待策略样本'}</span>
+        <span>${Number.isFinite(telemetry.counterfactualMs) ? `反事实复核 ${fmtLatency(telemetry.counterfactualMs)}` : '证据优先'}</span>
+      </div>`;
+    if (html === pulseSignature) return;
+    pulseSignature = html;
+    host.innerHTML = html;
+  }
+
+  function runUiPass() {
+    uiScheduled = false;
+    genericizeProviders();
+    genericizeAnswerFooters();
+    installCorrectionActions();
+    markCurrentProgress();
     const messages = document.getElementById('messageList');
-    if (messages) {
-      animateNewMessages(messages);
-      new MutationObserver(() => animateNewMessages(messages)).observe(messages, { childList: true, subtree: true });
-    }
+    if (messages) animateNewMessages(messages);
+    rewriteActionToast(document.getElementById('toast'));
+    renderRuntimePulse();
+  }
 
-    const progress = document.getElementById('progressList');
-    if (progress) {
-      markCurrentProgress();
-      new MutationObserver(markCurrentProgress).observe(progress, { childList: true, subtree: true });
-    }
+  function scheduleUiPass() {
+    if (uiScheduled) return;
+    uiScheduled = true;
+    requestAnimationFrame(runUiPass);
+  }
 
-    reduced.addEventListener?.('change', event => {
-      document.documentElement.classList.toggle('ui-motion-ready', !event.matches);
+  function installObserver() {
+    const root = document.querySelector('.app-shell') || document.body;
+    new MutationObserver(scheduleUiPass).observe(root, {
+      childList: true,
+      characterData: true,
+      subtree: true,
     });
   }
 
-  function installObservers() {
-    const toast = document.getElementById('toast');
-    if (toast) {
-      new MutationObserver(() => rewriteActionToast(toast)).observe(toast, {
-        childList: true,
-        characterData: true,
-        subtree: true,
-      });
-    }
-
-    const providerHost = document.getElementById('providerModal');
-    if (providerHost) {
-      new MutationObserver(genericizeProviders).observe(providerHost, { childList: true, subtree: true });
-    }
-
-    const select = document.getElementById('providerSelect');
-    if (select) {
-      new MutationObserver(genericizeProviders).observe(select, { childList: true, subtree: true });
-    }
-
-    const messages = document.getElementById('messageList');
-    if (messages) {
-      new MutationObserver(() => {
-        genericizeAnswerFooters(messages);
-        installCorrectionActions(messages);
-      }).observe(messages, { childList: true, subtree: true });
-    }
+  function installMotion() {
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    if (!reduced.matches) requestAnimationFrame(() => document.documentElement.classList.add('ui-motion-ready'));
+    reduced.addEventListener?.('change', event => {
+      document.documentElement.classList.toggle('ui-motion-ready', !event.matches);
+    });
   }
 
   window.addEventListener('unhandledrejection', event => {
@@ -210,11 +290,8 @@
   document.addEventListener('DOMContentLoaded', () => {
     document.documentElement.dataset.ui = 'ecomevo';
     document.querySelector('.task-head')?.style.setProperty('position', 'relative');
-    installObservers();
+    installObserver();
     installMotion();
-    genericizeProviders();
-    genericizeAnswerFooters();
-    installCorrectionActions();
-    markCurrentProgress();
+    scheduleUiPass();
   });
 })();
