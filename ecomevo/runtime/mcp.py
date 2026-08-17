@@ -141,6 +141,14 @@ class MCPRegistry:
         if data.get('error'):raise RuntimeError(str(data['error']))
         return data.get('result',{})
 
+    @staticmethod
+    def _raise_if_ambiguous_tool_transport(r:httpx.Response)->None:
+        if r.status_code==408 or r.status_code>=500:
+            raise httpx.RemoteProtocolError(
+                f'MCP tool-call response is ambiguous: HTTP {r.status_code}',
+                request=r.request,
+            )
+
     def _modern_meta(self)->dict[str,Any]:
         return {
             'io.modelcontextprotocol/protocolVersion':MODERN_VERSION,
@@ -156,6 +164,7 @@ class MCPRegistry:
         if name is not None:headers['Mcp-Name']=self._header_value(name)
         if extra_headers:headers.update(extra_headers)
         r,data=await self._post(s,payload,headers)
+        if method=='tools/call':self._raise_if_ambiguous_tool_transport(r)
         if allow_legacy_probe and r.status_code in {400,404,405}:
             err=data.get('error',{}) if isinstance(data,dict) else {}
             code=err.get('code') if isinstance(err,dict) else None
@@ -231,6 +240,7 @@ class MCPRegistry:
             # Never replay it automatically. Clear the stale session and surface an ambiguous transport result.
             self._legacy_sessions.pop(s.key,None)
             raise httpx.RemoteProtocolError('MCP legacy session expired during tool call',request=r.request)
+        self._raise_if_ambiguous_tool_transport(r)
         return self._result_or_raise(r,data)
 
     async def call_tool(self,server_key:str,tool_name:str,arguments:dict[str,Any])->dict[str,Any]:
