@@ -5,4 +5,6 @@ from .verifier import DecisionVerifier
 from .sandbox import ActionSandbox
 from .tools import ToolRegistry, PTCExecutor
 from .evolver import FailureDrivenEvolver
-__all__=['EcomEvoEngine','EventStore','AdaptivePlanner','DecisionVerifier','ActionSandbox','ToolRegistry','PTCExecutor','FailureDrivenEvolver']
+from .autonomy import AutonomousController, TaskGraph
+from .skills import AdaptiveSkillLibrary
+__all__=['EcomEvoEngine','EventStore','AdaptivePlanner','DecisionVerifier','ActionSandbox','ToolRegistry','PTCExecutor','FailureDrivenEvolver','AutonomousController','TaskGraph','AdaptiveSkillLibrary']

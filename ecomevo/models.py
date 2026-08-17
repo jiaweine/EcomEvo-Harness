@@ -105,6 +105,11 @@ class RuntimeSummary(BaseModel):
     verifier_score: float = 0.0
     evolved: bool = False
     event_chain_valid: bool = True
+    autonomy_steps: int = 0
+    delegations: int = 0
+    evolution_events: int = 0
+    skills_used: list[str] = Field(default_factory=list)
+    task_graph: dict[str, Any] = Field(default_factory=dict)
     proposed_actions: list[BusinessAction] = Field(default_factory=list)
     evidence: list[EvidenceRecord] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
