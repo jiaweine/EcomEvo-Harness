@@ -294,9 +294,15 @@ class AdaptiveRoutingStore:
             "residual": float(prepared["residual"]),
         }
 
-    def abstain_vector(self) -> list[float]:
+    def abstain_vector(self, *, gap_pressure: float = 0.0, recovery_context: float = 0.0) -> list[float]:
+        # Contextual no-op: preserve state pressure and neutral cold-start tool priors so
+        # advantage measures evidence-specific value rather than a fixed absolute score.
         values = [0.0] * self.dim
         values[0] = 1.0
+        values[4] = 1.0
+        values[7] = 0.5
+        values[10] = max(0.0, min(1.0, float(gap_pressure)))
+        values[11] = max(0.0, min(1.0, float(recovery_context)))
         return values
 
     def _update_policy_batch(
@@ -524,7 +530,7 @@ class AdaptiveDecisionPolicy(DecisionPolicy):
         skill_support = max((skill.posterior_mean for skill in skills if tool in skill.preferred_tools), default=0.0)
         prior_success = sum(1 for result in previous if result.ok and result.tool == tool)
         novelty = 1.0 / (1.0 + 0.72 * prior_success)
-        contradiction = 1.0 if tool in self.CONTRADICTION_TOOLS and bool(targets) else 0.0
+        contradiction = 1.0 if tool in self.CONTRADICTION_TOOLS and bool(targets) and (coverage > 0.0 or bool(previous)) else 0.0
         specificity = min(1.0, len(channel_terms) / 10.0)
         cost_pressure = min(1.0, max(0.0, float(cost)) / 3.0)
         gap_pressure = min(1.0, len(targets) / max(1, len(goal.required_evidence) or len(targets)))
@@ -584,7 +590,12 @@ class AdaptiveDecisionPolicy(DecisionPolicy):
             )
             pool.append({**candidate, "features": features, "channels": channels})
 
-        baseline = float(self.routing.score_prepared(self.routing.abstain_vector(), prepared)["score"])
+        state_features = pool[0]["features"] if pool else {"gap_pressure": 0.0, "recovery_context": 0.0}
+        baseline_vector = self.routing.abstain_vector(
+            gap_pressure=float(state_features.get("gap_pressure", 0.0)),
+            recovery_context=float(state_features.get("recovery_context", 0.0)),
+        )
+        baseline = float(self.routing.score_prepared(baseline_vector, prepared)["score"])
         selected: list[dict[str, Any]] = []
         selected_channels: set[str] = set()
         remaining_budget = max(0.0, float(budget))
