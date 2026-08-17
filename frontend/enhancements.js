@@ -16,6 +16,7 @@
   let pulseSignature = '';
   let uploadBatchPending = 0;
   let sendDisabledBeforeUpload = false;
+  let remoteTurnBusy = false;
   const telemetry = {
     apiEwmaMs: null,
     apiLastMs: null,
@@ -68,14 +69,15 @@
     showInteractionToast.timer = setTimeout(() => node.classList.remove('show'), 2600);
   }
 
-  function renderUploadGuard() {
-    const active = uploadBatchPending > 0;
+  function renderInteractionGuards() {
+    const uploading = uploadBatchPending > 0;
     const composer = document.getElementById('composer');
     const send = document.getElementById('sendBtn');
-    composer?.classList.toggle('upload-busy', active);
-    if (composer) composer.setAttribute('aria-busy', String(active));
+    composer?.classList.toggle('upload-busy', uploading);
+    if (composer) composer.setAttribute('aria-busy', String(uploading || remoteTurnBusy));
     if (!send) return;
-    if (active) {
+
+    if (uploading) {
       if (send.dataset.uploadLocked !== '1') {
         sendDisabledBeforeUpload = Boolean(send.disabled);
         send.dataset.uploadLabel = send.textContent || '发送';
@@ -85,11 +87,28 @@
       send.textContent = uploadBatchPending > 1 ? `上传中 ${uploadBatchPending}` : '资料上传中…';
       return;
     }
+
     if (send.dataset.uploadLocked === '1') {
       send.disabled = sendDisabledBeforeUpload;
       send.textContent = send.dataset.uploadLabel || '发送';
       delete send.dataset.uploadLocked;
       delete send.dataset.uploadLabel;
+    }
+
+    if (remoteTurnBusy) {
+      send.dataset.remoteLocked = '1';
+      send.disabled = true;
+      send.textContent = '任务处理中…';
+      const chip = document.getElementById('taskReadyChip');
+      if (chip) {
+        chip.classList.remove('ready', 'attention', 'complete');
+        chip.classList.add('busy');
+        chip.innerHTML = '<i></i><b>处理中</b>';
+      }
+    } else if (send.dataset.remoteLocked === '1') {
+      delete send.dataset.remoteLocked;
+      if (!sendDisabledBeforeUpload) send.disabled = false;
+      send.textContent = '发送';
     }
   }
 
@@ -97,17 +116,17 @@
     const amount = Math.max(0, Number(count) || 0);
     if (!amount) return;
     uploadBatchPending += amount;
-    renderUploadGuard();
+    renderInteractionGuards();
   }
 
   function finishUploadItem() {
     if (uploadBatchPending > 0) uploadBatchPending -= 1;
-    renderUploadGuard();
+    renderInteractionGuards();
   }
 
   function resetUploadGuard() {
     uploadBatchPending = 0;
-    renderUploadGuard();
+    renderInteractionGuards();
   }
 
   function installUploadGuard() {
@@ -130,11 +149,12 @@
     document.addEventListener('keydown', event => {
       if (!uploadBatchPending) return;
       const sendByEnter = event.target?.id === 'messageInput' && event.key === 'Enter' && !event.shiftKey && !event.isComposing;
+      const commandByEnter = event.target?.id === 'commandInput' && event.key === 'Enter';
       const newTaskShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n';
-      if (!sendByEnter && !newTaskShortcut) return;
+      if (!sendByEnter && !commandByEnter && !newTaskShortcut) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      showInteractionToast(sendByEnter ? '资料还在上传，完成后再发送' : '资料还在上传，完成后再新建任务');
+      showInteractionToast(sendByEnter ? '资料还在上传，完成后再发送' : '资料还在上传，完成后再切换任务');
     }, true);
   }
 
@@ -215,6 +235,7 @@
         } catch (_) {}
       }
       if (conversationCreateUrl(input, options) && response.ok) {
+        remoteTurnBusy = false;
         clearTurnTelemetry();
       } else if (conversationDetailUrl(input, options) && response.ok) {
         try {
@@ -242,6 +263,7 @@
     try { event = JSON.parse(raw); } catch (_) { return; }
     if (!event || typeof event !== 'object') return;
     if (event.type === 'message.accepted') {
+      remoteTurnBusy = true;
       clearTurnTelemetry();
       return;
     }
@@ -252,12 +274,14 @@
       return;
     }
     if (event.type === 'answer.ready') {
+      remoteTurnBusy = false;
       telemetry.runtime = event.payload?.result?.runtime || event.payload?.message?.payload?.runtime || null;
       telemetry.routing = telemetry.runtime?.belief?.facts?.routing_policy || telemetry.routing;
       scheduleUiPass();
       return;
     }
     if (event.type === 'answer.error') {
+      remoteTurnBusy = false;
       clearTurnTelemetry();
     }
   }
@@ -302,6 +326,37 @@
     }, true);
   }
 
+  function navSceneForCommandResult(result) {
+    const title = result?.querySelector?.('b')?.textContent?.trim();
+    if (!title) return null;
+    return [...document.querySelectorAll('.scene[data-scene]')].find(scene => scene.querySelector('b')?.textContent?.trim() === title) || null;
+  }
+
+  function runSceneCommand(result, event) {
+    const scene = navSceneForCommandResult(result);
+    if (!scene) return false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const modal = document.getElementById('commandModal');
+    if (modal) modal.hidden = true;
+    const input = document.getElementById('commandInput');
+    if (input) input.value = '';
+    scene.click();
+    return true;
+  }
+
+  function installCommandSceneBridge() {
+    document.addEventListener('click', event => {
+      const result = event.target?.closest?.('.command-result');
+      if (result) runSceneCommand(result, event);
+    }, true);
+    document.addEventListener('keydown', event => {
+      if (event.target?.id !== 'commandInput' || event.key !== 'Enter') return;
+      const active = document.querySelector('#commandResults .command-result.active');
+      if (active) runSceneCommand(active, event);
+    }, true);
+  }
+
   function installNarrowAssetDrawerFix() {
     document.addEventListener('click', event => {
       const trigger = event.target?.closest?.('#assetLibraryBtn');
@@ -315,6 +370,7 @@
   }
 
   installSceneBridge();
+  installCommandSceneBridge();
   installNarrowAssetDrawerFix();
 
   function setText(node, value) {
@@ -519,7 +575,7 @@
     const messages = document.getElementById('messageList');
     if (messages) animateNewMessages(messages);
     rewriteActionToast(document.getElementById('toast'));
-    renderUploadGuard();
+    renderInteractionGuards();
     renderRuntimePulse();
   }
 
@@ -563,7 +619,7 @@
     document.querySelector('.task-head')?.style.setProperty('position', 'relative');
     installObserver();
     installMotion();
-    renderUploadGuard();
+    renderInteractionGuards();
     scheduleUiPass();
   });
 })();
