@@ -34,7 +34,7 @@
 
 ### Demo / 视频
 
-README 以内联图片或短 GIF 作为首屏预览，高清录屏保留 MP4/WebM 原文件并从封面图、Release 或文档入口打开。这样既保留 GitHub 首页的加载速度，也避免把 README 绑定到不稳定的内联视频渲染行为。
+GitHub 支持在 README 等 Markdown 文件中上传和展示视频。为了让仓库首屏加载更快、滚动更轻，EcomEvo 的 README 默认仍使用静态封面或短 GIF 做预览；完整产品演示建议使用 H.264 MP4，或 WebM 作为补充格式，并从 Demo 区域进入完整录屏。
 
 ---
 
