@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 import json
 import time
 import uuid
@@ -12,6 +13,21 @@ from .store import ConversationStore as BaseConversationStore
 class ConversationStore(BaseConversationStore):
     """Product store with atomic turn/asset consistency guards."""
 
+    def __init__(self, *args, **kwargs):
+        self._asset_snapshot: ContextVar[tuple[str, int, int, float] | None] = ContextVar(
+            f"ecomevo_asset_snapshot_{id(self)}",
+            default=None,
+        )
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def _revision(rows) -> tuple[int, int, float]:
+        return (
+            len(rows),
+            sum(int(row.get("size") or 0) for row in rows),
+            max((float(row.get("created_at") or 0) for row in rows), default=0.0),
+        )
+
     def has_active_turn(self, cid) -> bool:
         now = time.time()
         with self._conn() as c:
@@ -20,6 +36,44 @@ class ConversationStore(BaseConversationStore):
                 (cid,),
             ).fetchone()
         return bool(row and float(row["expires_at"]) > now)
+
+    def list_assets(self, cid):
+        rows = super().list_assets(cid)
+        count, total_bytes, latest_created = self._revision(rows)
+        self._asset_snapshot.set((cid, count, total_bytes, latest_created))
+        return rows
+
+    def claim_turn(self, cid, ttl=120.0):
+        """Atomically claim a turn only if the caller's asset snapshot is still current."""
+        snapshot = self._asset_snapshot.get()
+        self._asset_snapshot.set(None)
+        now = time.time()
+        token = f"lease-{uuid.uuid4().hex}"
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            if snapshot and snapshot[0] == cid:
+                row = c.execute(
+                    "SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes,"
+                    "COALESCE(MAX(created_at),0) AS latest FROM assets WHERE conversation_id=?",
+                    (cid,),
+                ).fetchone()
+                current = (int(row["count"] or 0), int(row["bytes"] or 0), float(row["latest"] or 0))
+                expected = (snapshot[1], snapshot[2], snapshot[3])
+                if current != expected:
+                    raise HTTPException(409, "任务资料刚刚发生变化，请重新发送以纳入最新资料")
+
+            lease = c.execute(
+                "SELECT token,expires_at FROM turn_leases WHERE conversation_id=?",
+                (cid,),
+            ).fetchone()
+            if lease and float(lease["expires_at"]) > now:
+                return None
+            c.execute(
+                "INSERT INTO turn_leases(conversation_id,token,expires_at,updated_at) VALUES(?,?,?,?) "
+                "ON CONFLICT(conversation_id) DO UPDATE SET token=excluded.token,expires_at=excluded.expires_at,updated_at=excluded.updated_at",
+                (cid, token, now + float(ttl), now),
+            )
+        return token
 
     def add_asset(self, cid, *, name, mime, path, size, meta):
         aid = f"asset-{uuid.uuid4().hex[:12]}"
