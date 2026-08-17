@@ -1,20 +1,20 @@
-<p align="center"><sub>ADAPTIVE AUTONOMOUS COMMERCE RUNTIME</sub></p>
+<p align="center"><sub>SELF-EVOLVING · EVIDENCE-GROUNDED · MODEL-AGNOSTIC AGENT HARNESS</sub></p>
 
 <h1 align="center">EcomEvo</h1>
 
-<p align="center"><strong>让复杂电商任务持续查证、自主推进、可恢复、会学习——但永远不越权。</strong></p>
+<p align="center"><strong>面向复杂电商决策的自主、自恢复、自进化 Agent Harness Runtime</strong></p>
 
 <p align="center"><b>目标交给 Runtime · 证据交给 Verifier · 权限留给业务</b></p>
 
 <p align="center">
   <img alt="CI" src="https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml/badge.svg?branch=agent%2Fautonomous-self-evolving-runtime" />
-  <img alt="Adaptive Routing" src="https://img.shields.io/badge/Routing-Adaptive%20Posterior-C76535" />
-  <img alt="Multimodal Evidence" src="https://img.shields.io/badge/Evidence-Multimodal-BF7B32" />
-  <img alt="Deterministic Authority" src="https://img.shields.io/badge/Authority-Deterministic-3F765E" />
+  <img alt="Harness Evolution" src="https://img.shields.io/badge/Harness-Self--Evolving-8B5E3C" />
+  <img alt="Adaptive Routing" src="https://img.shields.io/badge/Routing-Bayesian%20Adaptive-C76535" />
+  <img alt="Authority" src="https://img.shields.io/badge/Authority-Deterministic-3F765E" />
 </p>
 
 <p align="center">
-  <b><a href="docs/PRODUCT_MANUAL.md">产品手册</a> · <a href="docs/ALGORITHM.md">算法报告</a> · <a href="docs/TECHNICAL_MANUAL.md">技术手册</a> · <a href="docs/PERFORMANCE.md">性能</a> · <a href="docs/VERIFICATION_REPORT.md">验证</a></b>
+  <b><a href="docs/PRODUCT_MANUAL.md">产品手册</a> · <a href="docs/HARNESS_EVOLUTION.md">Harness 自进化</a> · <a href="docs/ALGORITHM.md">算法报告</a> · <a href="docs/TECHNICAL_MANUAL.md">技术手册</a> · <a href="docs/VERIFICATION_REPORT.md">验证报告</a></b>
 </p>
 
 <p align="center"><em><b>Give the Agent a goal, not a script.</b></em></p>
@@ -22,416 +22,488 @@
 <br />
 
 <p align="center">
-  <img src="docs/images/product-workbench.svg" alt="EcomEvo 商业决策工作台" width="100%" />
+  <img src="docs/images/real/product-overview.png" alt="EcomEvo 商业决策工作台真实运行界面" width="100%" />
 </p>
 
 <p align="center">
-  <sub><b>EcomEvo 商业决策工作台</b> · 目标、对话、多模态证据、运行状态、验证结果与待确认动作，在一个持续任务里完成闭环。</sub>
+  <sub><b>真实产品运行截图</b> · Uvicorn + Playwright Chromium · 1920×1200 logical viewport · DPR 2 · 3840×2400 source PNG · 非 mockup / 非手绘 SVG</sub>
 </p>
 
 <br />
 
-## 一句话理解 EcomEvo
+## EcomEvo 是什么
 
-普通 Agent 往往在回答问题。
+EcomEvo 不是一个“把模型接上几个工具”的聊天壳，也不是依靠单次 prompt 完成业务判断的 workflow。
 
-EcomEvo 运行的是一条**可验证的业务决策链**：它围绕目标持续观察证据，判断下一步还需要查什么，选择合法的只读工具，检查反证，重新规划，直到证据闭合或明确停止；如果最终需要退款、下架、冻结、审核通过等真实业务动作，权限仍然留在确定性的审批链里。
+它是一套面向**商品治理、商家审核、售后判责、风险核查、内容审核**等复杂决策场景的 **model-agnostic Agent Harness Runtime**。任务从 Goal 开始，在持续的 Evidence / Belief State 上运行；系统可以自主选择只读 Tool、Skill、Memory 与 Sub-Agent，检查反证、重规划、恢复失败、决定停止，并把真实 verifier outcome 反哺给 routing 与 Harness 自身。
 
-这意味着系统可以不断提高“**下一步查什么**”的能力，却不能学习“**怎样获得更多权限**”。
+但学习层始终不拥有业务权限。
 
 > **认知自治，权限确定。**
 >
-> 学习发生在安全可行域内部；Verifier、Sandbox、RBAC 与 Human Approval 永远位于学习层之外。
+> EcomEvo 可以学习“下一步怎样查得更好”，不能学习“怎样降低证据门槛”或“怎样获得更多执行权限”。
 
 <br />
 
 <table>
   <tr>
-    <td width="25%" valign="top">
-      <b>Evidence-native</b><br/><br/>
-      图片、视频、音频、PDF、Office、表格、日志和业务 API 结果进入同一证据状态，而不是只被塞进一段长 prompt。
+    <td width="25%" valign="top"><b>Evidence-native</b><br/><br/>图片、视频、音频、PDF、Office、表格、日志与企业数据进入统一证据状态，而不是只拼进一段 prompt。</td>
+    <td width="25%" valign="top"><b>Autonomous Runtime</b><br/><br/>Goal、Belief、Task Graph、Tool、Skill、Memory、Sub-Agent、Stop State 都由 Runtime 持续维护。</td>
+    <td width="25%" valign="top"><b>Self-Evolving Harness</b><br/><br/>跨任务优化 Prompt / Tool Strategy / Memory Retrieval / Delegation；候选进入 shadow，由真实 Verifier outcome 决定晋升或回滚。</td>
+    <td width="25%" valign="top"><b>Deterministic Authority</b><br/><br/>Registry、Sandbox、Verifier、RBAC、Approval 与真实业务动作始终位于学习空间之外。</td>
+  </tr>
+</table>
+
+<br />
+
+## 产品 · 一面工作台承载完整决策链
+
+对复杂业务任务来说，用户真正需要看的不是隐藏思维链，而是四类可审计状态：**目标是什么、证据到哪里了、Runtime 正在做什么、谁拥有最终权限**。
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/images/real/product-runtime.png" alt="EcomEvo Runtime Pulse 真实界面" width="100%" />
+      <br/><br/>
+      <sub><b>Runtime Control</b> · elapsed、budget、evidence gaps、routing state、stop reason 与 autonomy mode 都是结构化状态。</sub>
     </td>
-    <td width="25%" valign="top">
-      <b>Adaptive cognition</b><br/><br/>
-      Routing 从冷启动 prior 出发，用真实 verifier outcome 更新 posterior，逐渐学会不同任务里什么更值得查。
-    </td>
-    <td width="25%" valign="top">
-      <b>Durable runtime</b><br/><br/>
-      任务、输入快照、事件和恢复租约持久化；进程中断不等于任务丢失，多 worker 仍能按 durable event 顺序恢复。
-    </td>
-    <td width="25%" valign="top">
-      <b>Deterministic authority</b><br/><br/>
-      模型可以提出认知动作，但真实副作用必须经过 Registry、Verifier、Governance、RBAC 和人工确认。
+    <td width="50%" align="center" valign="top">
+      <img src="docs/images/real/product-evidence.png" alt="EcomEvo Evidence 面板真实界面" width="100%" />
+      <br/><br/>
+      <sub><b>Evidence Space</b> · 资料、缺口与验证状态进入同一任务，而不是散落在附件与聊天记录里。</sub>
     </td>
   </tr>
 </table>
 
 <br />
 
-## 产品 · Product
+### 五类业务场景，共用同一条 Harness 运行链
 
-### 一面工作台，看完整任务，而不是只看一段对话
-
-EcomEvo 把业务任务组织成四个同时存在的对象：**目标、证据、运行状态、权限状态**。
-
-用户不需要查看隐藏思维链，但应该随时知道：当前证据是否闭合、还缺什么、系统为什么继续查、预算还剩多少、为什么停止，以及最后一步究竟由谁批准。
-
-<br />
-
-<table>
-  <tr>
-    <td width="50%" align="center" valign="top">
-      <img src="docs/images/product-evidence-wall.svg" alt="EcomEvo 多模态证据空间" width="100%" />
-      <br/><br/>
-      <sub><b>Evidence Space</b> · 资料不是附件列表，而是可定位、可核验、可补充、可排除的证据对象。</sub>
-    </td>
-    <td width="50%" align="center" valign="top">
-      <img src="docs/images/product-runtime-control.svg" alt="EcomEvo 运行质量与权限控制面" width="100%" />
-      <br/><br/>
-      <sub><b>Runtime Control</b> · Evidence completeness、缺口、预算、stop reason、routing state 与 authority boundary 都是结构化状态。</sub>
-    </td>
-  </tr>
-</table>
-
-<br />
-
-### 同一套 Runtime，跨越不同高价值业务场景
-
-<p align="center">
-  <img src="docs/images/product-scenes.svg" alt="EcomEvo 五类高价值业务场景" width="96%" />
-</p>
-
-<p align="center">
-  <sub><b>Business Scenes</b> · 场景不同，但底层都是“目标 → 证据 → 补证 → 验证 → 权限”的同一条运行链。</sub>
-</p>
-
-| 场景 | EcomEvo 真正解决的问题 |
+| 场景 | Runtime 要解决的核心问题 |
 | --- | --- |
-| **商品治理** | 主图、详情、声明、品牌和资质是否彼此一致；缺证时继续追证，而不是猜测 |
-| **商家审核** | 主体、授权链、经营范围、关联关系与风险记录能否形成证据闭环 |
-| **售后判责** | 订单、物流、聊天、图片、录音与规则怎样重建事实时间线 |
-| **风险核查** | 弱线索、相关性、独立证据与反证怎样分开，避免把“可疑”直接升级成“事实” |
-| **内容审核** | 图片、视频、音频、文案与结构化材料怎样进入同一验证过程 |
-
-<br />
+| **商品治理** | 主图、详情、声明、品牌、价格与资质是否一致；证据不足时继续追证，而不是猜 |
+| **商家审核** | 主体、授权链、经营范围、关联关系与历史风险能否形成可核验闭环 |
+| **售后判责** | 订单、物流、沟通记录、图片/音频与规则怎样重建事实时间线 |
+| **风险核查** | 弱线索、相关性、独立信号与反证如何分离，避免把“可疑”直接升级为“事实” |
+| **内容审核** | 图片、视频、音频、文案与结构化资料如何进入同一个 verifier 流程 |
 
 <table>
   <tr>
-    <td width="64%" valign="middle">
-      <h3>桌面端是工作台，移动端仍然是同一个任务</h3>
-      <p>窄屏不是把关键控制能力删除，而是重新组织空间。资料、证据缺口、运行质量与待确认动作仍然存在，只把控制面收进可开合抽屉。</p>
-      <p>任务语义不会因为视口变化而改变；同一 conversation 在多标签页里也通过 durable event log 保持一致。</p>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/images/real/product-scenes.png" alt="EcomEvo 商家审核场景真实运行界面" width="100%" />
+      <br/><br/><sub><b>Scene Runtime</b> · 场景变化改变 evidence schema，不改变安全与权限原则。</sub>
     </td>
-    <td width="36%" align="center" valign="middle">
-      <img src="docs/images/product-mobile.svg" alt="EcomEvo 移动端任务控制面" width="72%" />
-      <br/><sub><b>Mobile Control</b> · 390×844 Chromium E2E 持续回归。</sub>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/images/real/product-command.png" alt="EcomEvo Command Palette 真实运行界面" width="100%" />
+      <br/><br/><sub><b>Command Surface</b> · 任务、场景与历史入口保持低摩擦，但不会绕过 Runtime 状态机。</sub>
     </td>
   </tr>
 </table>
 
 <br />
 
-### 一个任务如何向前推进
-
 <table>
   <tr>
-    <td width="25%" valign="top"><b>01 · 给目标</b><br/><br/>用户描述希望系统完成什么，不需要提前写死工具顺序。</td>
-    <td width="25%" valign="top"><b>02 · 建证据状态</b><br/><br/>多模态材料、企业数据与工具结果进入统一 evidence / belief state。</td>
-    <td width="25%" valign="top"><b>03 · 自主补证</b><br/><br/>Runtime 选择合法只读工具、检查反证、更新 posterior、重规划或停止。</td>
-    <td width="25%" valign="top"><b>04 · 验证与权限</b><br/><br/>Verifier 决定证据是否闭合；高影响动作只形成 proposal，交给有权限的人确认。</td>
+    <td width="62%" valign="middle">
+      <h3>桌面是工作台，移动端仍然是同一个任务</h3>
+      <p>窄屏不删除关键控制能力，而是重新组织空间。Evidence、运行状态、资料与待确认动作仍然属于同一个 durable conversation。</p>
+      <p>多标签页也不依赖单进程内存同步：SQLite durable event log 才是跨 worker 的事件顺序来源。</p>
+      <p><b>真实移动端回归：</b>390×844 logical viewport，DPR 2 输出 780×1688 产品截图。</p>
+    </td>
+    <td width="38%" align="center" valign="middle">
+      <img src="docs/images/real/product-mobile.png" alt="EcomEvo 移动端任务控制面真实截图" width="72%" />
+    </td>
   </tr>
 </table>
 
 <br />
 
-## Runtime · 从目标到业务动作
+## Runtime 设计 · Harness 是一等公民
+
+EcomEvo 把模型看成 Harness 中可替换的认知组件，而不是产品本身。
+
+### 01 · Runtime design
+
+面向商品治理、商家审核、售后等复杂决策场景，构建**模型无关的 Agent Harness Runtime**；Model、Tool、Skill、Memory、Sandbox 与 Verifier 插件化，并由 Event-Sourced Runtime 统一维护任务状态与执行轨迹。
+
+### 02 · Autonomous planning
+
+Event-Sourced Runtime 管理 **Goal / Belief State / Task State**。Adaptive Planner 结合证据缺口、信息收益、成本与后验状态，自主选择 Skill、Tool、Sub-Agent 或终止；Recursive Harness 拆分并行认知子任务，PTC 组合并发只读工具调用。
+
+### 03 · Verify, recover, evolve
+
+Verifier 校验证据完备性、任务约束与工具副作用；Runtime 支持 **checkpoint / rollback / replan**。Failure-Driven Evolver 从失败与恢复轨迹提取可复用认知经验；Prompt、Tool Strategy、Memory 与 Delegation 的新候选进入 shadow，经 Sandbox / Verifier / Regression evidence 验证后才能晋升，使长链任务同时具备失败恢复、可回滚与跨任务自进化能力。
+
+<br />
 
 ```mermaid
-flowchart TD
-    G[Goal] --> E[Evidence / Belief State]
-    E --> D[Observe · Decide · Route]
-    D --> T[Read-only Tools / Specialists]
-    T --> R[Review]
+flowchart LR
+    G[Goal] --> B[Belief / Evidence State]
+    B --> P[Adaptive Planner]
+    P --> S[Skill]
+    P --> T[Read-only Tool]
+    P --> A[Sub-Agent]
+    T --> C[PTC Parallel Composition]
+    S --> C
+    A --> R[Recursive Review]
+    C --> R
     R --> V[Verifier]
-    V -->|Evidence gap| D
-    V -->|Verified| P[BusinessAction Proposal]
-    V --> C[Counterfactual Credit]
-    C --> U[Posterior Update]
-    U --> D
-    P --> A[Approver Identity + Human Confirmation]
-    A --> X[Business Executor]
+    V -->|gap| K[Checkpoint / Rollback / Replan]
+    K --> P
+    V -->|verified| Q[BusinessAction Proposal]
+    Q --> H[Approver + Human Confirmation]
+    V --> F[Verifier Feedback]
+    F --> L[EvoGain-APR + EvoHarness-VCO]
+    L --> P
 ```
 
-这里最重要的不是“模型更聪明”，而是**认知动作空间与业务权限空间从架构上分开**。
-
-模型提出的候选动作首先必须落入安全可行域：
-
-$$
-\boxed{
-\mathcal A_t^{\mathrm{safe}}
-=
-\hat{\mathcal A}_t
-\cap \mathcal A^{\mathrm{registered}}
-\cap \mathcal A^{\mathrm{read\text{-}only}}
-\cap \mathcal A^{\mathrm{budget}}
-\cap \mathcal A^{\mathrm{sandbox}}
-}
-$$
-
-学习只能在 $\mathcal A_t^{\mathrm{safe}}$ 内优化。
-
 <br />
 
-## EvoGain-APR · Algorithm
+## 两个时间尺度的自进化
 
-### Adaptive Posterior Routing for verified evidence acquisition
+EcomEvo 不把“单次任务里选什么工具”和“未来 Harness 应该变成什么样”混成一个黑盒优化器。
 
-EcomEvo 的 routing 不是永久固定的一组手写权重，也不是把所有工具选择全部交给语言模型。
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <b>EvoGain-APR · within-turn learning</b><br/><br/>
+      在一次任务内部学习“此刻哪一个只读动作最值得做”。<br/><br/>
+      Hierarchical Bayesian posterior · deterministic UCB · contextual abstention · verifier difference credit · tool reliability posterior。
+    </td>
+    <td width="50%" valign="top">
+      <b>EvoHarness-VCO · across-turn evolution</b><br/><br/>
+      跨真实任务学习“Harness 的哪一个认知组件应该改变”。<br/><br/>
+      Typed component edits · block-coordinate search · post-candidate cohort · posterior shadow allocation · promote / rollback。
+    </td>
+  </tr>
+</table>
 
-它把冷启动规则降级成 **prior**，然后用真实任务里“这个工具到底让可验证状态提高了多少”作为学习信号，持续更新 contextual posterior。
-
-目标可以写成一个受约束的 sequential evidence acquisition 问题：
+它们共同优化认知效率，但共享同一条不可学习的权限边界：
 
 $$
 \boxed{
-\pi^{\star}
-=
-\arg\max_{\pi}
-\;\mathbb E_{\pi}
-\left[\sum_t \mathrm{Credit}_t\right]
+\max_{\pi_\theta,\,H}
+\;\mathbb E[R_{\mathrm{evidence}}]
 \qquad
 \text{s.t.}\quad
- a_t\in\mathcal A_t^{\mathrm{safe}}
+ a_t\in\mathcal A^{\mathrm{safe}}(s_t)
 }
 $$
 
-**Safety 决定可行域；Learning 只决定可行域里下一步什么更值得做。**
-
 <br />
 
-### 1 · Hierarchical Bayesian Posterior
+## EvoHarness-VCO · 2026 Harness Self-Evolution
 
-对每个合法候选工具构造上下文向量 $x$，包含 evidence coverage、authority、skill support、novelty、counter-evidence value、specificity、tool reliability、cost pressure、redundancy、evidence gap 与 recovery context。
+### Verifier-grounded Coordinate Optimizer
 
-冷启动：
+EvoHarness-VCO 的设计目标不是让模型“随便改自己的代码”，而是让 Harness 成为**可观测、可编辑、可验证、可回滚的外部学习状态**。
 
-$$
-w\sim\mathcal N\!\left(\mu_0,\Lambda_0^{-1}\right)
-$$
-
-真实 outcome 以一个 parallel round 为单位更新 sufficient statistics：
+生产 Runtime 中可进化的是：
 
 $$
-\begin{aligned}
-A_t
-&=A_0+\delta\left(A_{t-1}-A_0\right)
-+\sum_{i=1}^{k}x_i x_i^{\top},\\[4pt]
-b_t
-&=b_0+\delta\left(b_{t-1}-b_0\right)
-+\sum_{i=1}^{k}r_i x_i,\\[4pt]
-\mu_t
-&=A_t^{-1}b_t,\\[4pt]
-\sigma_t^2(x)
-&=x^{\top}A_t^{-1}x.
-\end{aligned}
+\boxed{
+\mathcal H_{\mathrm{learn}}
+=
+\{H_{prompt},H_{tool},H_{memory},H_{delegation}\}
+}
 $$
 
-因此 prior 只决定起跑方向；随着真实 outcome 积累，posterior 可以覆盖甚至反转冷启动排序。
-
-不同业务域之间采用有界 global → domain transfer：
+而以下组件根本不进入 optimizer 的表示空间：
 
 $$
-\tau_d=\frac{n_d}{n_d+\lambda},
+\boxed{
+\mathcal H_{\mathrm{authority}}
+=
+\{Registry,Sandbox,Verifier,RBAC,Approval,BusinessAction\}
+}
+$$
+
+所以安全不是 reward 的一项权重；**安全先定义可行域，优化器只在可行域内部学习。**
+
+### 1 · Typed, bounded component edits
+
+Harness candidate 不是任意 Python patch，而是受类型约束的 declarative edit：
+
+```text
+prompt      -> guidance
+
+tool        -> preferred_tools / avoid_tools
+
+memory      -> retrieval_terms / guidance
+
+delegation  -> roles / guidance
+```
+
+允许的 mutation 只有：
+
+```text
+add | delete | replace
+```
+
+Tool mutation 还必须经过当前 Registry metadata 与 Sandbox，只允许 read-only / mcp-read 工具。没有 reasoner 时，Tool candidate 仍可由**当前 verifier gaps × 当前工具 purpose/evidence tags**自动诱导，不维护“某业务词固定映射某工具”的手写业务价值表。
+
+### 2 · Block-coordinate evolution
+
+设 Harness 为 $K$ 个认知组件：
+
+$$
+H_t=\left(H_t^{(1)},H_t^{(2)},\ldots,H_t^{(K)}\right)
+$$
+
+每一轮只进化一个 coordinate $k_t$，其它组件保持不变：
+
+$$
+\boxed{
+H_{t+1}^{(j)}=H_t^{(j)},\qquad j\neq k_t
+}
+$$
+
+一个 domain 同时最多存在一个 shadow candidate。这样可以把真实 outcome 归因到具体 Harness 改动，降低多组件同时变异带来的交叉干扰与过拟合。
+
+### 3 · Verifier harmonic potential
+
+候选不能靠 optimizer model 自评“我变强了”。Fitness 来自真实 Decision Verifier。
+
+设 verifier quality 为 $q(v)$，evidence completeness 为 $c(v)$：
+
+$$
+\boxed{
+\Phi(v)
+=
+\frac{2q(v)c(v)}{q(v)+c(v)+\epsilon}
+}
+$$
+
+只要任一项低，reward 就被压低；一段听起来很好的回答无法补偿证据缺口。
+
+每个 Harness component 用 fractional Beta posterior 累积真实任务 outcome：
+
+$$
+\alpha_h\leftarrow\alpha_h+\Phi(v),
 \qquad
-\tilde\mu_d
-=\tau_d\mu_d+(1-\tau_d)\mu_g.
+\beta_h\leftarrow\beta_h+1-\Phi(v)
 $$
 
-新域可以借经验，但不会在第一天就继承成熟域的全部决策权重。
+$$
+\mathbb E[\theta_h]
+=
+\frac{\alpha_h}{\alpha_h+\beta_h}
+$$
+
+### 4 · Post-candidate cohort
+
+新 candidate 不能拿自己的几次新结果去对比 parent 多个月的历史 posterior。
+
+设 candidate 创建时刻为 $t_0$，只比较 $t_0$ 之后的两臂 outcome：
+
+$$
+\mathcal D_{h'}
+=\{v_i\mid component=h',\;t_i\ge t_0\}
+$$
+
+$$
+\mathcal D_h
+=\{v_i\mid component=h,\;t_i\ge t_0\}
+$$
+
+两臂都出现实际 exposure 之前，不允许 promote / reject。这是统计可识别性约束，不是“必须跑固定 N 次”的人工门槛。
+
+### 5 · Posterior-derived shadow allocation
+
+EcomEvo 不配置“固定 10% shadow 流量”。候选使用概率直接来自后验优越概率：
+
+$$
+\boxed{
+p_t
+=P\!\left(\theta_{h'}>\theta_h\mid\mathcal D_{t\ge t_0}\right)
+}
+$$
+
+$$
+P(\mathrm{use}\;h')=p_t
+$$
+
+任务分桶由 `hash(session_id, candidate_id)` 做 deterministic assignment，因此相同 session 与 candidate 可以稳定回放。
+
+### 6 · Sequential promote / rollback
+
+令 $\rho$ 为统计决策风险：
+
+$$
+\boxed{
+p_t\ge1-\rho\Rightarrow\mathrm{promote}}
+$$
+
+$$
+\boxed{
+p_t\le\rho\Rightarrow\mathrm{rollback}}
+$$
+
+其余状态继续 shadow。**没有固定 run-count 晋升规则，也没有把一组手工业务价值权重永久写死成最终策略。**
+
+> 完整实现、研究映射、组件类型、posterior cohort 与安全边界见 **[Harness Self-Evolution](docs/HARNESS_EVOLUTION.md)**。
 
 <br />
 
-### 2 · Deterministic UCB
+## 2026 方法谱系 · 复现核心机制，再适配垂直业务
 
-生产 routing 需要探索，但也需要可复现。
+EvoHarness-VCO 不是把一个 coding-agent 算法原样搬进电商，而是选择 2026 最新公开工作的关键机制，再按 evidence-governed commerce runtime 重组：
 
-EcomEvo 使用确定性的 UCB-style score：
+| 2026 工作 | 复现/吸收的核心思想 | EcomEvo 的垂直适配 |
+| --- | --- | --- |
+| **Microsoft SkillOpt** | frozen model 外部 text-space parameter；bounded add/delete/replace；validation gate；rejected-edit memory | 从单 Skill 扩展到 Prompt / Tool Strategy / Memory / Delegation；业务权限不进入可编辑文本状态 |
+| **AHE · Agentic Harness Engineering** | component / experience / decision observability；Harness edit 可审计、可回滚 | 所有 component、hypothesis、parent、generation、outcome 与 transition 持久化，并写入 Runtime event stream |
+| **HarnessCompass** *(2026 preprint)* | constrained evolution；task-agnostic changes；component-wise optimization | 一个 domain 同时只进化一个 cognitive coordinate，避免跨组件 attribution 污染 |
+| **SBCO** *(2026 preprint)* | verifier-grounded approximate block-coordinate harness optimization | 用业务 Decision Verifier 作为自监督反馈，而不是依赖 coding test 或模型自评分 |
+
+参考：
+
+- [Microsoft SkillOpt — official open source](https://github.com/microsoft/SkillOpt)
+- [Microsoft Research — SkillOpt](https://www.microsoft.com/en-us/research/publication/skillopt-executive-strategy-for-self-evolving-agent-skills/)
+- [Agentic Harness Engineering — paper](https://arxiv.org/abs/2604.25850)
+- [Agentic Harness Engineering — official code](https://github.com/china-qijizhifeng/agentic-harness-engineering)
+- [HarnessCompass — arXiv:2608.01918](https://arxiv.org/abs/2608.01918)
+- [SBCO — arXiv:2608.10157](https://arxiv.org/abs/2608.10157)
+
+HarnessCompass 与 SBCO 截至 2026-08 是最新公开预印本；这里明确按 preprint 引用，不虚构正式顶会录用。EcomEvo 声明的是**方法核心的工程化复现与垂直领域再设计**，不是与原项目逐行同构。
+
+<br />
+
+## EvoGain-APR · 单任务内自适应路由
+
+EvoHarness-VCO 改善长期 Harness；EvoGain-APR 则负责每一轮实时选择合法的 read-only cognition action。
+
+### Hierarchical Bayesian posterior
+
+对候选工具构造上下文向量 $x$，真实 verifier difference credit 以 round 为单位更新：
+
+$$
+A_t
+=A_0+\delta(A_{t-1}-A_0)+\sum_i x_i x_i^\top
+$$
+
+$$
+b_t
+=b_0+\delta(b_{t-1}-b_0)+\sum_i r_i x_i
+$$
+
+$$
+\mu_t=A_t^{-1}b_t,
+\qquad
+\sigma_t^2(x)=x^\top A_t^{-1}x
+$$
+
+不同业务域通过有界 global → domain shrinkage 共享经验：
+
+$$
+\tau_d=\frac{n_d}{n_d+\lambda}
+$$
+
+### Deterministic UCB
 
 $$
 \boxed{
 Q_t(x)
-=\mu_t^{\top}x
-+\beta_t\sqrt{x^{\top}A_t^{-1}x}
+=\mu_t^\top x
++\beta_t\sqrt{x^\top A_t^{-1}x}
 }
 $$
 
-其中：
+探索来自 posterior uncertainty，而不是不可回放的随机工具选择。
 
-- $\mu_t^{\top}x$ 是已经学到的期望证据价值；
-- $\sqrt{x^{\top}A_t^{-1}x}$ 是 epistemic uncertainty；
-- $\beta_t$ 控制在合法动作空间里的有限探索。
+### Contextual abstention
 
-相同 state、posterior 与 exploration 参数会得到相同排序，便于回放、审计与 CI。
-
-<br />
-
-### 3 · Contextual Abstention
-
-真正高效的 Agent 不只会选择工具，也会知道**什么时候不应该再调用工具**。
-
-EcomEvo 把候选工具与同一状态下的 no-op baseline 比较：
+Runtime 不只要学会“选什么”，还要学会“什么时候不值得继续查”。
 
 $$
 \boxed{
 \mathrm{Adv}_t(a_i\mid s_t)
-=
-Q_t(x_i)
--
-Q_t\!\left(x_{\varnothing}(s_t)\right)
+=Q_t(x_i)-Q_t(x_{\varnothing}(s_t))
 }
 $$
 
-只有当：
+只有：
 
 $$
 \mathrm{Adv}_t(a_i\mid s_t)>0
 $$
 
-候选才值得进入执行集合。
+候选才进入执行集合。
 
-因此“继续查还是停止”与“哪个工具更好”使用同一套 posterior 标尺，而不是依赖一个永久固定的 absolute utility threshold。
+### Verifier difference credit
 
-<br />
-
-### 4 · Verifier Difference Credit
-
-语言模型不给自己打 reward。
-
-系统真正关心的是：**拿掉某个工具结果之后，可验证状态到底下降了多少。**
-
-先把 verifier quality $q(v)$ 与 evidence completeness $c(v)$ 合成一个调和势能：
+对每个已执行结果 $r_i$ 做 leave-one-out counterfactual：
 
 $$
-\Phi(v)=
-\begin{cases}
-\dfrac{2q(v)c(v)}{q(v)+c(v)}, & q(v)+c(v)>0,\\[8pt]
-0, & \text{otherwise}.
-\end{cases}
-$$
-
-对第 $i$ 个工具结果执行 deterministic leave-one-out：
-
-$$
-\boxed{
 D_i
-=
-\Phi\!\left(V(R)\right)
--
-\Phi\!\left(V(R\setminus\{r_i\})\right)
-}
+=\Phi(V(R))-\Phi(V(R\setminus\{r_i\}))
 $$
 
-再按执行成本归一化：
+再按成本归一：
 
 $$
 \boxed{
 \mathrm{Credit}_i
-=
-\frac{D_i}{1+\mathrm{Cost}_i}
+=\frac{D_i}{1+\mathrm{Cost}_i}
 }
 $$
 
-于是 posterior 学到的是**真实证据边际贡献**，不是模型对自身行为的主观评价。
+因此 routing posterior 学到的是**工具对可验证状态的真实边际贡献**，而不是模型主观评价。
+
+> 详细 feature space、adaptive activation、non-stationary decay、counterfactual learning 与性能实现见 **[算法报告](docs/ALGORITHM.md)**。
 
 <br />
 
-### 5 · Tool Reliability Posterior
-
-“这个数据源很有价值”和“这个数据源运行稳定”不是一回事。
-
-因此每个 domain × tool 独立维护可靠性 posterior：
-
-$$
-\boxed{
- p_{d,a}
-\sim
-\operatorname{Beta}(\alpha_{d,a},\beta_{d,a})
-}
-$$
-
-成功与失败更新 reliability；reliability 可以影响 routing，但**绝不会自动升级成业务证据**。
-
-> 更完整的 feature space、activation、non-stationary decay、complexity、counterfactual credit 与研究边界见 **[算法技术报告](docs/ALGORITHM.md)**。
-
-<br />
-
-## 三层学习，三种职责
-
-<table>
-  <tr>
-    <td width="33%" valign="top">
-      <b>Routing Learning</b><br/><br/>
-      当前状态下，下一步查什么。<br/><br/>
-      <code>context → posterior → UCB → tool set</code>
-    </td>
-    <td width="33%" valign="top">
-      <b>Tool Reliability</b><br/><br/>
-      不同业务域里，数据源是否稳定。<br/><br/>
-      <code>success / failure → Beta posterior</code>
-    </td>
-    <td width="34%" valign="top">
-      <b>Skill Evolution</b><br/><br/>
-      哪些长期认知策略值得复用、晋升或退休。<br/><br/>
-      <code>shadow → replay → QD archive → promote / retire</code>
-    </td>
-  </tr>
-</table>
-
-三层学习都不能修改 registered tools、required evidence、credential scope、hard budget、confirmation requirement 或 approver identity。
-
-<br />
-
-## Durable by design
-
-一次 autonomous turn 面对的是**不可变的输入与 evidence snapshot**。
+## Failure recovery · 先恢复当前任务，再进化未来 Harness
 
 ```text
-User Message
+Goal / Belief
     │
     ▼
-Atomic Message + Accepted Event + Durable Job
+Adaptive Plan
     │
     ▼
-Immutable Input / Asset SHA Snapshot
+Read-only Tool / Skill / Sub-Agent
     │
     ▼
-Cross-process Job Lease
+Verifier
+    ├── pass ──> Controlled Action Proposal
     │
-    ▼
-Autonomous Runtime
-    │
-    ▼
-Atomic Assistant Message + Proposals + Terminal Event
+    └── fail
+          │
+          ▼
+    Checkpoint / Rollback / Replan
+          │
+          ▼
+    Failure / Recovery Trajectory
+          │
+          ├── Skill distillation
+          └── Harness coordinate candidate
+                    │
+                    ▼
+             Shadow posterior
+                    │
+          ┌─────────┴─────────┐
+          ▼                   ▼
+       Promote             Rollback
 ```
 
-- worker 中断后，lease 到期可由其他 worker reclaim；
-- active turn 期间不能悄悄加入新资料；
-- SQLite `task_events` 是跨 worker 的 durable ordering source；
-- process-local queue 只负责低延迟 wake-up；
-- WebSocket 通过 `after_id` 增量续传，而不是重放整段历史。
+这里有一个重要区分：**当前任务的失败恢复不能等待“未来学会”**。Runtime 先依靠 Verifier 与 deterministic recovery 保证本轮安全；跨任务 optimizer 再从已验证轨迹中提取可泛化改进。
 
 <br />
 
-## Authority by design
+## Authority · 学习器永远不能给自己加权限
+
+模型、Memory、Skill 与 Harness candidate 都不能成为独立业务证据，也不能改变业务动作的合法性。
 
 ```text
 Adaptive Cognition
         │
         ▼
-Read-only Tools / Specialists
+Read-only Tool / Skill / Specialist
         │
         ▼
-Verifier
+Decision Verifier
 ════════════════════════════════════
 Deterministic Authority Boundary
         │
@@ -445,9 +517,39 @@ Approver Identity + Human Confirmation
 Business Executor
 ```
 
-Agent 可以自主查证、并行工具、检查反证、重规划、停止和学习；但不能自行降低 required evidence、把模型回答当独立证据、修改 Sandbox / Verifier、注册生产 side-effect tool，或批准退款、下架、冻结等高影响动作。
+对 timeout、断网、HTTP 5xx/408、损坏响应等无法确认副作用是否发生的企业工具异常，EcomEvo 使用 `uncertain` 语义，禁止把“结果未知”伪装成“明确失败，可以盲目重试”。
 
-对无法确认副作用是否已经发生的 MCP / enterprise-tool 异常——例如 timeout、连接中断、HTTP 5xx/408、损坏响应、内部错误——系统进入 `uncertain`，而不是把它包装成“明确失败，因此可以安全重试”。
+<br />
+
+## Durable Runtime · 进程退出不等于任务丢失
+
+一次 autonomous turn 使用闭合的 evidence snapshot：
+
+```text
+User Message
+    │
+    ▼
+Atomic Message + Accepted Event + Durable Job
+    │
+    ▼
+Immutable Input / Asset SHA Snapshot
+    │
+    ▼
+Cross-process Lease
+    │
+    ▼
+Autonomous Runtime
+    │
+    ▼
+Atomic Assistant Message + Proposals + Terminal Event
+```
+
+- user message + accepted event + durable job 原子提交；
+- active turn 阻止 evidence mutation；
+- worker crash 后过期 lease 可 reclaim；
+- SQLite `task_events` 是跨 worker authoritative event source；
+- process-local queue 只是低延迟 wake hint；
+- WebSocket 支持 `after_id` 增量恢复与跨 worker ordered catch-up。
 
 <br />
 
@@ -461,33 +563,24 @@ viewer  <  operator  <  approver  <  admin
 - action decision 要求 `approver`；
 - runtime / evolution 全局控制面要求 `admin`；
 - approval CAS 自动持久化 actor tenant / user / role / auth mode；
-- hardened 模式通过 trusted proxy / gateway 在服务端签入身份；
-- 浏览器永远不持有服务端 HMAC secret。
+- hardened HMAC mode 面向 trusted reverse proxy / SSO / gateway 边界；
+- server secret 永远不会进入浏览器。
 
-具体企业 IdP / SSO 属于真实部署环境集成，而不是仓库里伪造的“已完成”。
+具体企业 IdP 属于真实部署集成，不会在仓库里伪造“已完成”。
 
 <br />
 
-## 被自动化证明的部分
-
-README 不应该承担完整测试报告，所以这里只保留发布门禁本身；详细数据统一放在 **[验证报告](docs/VERIFICATION_REPORT.md)** 与 **[性能手册](docs/PERFORMANCE.md)**。
+## Automated release gates
 
 <table>
   <tr>
-    <td width="33%" valign="top">
-      <b>Regression Gate</b><br/><br/>
-      Full pytest、fresh/persisted Gold Set、malicious-controller authority、durable recovery、WebSocket ordering、tenant/RBAC、MCP uncertainty 与生产前端静态检查。
-    </td>
-    <td width="33%" valign="top">
-      <b>Pressure Gate</b><br/><br/>
-      Current-head <code>1 / 8 / 32 / 64 / 120 / 240</code> 并发，硬检查 session、event chain、budget、stop reason 与 side-effect safety invariant。
-    </td>
-    <td width="34%" valign="top">
-      <b>Real Chromium E2E</b><br/><br/>
-      Uvicorn + Playwright Chromium，覆盖发送/收取结果、Runtime Pulse、键盘、移动端抽屉、双标签页同步与 console/page errors。
-    </td>
+    <td width="33%" valign="top"><b>Regression</b><br/><br/>Full pytest、Gold Set fresh + persisted replay、adversarial authority、Harness cohort regression、durable recovery、tenant/RBAC、MCP uncertainty、WebSocket ordering、frontend structure。</td>
+    <td width="33%" valign="top"><b>Pressure</b><br/><br/>Current-head <code>1 / 8 / 32 / 64 / 120 / 240</code> 并发，检查 session uniqueness、event chain、budget、stop reason 与 side-effect invariants。</td>
+    <td width="34%" valign="top"><b>Real Chromium E2E</b><br/><br/>真实 Uvicorn + Chromium，覆盖首屏、发送与 durable result、Runtime Pulse、Evidence、Command Palette、390×844 mobile drawer、双标签同步与 console/page error。</td>
   </tr>
 </table>
+
+成功 E2E 还会生成 README 使用的真实产品截图；桌面截图以 **3840×2400** 保存到 `docs/images/real/`。因此 README 的产品视觉与真正通过浏览器门禁的产品页面来自同一条运行链。
 
 <br />
 
@@ -518,9 +611,9 @@ docker run --rm \
   ecomevo
 ```
 
-### 自托管认知引擎
+### Model-agnostic cognition layer
 
-认知引擎是可替换组件，不拥有业务执行权：
+模型层是可替换插件，不拥有业务执行权。兼容端点可以通过环境变量接入：
 
 ```bash
 OPEN_MODEL_BASE_URL=http://your-runtime/compatible-endpoint
@@ -529,30 +622,31 @@ OPEN_MODEL_MODEL=your-current-model
 OPEN_MODEL_MULTIMODAL=0
 ```
 
-底层模型升级不要求修改 EvoGain-APR、Verifier、Sandbox 或 BusinessAction 权限链。
+更换底层模型不要求修改 Verifier、Sandbox、RBAC、BusinessAction authority，也不要求重写 EvoHarness-VCO / EvoGain-APR 的安全边界。
 
 <br />
 
 ## Documentation
 
-| 文档 | 你会在这里找到什么 |
+| 文档 | 内容 |
 | --- | --- |
-| **[产品手册](docs/PRODUCT_MANUAL.md)** | 怎样发起任务、看证据、补证、理解运行状态与确认动作 |
-| **[算法技术报告](docs/ALGORITHM.md)** | EvoGain-APR、posterior、UCB、difference credit、复杂度与研究边界 |
-| **[技术手册](docs/TECHNICAL_MANUAL.md)** | API、durable job、MCP、RBAC、恢复、身份与部署 |
-| **[性能手册](docs/PERFORMANCE.md)** | 压测口径、SQLite 边界、routing-store、current-head performance gate |
-| **[架构](docs/ARCHITECTURE.md)** | 系统组件、数据流、学习平面与 deterministic authority boundary |
+| **[产品手册](docs/PRODUCT_MANUAL.md)** | 任务、证据、运行状态、场景、上传与审批体验 |
+| **[Harness Self-Evolution](docs/HARNESS_EVOLUTION.md)** | 2026 Harness 方法谱系、EvoHarness-VCO、component posterior、shadow / promote / rollback |
+| **[算法报告](docs/ALGORITHM.md)** | EvoGain-APR、Bayesian routing、UCB、abstention、difference credit、复杂度 |
+| **[技术手册](docs/TECHNICAL_MANUAL.md)** | API、durable job、MCP、identity/RBAC、恢复与部署 |
+| **[架构](docs/ARCHITECTURE.md)** | 系统组件、数据流、learning plane 与 deterministic authority boundary |
+| **[性能](docs/PERFORMANCE.md)** | current-head pressure、routing-store benchmark、瓶颈与范围 |
+| **[验证报告](docs/VERIFICATION_REPORT.md)** | CI、Gold Set、压力、Chromium E2E 与真实环境边界 |
 | **[设计系统](docs/DESIGN.md)** | 中文排版、动效、响应式、任务工作台与交互原则 |
-| **[验证报告](docs/VERIFICATION_REPORT.md)** | CI、Gold Set、压力测试、Chromium E2E 与真实部署边界 |
 
 <br />
 
 ## 真实边界
 
-仓库内能自动化的核心门禁已经闭环，但下面这些事情必须在真实环境继续验证：
+仓库内可自动化的发布门禁可以证明代码在受控环境中的行为，但不会把外部生产条件包装成“已经验证”：
 
 - 企业 IdP / SSO / Gateway 的实际接入；
-- 真实 provider / MCP 凭证、区域、rate limit、schema drift 与下游幂等；
+- 真实 provider / MCP 凭证、区域、quota/rate limit、schema drift 与下游幂等；
 - Safari / Microsoft Edge 实机；
 - 大型或畸形 PDF、Office、图片、视频与音频业务语料；
 - 超过 SQLite WAL 单 writer 边界后的生产多节点数据库 / queue topology；
@@ -564,6 +658,6 @@ OPEN_MODEL_MULTIMODAL=0
 
 <p align="center"><b>目标交给 Runtime。证据交给 Verifier。权限留给业务。</b></p>
 
-<p align="center"><b>Adaptive cognition. Deterministic authority.</b></p>
+<p align="center"><b>Self-evolving cognition. Deterministic authority.</b></p>
 
-<p align="center"><sub>Build agents that can learn what to do next — without learning how to bypass control.</sub></p>
+<p align="center"><sub>Build a harness that can learn how to work better — without learning how to bypass control.</sub></p>
