@@ -1,7 +1,11 @@
 (() => {
   'use strict';
 
-  const modules = ['/assets/enhancements-core.js', '/assets/realtime-reconcile.js'];
+  const modules = [
+    '/assets/enhancements-core.js',
+    '/assets/realtime-reconcile.js',
+    '/assets/safety-guards.js',
+  ];
 
   function fallbackLoad(index = 0) {
     if (index >= modules.length) return;
@@ -21,7 +25,7 @@
 
   if (document.readyState === 'loading') {
     // This file is parser-blocking and sits immediately before app.js. document.write keeps
-    // fetch/provider/WebSocket guards installed before the main module starts executing.
+    // fetch/provider/WebSocket/safety guards installed before the main module starts executing.
     document.write(modules.map(src => `<script src="${src}"><\/script>`).join(''));
   } else {
     fallbackLoad();
