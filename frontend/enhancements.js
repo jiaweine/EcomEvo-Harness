@@ -3,6 +3,7 @@
 
   const modules = [
     '/assets/safety-guards.js',
+    '/assets/privacy-sanitize.js',
     '/assets/enhancements-core.js',
     '/assets/realtime-reconcile.js',
   ];
@@ -24,8 +25,8 @@
   }
 
   if (document.readyState === 'loading') {
-    // This file is parser-blocking and sits immediately before app.js. Safety capture handlers
-    // install first, then core fetch/WebSocket/telemetry guards, then cross-tab reconciliation.
+    // Parser-blocking loader: safety and privacy hooks install before the main module can render,
+    // then core telemetry/fetch guards and cross-tab reconciliation are layered on top.
     document.write(modules.map(src => `<script src="${src}"><\/script>`).join(''));
   } else {
     fallbackLoad();
