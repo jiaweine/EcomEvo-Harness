@@ -71,6 +71,8 @@ jobs:
   browser-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -103,6 +105,21 @@ jobs:
           name: ecomevo-product-screenshots
           path: outputs/e2e/product-*.png
           if-no-files-found: warn
+      - name: Publish verified screenshots to branch
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-product-screenshots]')
+        run: |
+          set -euo pipefail
+          mkdir -p docs/images/real
+          cp outputs/e2e/product-*.png docs/images/real/
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/images/real/product-*.png
+          if git diff --cached --quiet; then
+            echo 'real product screenshots unchanged'
+            exit 0
+          fi
+          git commit -m 'Publish real Chromium product screenshots [screenshots]'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
       - name: Upload browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
