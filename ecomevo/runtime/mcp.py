@@ -226,8 +226,11 @@ class MCPRegistry:
         headers={**self._auth_headers(s),'MCP-Protocol-Version':version}
         if session:headers['MCP-Session-Id']=session
         r,data=await self._post(s,payload,headers)
-        if r.status_code==404 and session and retry:
-            self._legacy_sessions.pop(s.key,None);return await self._call_legacy(s,tool_name,arguments,retry=False)
+        if r.status_code==404 and session:
+            # A tools/call may already have reached business logic before the session failure is observed.
+            # Never replay it automatically. Clear the stale session and surface an ambiguous transport result.
+            self._legacy_sessions.pop(s.key,None)
+            raise httpx.RemoteProtocolError('MCP legacy session expired during tool call',request=r.request)
         return self._result_or_raise(r,data)
 
     async def call_tool(self,server_key:str,tool_name:str,arguments:dict[str,Any])->dict[str,Any]:
