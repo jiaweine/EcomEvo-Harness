@@ -30,6 +30,9 @@ class MCPRegistry:
         self._legacy_sessions:dict[str,tuple[str,str|None]]={}
         self._tool_cache:dict[str,tuple[float,dict[str,dict[str,Any]]]]={}
         self._transport=transport
+        try:timeout=float(os.environ.get('ECOMEVO_MCP_TIMEOUT_SECONDS','30'))
+        except (TypeError,ValueError):timeout=30.0
+        self.timeout_s=max(3.0,min(120.0,timeout))
         self._load_env()
 
     def _load_env(self):
@@ -121,7 +124,7 @@ class MCPRegistry:
         return final
 
     async def _post(self,s:MCPServer,payload:dict[str,Any],headers:dict[str,str])->tuple[httpx.Response,dict[str,Any]]:
-        async with httpx.AsyncClient(timeout=60,transport=self._transport) as client:
+        async with httpx.AsyncClient(timeout=self.timeout_s,transport=self._transport) as client:
             r=await client.post(s.url,headers=headers,json=payload)
         data={}
         if r.content:
@@ -230,5 +233,10 @@ class MCPRegistry:
     async def call_tool(self,server_key:str,tool_name:str,arguments:dict[str,Any])->dict[str,Any]:
         s=self.servers.get(server_key)
         if not s or not s.enabled:raise RuntimeError('MCP server not configured')
-        try:return await self._call_modern(s,tool_name,arguments)
-        except _LegacyRequired:return await self._call_legacy(s,tool_name,arguments)
+        try:
+            try:return await self._call_modern(s,tool_name,arguments)
+            except _LegacyRequired:return await self._call_legacy(s,tool_name,arguments)
+        except httpx.TimeoutException as exc:
+            # Normalize every transport timeout to ReadTimeout so the action API uses the
+            # conservative `uncertain` outcome instead of claiming an explicit business failure.
+            raise httpx.ReadTimeout('MCP request timed out',request=getattr(exc,'request',None)) from exc
