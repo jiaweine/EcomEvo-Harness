@@ -4,7 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d1728" />
-  <title>EcomEvo 商业决策工作台</title>
+  <meta name="description" content="EcomEvo：自主决策、自我进化、证据驱动、可控执行的商业 Agent 工作台。" />
+  <title>EcomEvo · 自进化商业 Agent 工作台</title>
   <link rel="stylesheet" href="/assets/app.css" />
 </head>
 <body>
@@ -12,9 +13,9 @@
   <header class="topbar">
     <div class="top-left">
       <button class="mobile-icon" id="navToggle" aria-label="打开业务导航" aria-expanded="false">☰</button>
-      <div class="brand" aria-label="EcomEvo 商业决策工作台">
+      <div class="brand" aria-label="EcomEvo 自进化商业 Agent 工作台">
         <span class="brand-mark" aria-hidden="true">E</span>
-        <div class="brand-copy"><b>EcomEvo</b><small>商业决策工作台</small></div>
+        <div class="brand-copy"><b>EcomEvo</b><small>自主商业 Agent</small></div>
       </div>
     </div>
     <button class="command-trigger" id="commandBtn" aria-label="搜索任务和业务入口">
@@ -47,7 +48,7 @@
       </section>
     </div>
     <div class="left-footer">
-      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>数据流向可控</b><small>选择外部服务时，当前任务内容会按配置发送到对应服务</small></p></div>
+      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>认知自治，权限确定</b><small>Agent 可自主查证和重规划；真实业务操作仍由你确认</small></p></div>
       <button id="settingsBtn">服务状态</button>
     </div>
   </aside>
@@ -57,7 +58,7 @@
       <div class="task-head-main">
         <div class="eyebrow"><span id="sceneEyebrow">商品治理</span><i></i><span id="taskConnection">已同步</span></div>
         <h1 id="conversationTitle">新的业务任务</h1>
-        <p id="conversationMeta">把相关资料放进来，直接描述要处理的问题。</p>
+        <p id="conversationMeta">给目标、加资料，EcomEvo 会自主规划核对路径。</p>
         <div class="task-chips" aria-label="任务摘要">
           <span class="task-chip"><small>资料</small><b id="assetCountChip">0</b></span>
           <span class="task-chip"><small>待确认</small><b id="actionCountChip">0</b></span>
@@ -65,7 +66,7 @@
         </div>
       </div>
       <div class="task-head-actions">
-        <label class="provider-control"><small>处理服务</small><select id="providerSelect" aria-label="选择处理服务"><option value="auto">自动选择</option></select><span aria-hidden="true">⌄</span></label>
+        <label class="provider-control"><small>认知引擎</small><select id="providerSelect" aria-label="选择处理服务"><option value="auto">自动选择</option></select><span aria-hidden="true">⌄</span></label>
         <button class="icon-btn" id="shareBtn" title="复制任务链接" aria-label="复制任务链接">分享</button>
       </div>
     </header>
@@ -74,21 +75,21 @@
 
     <div class="chat-scroll" id="chatScroll">
       <section class="welcome" id="welcomePanel">
-        <div class="welcome-badge"><span></span>新任务</div>
-        <h2>把目标交代清楚，剩下的过程都留在这里。</h2>
-        <p>商品、商家、订单、截图、视频、表格和沟通记录可以持续追加。工作台会把事实、风险、结论和需要你确认的操作分开整理。</p>
+        <div class="welcome-badge"><span></span>Autonomous Agent</div>
+        <h2>你只给目标，EcomEvo 自己规划、查证、复核和重规划。</h2>
+        <p>它不是固定流程，也不是只会 Tool Calling 的聊天机器人。商品、商家、订单、截图、视频、表格和沟通记录可以持续追加；Runtime 会围绕证据缺口自主选择只读工具、并行核对、动态增加复核视角，并把有效经验沉淀成可复用技能。</p>
         <div class="quick-grid">
-          <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对一批商品</b><small>找出风险声明、资料缺口和需要处理的商品</small></div><em>商品治理</em></button>
-          <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家入驻</b><small>核对主体、资质、品牌授权和历史经营风险</small></div><em>商家审核</em></button>
-          <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后争议</b><small>还原订单时间线，核对举证并给出判责建议</small></div><em>售后判责</em></button>
-          <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查异常风险</b><small>区分明确证据和普通线索，决定是否需要升级</small></div><em>风险核查</em></button>
+          <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对一批商品</b><small>自主追踪风险声明、资料缺口和治理证据</small></div><em>商品治理</em></button>
+          <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家入驻</b><small>主体、资质、授权链路和经营风险交叉复核</small></div><em>商家审核</em></button>
+          <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后争议</b><small>主动还原事实链，围绕证据缺口继续补查</small></div><em>售后判责</em></button>
+          <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查异常风险</b><small>动态反证与交叉检查，区分强证据和弱线索</small></div><em>风险核查</em></button>
         </div>
-        <div class="input-types"><span>可直接加入</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
+        <div class="input-types"><span>自主处理</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
       </section>
 
       <div id="messageList" class="message-list"></div>
       <div class="work-card" id="workCard" hidden>
-        <div class="work-head"><div class="pulse" aria-hidden="true"><i></i><i></i><i></i></div><div><b id="workStep">正在处理</b><small id="workDetail">正在整理资料</small></div><em id="workPercent">0%</em></div>
+        <div class="work-head"><div class="pulse" aria-hidden="true"><i></i><i></i><i></i></div><div><b id="workStep">正在自主处理</b><small id="workDetail">正在建立任务状态与证据路径</small></div><em id="workPercent">0%</em></div>
         <div class="work-progress"><i id="workBar"></i></div>
       </div>
     </div>
@@ -96,7 +97,7 @@
     <div class="composer-zone">
       <div id="pendingAssets" class="pending-assets" hidden></div>
       <div class="composer" id="composer">
-        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="直接描述要处理的事情，例如：这笔退款该不该退？把订单、物流和聊天记录一起核对。" aria-label="任务问题"></textarea>
+        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="直接交代目标，例如：这笔退款到底该不该退？订单、物流和聊天记录都在这里，你自己核对清楚。" aria-label="任务问题"></textarea>
         <div class="composer-bottom">
           <div class="attach-row">
             <button class="attach" data-accept="image/*"><span aria-hidden="true">▧</span>图片</button>
@@ -109,7 +110,7 @@
         </div>
         <input type="file" id="fileInput" multiple hidden />
       </div>
-      <div class="composer-note">退款、下架、审核和风险升级等操作会先请你确认，不会直接执行。</div>
+      <div class="composer-note">Agent 可以自主查证、组合只读工具和重规划；退款、下架、审核、冻结等真实业务动作始终需要你确认。</div>
     </div>
   </main>
 
@@ -126,22 +127,22 @@
     <div class="right-scroll">
       <section class="right-panel active" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress">
         <div class="status-card">
-          <div class="status-top"><div><small>当前状态</small><b id="taskState">等待任务</b><p id="taskDetail">发一句问题，或者先添加资料。</p></div><div class="status-ring"><em>本轮</em><span id="statusPercent">0</span><small>%</small></div></div>
+          <div class="status-top"><div><small>当前状态</small><b id="taskState">等待目标</b><p id="taskDetail">交代目标，或先添加资料。Agent 会自己规划下一步。</p></div><div class="status-ring"><em>本轮</em><span id="statusPercent">0</span><small>%</small></div></div>
           <div class="status-line"><i id="statusBar"></i></div>
         </div>
         <div id="progressList" class="progress-list"></div>
-        <div class="follow-card"><div class="follow-title"><b>继续处理</b><small>常用追问</small></div><div id="suggestionList" class="suggestions"></div></div>
+        <div class="follow-card"><div class="follow-title"><b>继续处理</b><small>让 Agent 深挖</small></div><div id="suggestionList" class="suggestions"></div></div>
       </section>
       <section class="right-panel" id="panel-evidence" role="tabpanel" aria-labelledby="tab-evidence" hidden>
-        <div class="panel-copy"><b>关键依据</b><p>只展示与当前结论直接相关的资料和核对结果。</p></div>
+        <div class="panel-copy"><b>关键依据</b><p>只展示可以追溯、与当前结论直接相关的资料和核对结果。</p></div>
         <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次处理后，这里会显示关键依据。</div></div>
       </section>
       <section class="right-panel" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden>
-        <div class="panel-copy"><b>待确认操作</b><p>会改变商品、商家、订单或风险状态的操作，都需要你确认。</p></div>
+        <div class="panel-copy"><b>待确认操作</b><p>Agent 可以自主思考，但会改变商品、商家、订单或风险状态的操作必须由你确认。</p></div>
         <div id="actionList" class="action-list"><div class="empty-side">目前没有待确认操作。</div></div>
       </section>
       <section class="right-panel" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden>
-        <div class="panel-copy"><b>任务资料</b><p>后续可以继续追加，不需要重新描述背景。</p></div>
+        <div class="panel-copy"><b>任务资料</b><p>资料会持续留在任务中，后续追问不需要重新描述背景。</p></div>
         <div id="assetList" class="asset-list"><div class="empty-side">还没有添加资料。</div></div>
       </section>
     </div>
@@ -153,9 +154,9 @@
 
 <div class="modal-backdrop" id="providerModal" hidden role="dialog" aria-modal="true" aria-labelledby="providerModalTitle">
   <div class="modal">
-    <div class="modal-head"><div><small>服务状态</small><h3 id="providerModalTitle">处理服务</h3><p>可自动选择，也可以固定使用已配置服务。外部服务的数据流向以当前配置为准。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-head"><div><small>认知引擎</small><h3 id="providerModalTitle">模型服务</h3><p>模型负责推理、多模态理解和自主决策；业务证据门槛、真实操作权限和人工确认始终由 EcomEvo Runtime 掌握。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
     <div id="providerGrid" class="provider-grid"></div>
-    <div class="modal-foot"><span>本地演示适合文本和结构化资料；图片、音视频和扫描件需要使用支持对应能力的服务。</span></div>
+    <div class="modal-foot"><span>模型是可替换认知引擎，不是业务权限来源。本地演示不会隐式调用外部服务。</span></div>
   </div>
 </div>
 

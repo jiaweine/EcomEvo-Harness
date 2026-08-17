@@ -1,7 +1,7 @@
 [project]
 name = "ecomevo-harness"
 version = "1.0.0"
-description = "E-commerce autonomous decision runtime with event sourcing, adaptive planning, multimodal evidence, verification, rollback and controlled evolution."
+description = "Autonomous and self-evolving e-commerce agent runtime with dynamic task graphs, Bayesian skill evolution, multimodal evidence, deterministic authority and controlled business execution."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
