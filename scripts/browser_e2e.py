@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import urllib.request
 from pathlib import Path
@@ -74,9 +75,9 @@ def run() -> None:
 
             page.set_viewport_size({"width": 390, "height": 844})
             page.locator("#detailToggle").click()
-            expect(page.locator("#rightbar")).to_have_class(r".*open.*")
+            expect(page.locator("#rightbar")).to_have_class(re.compile(r"\bopen\b"))
             page.locator("#rightClose").click()
-            expect(page.locator("#rightbar")).not_to_have_class(r".*open.*")
+            expect(page.locator("#rightbar")).not_to_have_class(re.compile(r"\bopen\b"))
 
             # Same durable conversation in a second tab: remote accepted user message must
             # reconcile into the first tab before/alongside its answer.
