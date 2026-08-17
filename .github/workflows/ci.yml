@@ -96,6 +96,13 @@ jobs:
             cat /tmp/ecomevo-e2e.log
             exit 1
           fi
+      - name: Upload real product screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecomevo-product-screenshots
+          path: outputs/e2e/product-*.png
+          if-no-files-found: warn
       - name: Upload browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
