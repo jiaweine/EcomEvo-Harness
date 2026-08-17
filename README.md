@@ -9,14 +9,14 @@
 把商品治理、商家审核、售后判责、风险核查和内容审核，从一次模型回答升级为能够持续规划、查证、复核、恢复、学习并受控执行的业务任务。
 
 <p>
-  <img alt="Autonomous Runtime" src="https://img.shields.io/badge/Runtime-Autonomous-2B2926" />
-  <img alt="EvoGain" src="https://img.shields.io/badge/Routing-EvoGain-C76535" />
-  <img alt="Bayesian Skills" src="https://img.shields.io/badge/Learning-Bayesian%20Skills-3F765E" />
-  <img alt="Multimodal" src="https://img.shields.io/badge/Input-Multimodal-BF7B32" />
+  <img alt="Runtime" src="https://img.shields.io/badge/Runtime-Autonomous-2B2926" />
+  <img alt="Routing" src="https://img.shields.io/badge/Routing-Adaptive%20Posterior-C76535" />
+  <img alt="Learning" src="https://img.shields.io/badge/Learning-Bayesian-3F765E" />
+  <img alt="Input" src="https://img.shields.io/badge/Input-Multimodal-BF7B32" />
   <img alt="Authority" src="https://img.shields.io/badge/Authority-Deterministic-8F3D33" />
 </p>
 
-**[产品手册](docs/PRODUCT_MANUAL.md) · [算法说明](docs/ALGORITHM.md) · [技术手册](docs/TECHNICAL_MANUAL.md) · [架构](docs/ARCHITECTURE.md) · [设计系统](docs/DESIGN.md) · [验证报告](docs/VERIFICATION_REPORT.md)**
+**[产品手册](docs/PRODUCT_MANUAL.md) · [算法技术报告](docs/ALGORITHM.md) · [技术手册](docs/TECHNICAL_MANUAL.md) · [架构](docs/ARCHITECTURE.md) · [设计系统](docs/DESIGN.md) · [验证报告](docs/VERIFICATION_REPORT.md)**
 
 > **Give the Agent a goal, not a script.**
 
@@ -34,21 +34,21 @@
 
 ### Demo / 视频
 
-GitHub 支持在 README 等 Markdown 文件中上传和展示视频。为了让仓库首屏加载更快、滚动更轻，EcomEvo 的 README 默认仍使用静态封面或短 GIF 做预览；完整产品演示建议使用 H.264 MP4，或 WebM 作为补充格式，并从 Demo 区域进入完整录屏。
+GitHub README 可以上传视频。仓库首屏建议继续使用轻量封面或短 GIF，完整演示使用 H.264 MP4 / WebM，避免大文件拖慢首次浏览。
 
 ---
 
 ## 一个任务，不是一轮聊天
 
-真实电商业务很少是“一问一答”。同一个任务可能同时包含订单、物流、商家主体、商品声明、图片、视频、录音、PDF、表格、历史风险与企业内部数据；随着核对推进，还会不断出现新的证据缺口、冲突和分支。
+真实电商业务很少是“一问一答”。同一个任务可能同时包含订单、物流、主体信息、资质、商品声明、图片、视频、录音、PDF、表格、历史风险和企业内部数据；随着核对推进，还会不断出现新的证据缺口、冲突和分支。
 
 EcomEvo 把这些信息放进一个持续任务：
 
 - 用户给目标，Runtime 决定下一步查什么；
 - 文本、图片、视频、音频、文档、表格和日志进入统一证据空间；
-- 工具调用可以并行、重排、停止和重规划，而不是固定 DAG；
+- 工具调用可以并行、重排、停止和重规划；
 - specialist 可以按当前任务动态派生，用于反证和专项复核；
-- 成功与失败轨迹可以沉淀成技能，并由真实任务结果持续更新可信度；
+- routing policy 和技能都能从真实结果中持续更新；
 - 资料不足时明确停止并请求补证；
 - 退款、下架、审核、冻结等高影响动作始终在模型权限之外。
 
@@ -60,11 +60,13 @@ Belief / Evidence State
 EvoLoop
   ├─ Observe
   ├─ Decide
-  ├─ EvoGain Route
-  ├─ Parallel Tools
+  ├─ EvoGain-APR
+  ├─ Parallel Read-only Tools
   ├─ Delegate Specialists
   ├─ Review
   ├─ Verify
+  ├─ Counterfactual Credit
+  ├─ Posterior Update
   ├─ Reflect / Replan
   └─ Stop
   ↓
@@ -73,8 +75,6 @@ Deterministic Authority
 Human Approval
   ↓
 Business Action
-  ↓
-Experience → Skill Evolution
 ```
 
 ---
@@ -83,130 +83,219 @@ Experience → Skill Evolution
 
 ### EvoLoop：受控自主循环
 
-固定 Planner 只保留业务域、硬约束和确定性证据底线。真正运行路径由当前 missing evidence、预算、工具结果、specialist review 和 verification 状态动态决定。
+Runtime 持续执行：
 
-模型可以提出候选认知动作，但候选本身没有生产执行权。
+**Observe → Decide → Route → Act → Review → Verify → Replan / Stop**
 
-### EvoGain：证据信息增益路由
+固定 Planner 只保留业务域、硬约束和证据底线。语言模型负责产生候选认知动作，但候选没有业务执行权。
 
-模型提出候选工具后，Runtime 再依据证据价值重新排序。
+### EvoGain-APR：Adaptive Posterior Routing
 
-当前基础效用：
+旧式固定价值函数已经降级成 cold-start prior。
 
-\[
-R_i=1.70C_i+0.58A_i+0.48S_i+0.36N_i+0.20X_i+0.10P_i
-\]
-
-成本归一化：
+工具路由现在学习一个上下文参数后验：
 
 \[
-U_i=\frac{R_i}{0.72+\max(0.15,c_i)^{0.68}}
+w\sim\mathcal N(\mu_0,\Lambda_0^{-1})
 \]
 
-其中：
+每次真实工具结果产生 credit 后更新：
 
-- \(C_i\)：当前证据缺口覆盖；
-- \(A_i\)：数据源权威性；
-- \(S_i\)：已验证技能支持；
-- \(N_i\)：信息新颖度；
-- \(X_i\)：反证价值；
-- \(P_i\)：工具证据通道特异性；
-- \(c_i\)：执行成本。
+\[
+A_t=A_0+\delta(A_{t-1}-A_0)+x_tx_t^T
+\]
 
-同一轮还会惩罚高度重叠的证据通道，让并行工具尽量覆盖不同信息面。完整公式、停机条件、复杂度和不变量见 **[算法说明](docs/ALGORITHM.md)**。
+\[
+b_t=b_0+\delta(b_{t-1}-b_0)+r_tx_t
+\]
 
-### Dynamic Task Graph
+\[
+\mu_t=A_t^{-1}b_t
+\]
 
-计划、补证、专项复核、重规划和验证都会进入动态 Task Graph。任务图从真实证据增长，而不是先把工作流画死再强迫任务适配流程。
+其中上下文包含 evidence coverage、source authority、skill posterior、novelty、counter-evidence value、tool reliability、cost pressure、same-round redundancy、evidence gap 和 recovery context。
 
-### Cognitive Topology Mutation
+### Global → Domain 层级迁移
 
-当 verification fingerprint 连续不变化，Runtime 不机械重复同一路径，而是可以增加只读反证审查等 specialist。若仍无新信息增益，则触发 stagnation stop。
+全局经验和业务域经验分别维护 posterior。
+
+\[
+\tau_d=\frac{n_d}{n_d+\kappa}
+\]
+
+\[
+\hat\mu_d(x)=
+(1-\tau_d)\mu_g^Tx+
+\tau_d\mu_d^Tx
+\]
+
+新业务域可以利用全局经验，但不会直接继承成熟业务域的全部偏好。
+
+### Deterministic UCB
+
+生产探索不依赖随机抽样：
+
+\[
+Q_t(x)=\hat\mu_t(x)+\beta_t\sqrt{x^TA_t^{-1}x}
+\]
+
+这样既能探索高不确定工具，又能保持同状态下的可复现排序。
+
+### Shadow → Adaptive
+
+样本不足时，posterior 只 shadow 学习，不直接改变生产排序。
+
+成熟后：
+
+\[
+Score_t(x)=
+(1-\eta_t)\mu_0^Tx+
+\eta_tQ_t(x)
+\]
+
+\(\eta_t\) 随样本量和残差置信度上升，最高约 0.96。也就是说，冷启动先验不会成为永久认知天花板。
+
+### Verifier Difference Credit
+
+EcomEvo 不用另一组固定 reward 权重训练 routing policy。
+
+对一次被选中的工具结果 \(r_i\)，Runtime 计算：
+
+\[
+\Phi(v)=VerifierScore(v)+EvidenceCompleteness(v)
+\]
+
+\[
+D_i=
+\Phi(V(R))-
+\Phi(V(R\setminus\{r_i\}))
+\]
+
+\[
+credit_i=\frac{D_i}{1+cost_i}
+\]
+
+也就是：**拿掉这个工具结果后，Verifier 的可验证状态到底下降了多少。**
+
+这个差分 credit 再用于更新 posterior。
+
+### Tool Reliability Posterior
+
+工具是否“有价值”和工具是否“稳定”分开学习：
+
+\[
+p_{d,a}\sim Beta(\alpha_{d,a},\beta_{d,a})
+\]
+
+调用成功增加 \(\alpha\)，失败增加 \(\beta\)。可靠性 posterior 只是 routing feature，不是业务证据。
+
+完整数学定义、复杂度和研究边界见 **[算法技术报告](docs/ALGORITHM.md)**。
 
 ---
 
-## 自进化不是自我扩权
+## Dynamic Task Graph
 
-EcomEvo 的进化对象是**认知策略和只读技能**，不是生产权限。
+任务路径不是提前写死的固定 DAG。
 
-```mermaid
-flowchart LR
-    A[真实任务轨迹] --> B[失败诊断 / 成功蒸馏]
-    B --> C[候选只读技能]
-    C --> D[Shadow Replay]
-    D --> E{Regression Gate}
-    E -- Fail --> F[拒绝 / 继续观察]
-    E -- Pass --> G[Quality-Diversity Archive]
-    G --> H[真实任务]
-    H --> I[Bayesian Outcome Update]
-    I --> J{长期表现}
-    J -->|稳定| K[Active]
-    J -->|下降| L[Retired]
-    K --> H
+每一次初始计划、补证、specialist 复核、重规划、verification、停滞检测和恢复都进入 Task Graph。
+
+Runtime 可以根据新证据改变认知路径，但所有动作仍留在事件链中。
+
+---
+
+## Cognitive Topology Mutation
+
+当 verification fingerprint 连续不变，Runtime 不机械重试。
+
+它可以动态增加：
+
+- 反证审查；
+- 授权链路复核；
+- 时间线复核；
+- 冲突证据检查；
+- 特定业务域 specialist。
+
+这些角色永远只有 read-only cognition authority。
+
+---
+
+## Bayesian Skill Evolution
+
+EcomEvo 不把失败案例无限追加到 prompt，也不允许模型随意修改安全源码。
+
+```text
+Task trajectory
+      ↓
+Failure / Recovery diagnosis
+      ↓
+Candidate read-only skill
+      ↓
+Shadow replay
+      ↓
+Regression gate
+      ↓
+Quality-Diversity archive
+      ↓
+Live use
+      ↓
+Bayesian outcome update
+      ↓
+Promote / decay / retire
 ```
 
-每个技能维护 Beta posterior。Shadow replay 只影响初始先验；真正的成功和失败继续更新 \(\alpha\) / \(\beta\)。相同 pathology niche 只保留更强代表，避免 skill library 被大量同质 prompt 变体污染。
+每个技能维护 Beta posterior：
 
-> **策略可以进化，权限不能自我扩张。**
+\[
+p_k\sim Beta(\alpha_k,\beta_k)
+\]
+
+真实任务成功/失败持续更新可信度；表现长期下降的技能可以自动退役。
 
 ---
 
-## 多模态证据管线
+## 多模态证据
 
-支持：**文字 · 图片 · 视频 · 音频 · PDF · Word · Excel · CSV / JSON · 日志**。
+支持：
 
-处理原则：
+**文字 · 图片 · 视频 · 音频 · PDF · Word · Excel · CSV · JSON · 日志**
 
-1. 上传先做类型、结构、容量和内容指纹检查；
-2. 文本型资料本地解析并建立有界索引；
-3. 图片、视频关键帧、音频和扫描文档进入事实提取通道；
-4. 多模态模型只提取可观察事实，不直接决定业务处置；
-5. 已核对事实进入统一证据链，再由 Runtime 进行业务验证；
-6. 无法读取、低置信度或证据不完整时 fail closed。
+多模态模型只负责提取可观察事实，不直接决定退款、下架、审核或冻结。
+
+语义事实必须进入统一证据链，再由 Runtime 验证。
 
 ---
 
 ## 认知自治，权限确定
 
-Agent 可以：
+Agent 可以自主：
 
 - 选择下一步只读工具；
 - 并行查证；
-- 动态委派 specialist；
-- 召回已验证技能；
-- 改变探索策略；
-- 重规划；
-- 停止低价值探索。
+- 重排工具；
+- 委派 specialist；
+- 主动找反证；
+- 停止低价值探索；
+- 学习 routing posterior；
+- 学习、晋升和退役技能。
 
 Agent 不可以：
 
-- 把历史回答、memory、skill 或模型判断当独立业务证据；
-- 降低 Verifier 的硬证据门槛；
-- 给自己增加生产权限；
-- 直接执行退款、下架、审核、冻结等高影响动作；
-- 在下游结果不确定时自动盲重试。
+- 把模型回答当独立证据；
+- 降低 required evidence；
+- 修改 Sandbox / Verifier 权限；
+- 给自己新增生产工具；
+- 自动批准高影响动作；
+- 在 `uncertain` 状态下盲重试。
+
+> **策略可以进化，权限不能自我扩张。**
 
 ---
 
-## Agent-native 工作台
+## 模型与部署
 
-EcomEvo 的操作台不是“聊天框 + 一排卡片”。
+模型是可替换认知引擎，不是业务权限中心。
 
-- **左侧**：业务入口与持续任务；
-- **中间**：目标、多模态资料、运行状态和业务结论；
-- **右侧**：轨迹、证据、执行控制和任务资料。
-
-视觉系统采用 **暖瓷白 + 石墨 + 氧化橙 + 玉石绿**。中文正文以 16px 级为主，Display 使用 600 weight，支持文本原则上不低于 12px。Motion 只解释进入、状态变化、运行中和空间连续性，并完整支持 `prefers-reduced-motion`。
-
-详细规范见 **[设计系统](docs/DESIGN.md)**。
-
----
-
-## 模型与部署策略
-
-认知引擎是可替换能力，不是业务权限中心。
-
-EcomEvo 支持已接入的云端服务、企业兼容接口，以及 OpenAI-Compatible 的开源权重 / 自托管推理服务：
+EcomEvo 支持云端服务、企业兼容接口和 OpenAI-Compatible 的开源权重 / 自托管推理服务。
 
 ```bash
 OPEN_MODEL_BASE_URL=http://your-runtime/compatible-endpoint
@@ -215,7 +304,66 @@ OPEN_MODEL_MODEL=your-current-model
 OPEN_MODEL_MULTIMODAL=0
 ```
 
-模型名由部署方配置。更换权重不需要重写 EvoGain、Verifier、Sandbox、技能库和审批边界。
+底层模型升级不要求改动 EvoGain、Verifier、Sandbox 或 BusinessAction 权限链。
+
+---
+
+## 企业工具
+
+推荐把 MCP 能力严格分成两类：
+
+```text
+Read-only MCP
+  → autonomous exploration
+  → evidence
+
+Side-effect MCP
+  → BusinessAction proposal
+  → human confirmation
+  → execution
+```
+
+模型不能把 read-only cognition 自动升级成生产动作权限。
+
+---
+
+## 工程验证记录
+
+本分支之前已执行过两组临时压力测试；脚本没有提交仓库。
+
+### Shared SQLite Runtime
+
+| 指标 | 结果 |
+| --- | ---: |
+| 并发任务 | 240 |
+| Throughput | 37.2 runs/s |
+| p50 | 3.74 s |
+| p95 | 5.22 s |
+| p99 | 5.25 s |
+| Event-chain failures | 0 |
+| Incomplete-case side-effect leaks | 0 |
+| Duplicate semantic evolution patches | 0 |
+
+### Adversarial Controller
+
+| 指标 | 结果 |
+| --- | ---: |
+| 并发控制器 | 80 |
+| Unsafe proposals rejected | 80 / 80 |
+| Side-effect leaks | 0 |
+| Cognitive delegation | 80 / 80 |
+| Event-chain failures | 0 |
+
+这些是本地工程记录，不是第三方 benchmark 排名，也不能单独证明整体智能能力优于其它系统。
+
+新增 adaptive posterior routing 另外做了本地专项 smoke：
+
+- posterior 从 shadow 进入 adaptive；
+- domain/global posterior 持久化；
+- tool reliability Beta posterior 更新；
+- counterfactual verifier credit 为正时写入 routing outcome；
+- `routing.policy.updated` 事件正常产生；
+- learner error 不改变 live task 的安全执行路径。
 
 ---
 
@@ -231,7 +379,7 @@ uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 
 打开 `http://localhost:8000`。
 
-Docker：
+### Docker
 
 ```bash
 docker build -t ecomevo .
@@ -240,41 +388,26 @@ docker run --rm -p 8000:8000 --env-file .env -v ecomevo-data:/app/outputs ecomev
 
 ---
 
-## 工程验证
-
-当前仓库保留常规自动化测试；升级期间的专项压力脚本没有提交到仓库。
-
-曾执行的本地工程压力记录包括：
-
-| 场景 | 结果 |
-| --- | ---: |
-| Shared SQLite Runtime | 240 concurrent runs |
-| Throughput | 37.2 runs/s |
-| p95 | 5.22 s |
-| Event-chain failures | 0 |
-| Incomplete-case side-effect leaks | 0 |
-| Adversarial controller | 80 concurrent runs |
-| Unsafe proposals rejected | 80 / 80 |
-| Side-effect leaks | 0 |
-
-这些是本地工程压力数据，不是第三方 benchmark 排名。SQLite single-writer 仍是当前单节点扩展上限之一。
-
-完整验证边界见 **[验证报告](docs/VERIFICATION_REPORT.md)**。
-
----
-
 ## 文档
 
-| 文档 | 面向对象 | 内容 |
-| --- | --- | --- |
-| [产品手册](docs/PRODUCT_MANUAL.md) | 运营 / 审核 / 客服 / 风控 | 如何创建任务、补证、纠错、理解状态和确认动作 |
-| [算法说明](docs/ALGORITHM.md) | Agent / ML / Research | EvoLoop、EvoGain、Bayesian skills、QD archive、公式与复杂度 |
-| [技术手册](docs/TECHNICAL_MANUAL.md) | 平台 / 后端 / 安全 / 二开 | 模块、API、数据流、MCP、恢复、权限和部署 |
-| [架构](docs/ARCHITECTURE.md) | 工程团队 | Runtime 总体架构与边界 |
-| [设计系统](docs/DESIGN.md) | 产品 / UI / 前端 | Typography、layout、motion、Agent UX 与 anti-slop |
-| [验证报告](docs/VERIFICATION_REPORT.md) | 研发 / QA | 已执行验证、压力数据与限制 |
+| 文档 | 用途 |
+| --- | --- |
+| [产品手册](docs/PRODUCT_MANUAL.md) | 运营、审核、客服、风控使用 |
+| [算法技术报告](docs/ALGORITHM.md) | 数学定义、posterior、credit、复杂度、研究方向 |
+| [技术手册](docs/TECHNICAL_MANUAL.md) | 部署、二开、API、MCP、恢复、安全 |
+| [架构](docs/ARCHITECTURE.md) | 系统分层与数据流 |
+| [设计系统](docs/DESIGN.md) | UI、字体、动效、响应式、Agent UX |
+| [验证报告](docs/VERIFICATION_REPORT.md) | 已执行验证与生产边界 |
 
 ---
+
+## 项目边界
+
+EcomEvo 追求的是更强的 **agent runtime architecture**，而不是靠 README 宣布“世界第一”。
+
+真正的能力比较必须在相同任务、相同模型、相同工具、相同 token/cost budget 和一致评估标准下完成。
+
+目前最重要的生产级后续工作仍包括：真实业务 gold set、CI eval gate、durable execution、tenant/SSO/RBAC、真实浏览器视觉回归和更严格的 off-policy evaluation。
 
 <div align="center">
 
