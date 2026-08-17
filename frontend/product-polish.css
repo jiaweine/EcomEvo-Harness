@@ -54,3 +54,9 @@ html.ui-motion-ready .welcome-badge{animation:uiRise var(--motion-ui) var(--ease
 /* Focus and touch targets are part of visual quality. */
 .answer-correction button,.suggestions button,.right-tab,.attach,.top-action,.icon-btn{min-height:36px}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid color-mix(in oklch,var(--accent) 58%,transparent);outline-offset:3px}
 @media(prefers-reduced-motion:reduce){html.ui-motion-ready .welcome-badge,html.ui-motion-ready .welcome h2,html.ui-motion-ready .welcome-copy>p,html.ui-motion-ready .quick-card,.ui-enter,.right-panel.active:not([hidden]),.work-card:not([hidden]),.modal-backdrop:not([hidden]) .modal,.command-backdrop:not([hidden]) .command-modal,.drop-mask:not([hidden])>div,.progress-item.current>span,.task-chip.busy>i{animation:none!important}.work-progress::after{display:none}}
+
+/* Hardening pass: remove the remaining 7–9px visual-layer labels. */
+.scene-icon{font-size:12px;font-weight:600}
+.status-ring em{font-size:10px;letter-spacing:.02em}.status-ring span{font-size:13px}.status-ring small{font-size:10px}
+.progress-item>span{font-size:10px}.provider-logo{font-size:11px;font-weight:600}.provider-status{font-size:11px}
+.command-placeholder{font-size:13px}.top-action em{font-size:13px}.left-footer>button{font-size:12px}
