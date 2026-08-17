@@ -95,7 +95,7 @@ class EcomEvoEngine:
         evolved=False;evolution_events=0
         available_tools=set(self.tools.tools)
         if not verification.passed:
-            trajectory={'tool_sequence':[x.tool for x in tool_results],'missing':verification.missing_evidence,'autonomy_steps':outcome.autonomy_steps,'stagnated':outcome.stagnated,'skills_used':outcome.skills_used}
+            trajectory={'tool_sequence':[x.tool for x in tool_results],'missing':verification.missing_evidence,'autonomy_steps':outcome.autonomy_steps,'stagnated':outcome.stagnated,'stop_reason':outcome.stop_reason,'skills_used':outcome.skills_used}
             patch=await self.evolver.evolve(verification,goal.domain.value,available_tools=available_tools,reasoner=reasoner,trajectory=trajectory)
             if patch:
                 equivalent=self.events.save_patch_if_novel(patch)
@@ -130,16 +130,9 @@ class EcomEvoEngine:
         tool_cost_remaining=round(max(0.0,tool_cost_budget-tool_cost_used),3)
         if final_verify.passed:
             stop_reason='verified';stop_detail='证据和约束已通过最终验证'
-        elif outcome.stagnated:
-            stop_reason='stagnated';stop_detail='连续补证没有改变可验证状态'
-        elif tool_cost_remaining<=0.05:
-            stop_reason='budget_exhausted';stop_detail='本轮只读工具预算已用尽'
-        elif outcome.recovery_events>=self.autonomy.max_steps:
-            stop_reason='step_limit';stop_detail='已达到本轮自主补证步数上限'
         else:
-            stop_reason='evidence_incomplete'
-            details=list(final_verify.missing_evidence or final_verify.issues or [])
-            stop_detail=('；'.join(str(x) for x in details[:3])[:300] if details else '当前证据仍不足以完成最终验证')
+            stop_reason=outcome.stop_reason or 'evidence_incomplete'
+            stop_detail=outcome.stop_detail or '当前证据仍不足以完成最终验证'
         belief.facts.update({'tool_results':len([x for x in tool_results if x.ok]),'review_count':len(agents),'autonomy_steps':outcome.autonomy_steps,'delegations':outcome.delegations,'skill_count':len(outcome.skills_used),'tool_cost_used':tool_cost_used,'tool_cost_budget':tool_cost_budget,'tool_cost_remaining':tool_cost_remaining,'stop_reason':stop_reason,'evidence_complete':bool(final_verify.evidence_complete)})
         try:
             routing=self.autonomy.policy.routing.snapshot(goal.domain.value)
