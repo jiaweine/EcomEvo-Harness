@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ecomevo.models import BeliefState, GoalState, ToolCall, ToolResult, VerificationResult
+from .harness_context import current_harness_profile
 from .skills import AdaptiveSkillLibrary, RuntimeSkill
 from .tools import _query_terms, call
 
@@ -133,6 +134,7 @@ class DecisionPolicy:
             "evolution_policy": self.skills.policy(goal.domain.value),
             "skills": [{"skill_id": s.skill_id, "name": s.name, "guidance": s.guidance[:700],
                         "preferred_tools": s.preferred_tools, "posterior": round(s.posterior_mean, 3)} for s in skills],
+            "harness_profile": current_harness_profile(),
         }
 
     async def ask_controller(self, reasoner, *, observation: dict[str, Any], catalog: list[dict[str, Any]], phase: str):
@@ -146,12 +148,18 @@ class DecisionPolicy:
             "stop": False, "stop_reason": "继续只读探索也无法新增证据时填写",
             "reflection": "一句话记录策略调整，不输出隐藏推理",
         }
+        profile = observation.get("harness_profile") if isinstance(observation.get("harness_profile"), dict) else {}
+        components = profile.get("components") if isinstance(profile.get("components"), dict) else {}
+        prompt_component = components.get("prompt") if isinstance(components.get("prompt"), dict) else {}
+        evolved_guidance = str(prompt_component.get("guidance") or "")[:2400]
+        evolved_block = f"\n当前已通过 shadow/validation 的 Harness 指引：{evolved_guidance}\n" if evolved_guidance else ""
         prompt = (
             "你是电商业务运行时的自主控制器，只决定下一步信息获取与只读复核。\n"
             "硬约束：不得调用改变业务状态的工具；不得把用户陈述、历史回答、技能或模型判断当成独立证据；"
             "不得降低证据门槛；不得批准退款、下架、审核、冻结等动作。优先提出能最大幅减少当前证据缺口的少量候选工具，"
             "无需为候选排序负责，运行时会按可审计的信息增益策略重新选择。避免重复已成功且没有新参数的调用。"
-            "只返回 JSON，不输出隐藏思维。\n"
+            "只返回 JSON，不输出隐藏思维。"
+            f"{evolved_block}"
             f"阶段：{phase}\n工具目录：{json.dumps(catalog, ensure_ascii=False)}\n"
             f"当前观察：{json.dumps(observation, ensure_ascii=False, default=str)}\n"
             f"返回结构：{json.dumps(schema, ensure_ascii=False)}"
@@ -213,8 +221,8 @@ class DecisionPolicy:
         contradiction = 1.0 if tool in self.CONTRADICTION_TOOLS and bool(targets) else 0.0
         specificity = min(1.0, len(channel_terms) / 10.0)
 
-        # EvoGain: evidence utility per unit of execution cost. The constants are routing weights,
-        # not confidence values and never enter business verification.
+        # Compatibility path only. Production EcomEvo uses AdaptiveDecisionPolicy below,
+        # where these hand-authored cold-start weights are replaced by posterior routing.
         raw = (
             1.70 * coverage
             + 0.58 * authoritative
@@ -258,7 +266,6 @@ class DecisionPolicy:
                     overlap = 0.0
                 else:
                     overlap = (len(item["channels"] & selected_channels) / max(1, len(item["channels"]))) if selected_channels else 0.0
-                    # Diversity makes parallel calls cover different evidence channels rather than echo each other.
                     adjusted = item["base_utility"] - 0.24 * overlap - 0.002 * item["position"]
                 scored.append((adjusted, -item["cost"], item, overlap))
             scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
@@ -296,6 +303,16 @@ class DecisionPolicy:
             candidates.extend({"tool": t, "purpose": f"技能建议：{skill.name}", "args": {}, "parallel_group": "skill"}
                               for t in skill.preferred_tools)
 
+        profile = current_harness_profile()
+        components = profile.get("components") if isinstance(profile.get("components"), dict) else {}
+        tool_component = components.get("tool") if isinstance(components.get("tool"), dict) else {}
+        memory_component = components.get("memory") if isinstance(components.get("memory"), dict) else {}
+        delegation_component = components.get("delegation") if isinstance(components.get("delegation"), dict) else {}
+        preferred_tools = [str(x) for x in (tool_component.get("preferred_tools") or [])]
+        avoid_tools = {str(x) for x in (tool_component.get("avoid_tools") or [])}
+        for tool in preferred_tools:
+            candidates.append({"tool": tool, "purpose": "Harness 进化组件建议的只读核对", "args": {}, "parallel_group": "harness"})
+
         meta = self.skills.policy(goal.domain.value)
         exploration = max(0.0, min(1.0, float(meta.get("exploration", .6))))
         call_limit = max(1, min(self.max_calls, round(self.max_calls * (.72 + .48 * exploration))))
@@ -304,6 +321,8 @@ class DecisionPolicy:
 
         for item in candidates:
             tool = str(item.get("tool") or "").strip(); impl = self.registry.tools.get(tool)
+            if tool in avoid_tools:
+                decision.rejected.append(f"harness_avoid:{tool}"); continue
             if not impl:
                 decision.rejected.append(f"unknown:{tool}"); continue
             gate = self.sandbox.validate_tool(tool)
@@ -314,7 +333,9 @@ class DecisionPolicy:
             args = item.get("args") if isinstance(item.get("args"), dict) else {}
             if tool == "evidence.search":
                 words = [str(x).strip() for x in (args.get("keywords") or []) if str(x).strip()][:32]
-                args = {"keywords": words or _query_terms(" ".join([goal.primary] + list(goal.required_evidence)), limit=24)}
+                memory_terms = [str(x).strip() for x in (memory_component.get("retrieval_terms") or []) if str(x).strip()]
+                fallback_terms = _query_terms(" ".join([goal.primary] + list(goal.required_evidence) + memory_terms), limit=24)
+                args = {"keywords": list(dict.fromkeys(words or fallback_terms))[:32]}
             else:
                 args = {}  # MCP and local tool arguments remain server-owned.
             sig = self.call_signature(tool, args)
@@ -343,16 +364,31 @@ class DecisionPolicy:
             role = re.sub(r"[^\w\u4e00-\u9fff -]", "", str(item.get("role") or "专项复核"))[:40].strip() or "专项复核"
             focus = [str(x) for x in (item.get("focus_tools") or []) if str(x) in self.registry.tools][:8]
             decision.delegations.append({"role": role, "question": str(item.get("question") or "复核证据缺口")[:700], "focus_tools": focus})
+        for role_name in (delegation_component.get("roles") or []):
+            if len(decision.delegations) >= delegation_limit:
+                break
+            role = re.sub(r"[^\w\u4e00-\u9fff -]", "", str(role_name))[:40].strip()
+            if not role or any(row.get("role") == role for row in decision.delegations):
+                continue
+            decision.delegations.append({
+                "role": role,
+                "question": str(delegation_component.get("guidance") or "围绕当前证据缺口做独立只读复核")[:700],
+                "focus_tools": [],
+            })
         return decision
 
     def fallback_calls(self, goal: GoalState, belief: BeliefState, assets: list[dict[str, Any]], *,
                        remaining_budget: float, previous: list[ToolResult], skills: list[RuntimeSkill]) -> list[ToolCall]:
         candidates = list(self.planner.plan(goal, belief, assets, recovery=True)) + list(self.registry.planned_calls(goal.domain.value, recovery=True))
+        profile = current_harness_profile()
+        components = profile.get("components") if isinstance(profile.get("components"), dict) else {}
+        memory_component = components.get("memory") if isinstance(components.get("memory"), dict) else {}
+        memory_terms = [str(x) for x in (memory_component.get("retrieval_terms") or []) if str(x).strip()]
         raw_calls = []
         for item in candidates:
             args = item.args or {}
             if item.tool == "evidence.search":
-                args = {"keywords": list(dict.fromkeys(list(belief.missing_evidence) + _query_terms(goal.primary, limit=16)))[:32]}
+                args = {"keywords": list(dict.fromkeys(list(belief.missing_evidence) + memory_terms + _query_terms(goal.primary, limit=16)))[:32]}
             raw_calls.append({"tool": item.tool, "purpose": item.purpose, "args": args,
                               "parallel_group": item.parallel_group})
         decision = self.sanitize(
