@@ -1,6 +1,15 @@
 (() => {
   'use strict';
 
+  // Load the final refinement layer before the module application boots.
+  if (!document.querySelector('link[data-ecomevo-polish]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/assets/product-polish.css';
+    link.dataset.ecomevoPolish = '1';
+    document.head.appendChild(link);
+  }
+
   const nativeFetch = window.fetch.bind(window);
   let lastActionResult = null;
 
@@ -41,15 +50,22 @@
 
     const grid = document.getElementById('providerGrid');
     if (grid) {
-      [...grid.querySelectorAll('.provider-card')].forEach((card, index) => {
+      let externalIndex = 0;
+      [...grid.querySelectorAll('.provider-card')].forEach(card => {
         const logo = card.querySelector('.provider-logo');
         const title = card.querySelector('b');
         if (!title || !logo) return;
-        if ((title.textContent || '').trim() === '本地受控') {
+        const titleText = (title.textContent || '').trim();
+        if (/本地|演示/.test(titleText)) {
           logo.textContent = '本';
+          title.textContent = '本地受控';
           return;
         }
-        logo.textContent = String(index + 1).padStart(2, '0');
+        externalIndex += 1;
+        logo.textContent = String(externalIndex).padStart(2, '0');
+        title.textContent = `认知引擎 ${String(externalIndex).padStart(2, '0')}`;
+        const note = card.querySelector('p');
+        if (note) note.textContent = '按当前任务所需能力参与自动编排';
       });
     }
   }
@@ -75,6 +91,79 @@
     lastActionResult = null;
   }
 
+  function promptCorrection(text) {
+    const input = document.getElementById('messageInput');
+    if (!input) return;
+    input.value = text;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus({ preventScroll: false });
+    input.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+
+  function installCorrectionActions(root = document) {
+    root.querySelectorAll?.('.msg.assistant .answer-foot').forEach(foot => {
+      if (foot.querySelector('.answer-correction')) return;
+      const group = document.createElement('div');
+      group.className = 'answer-correction';
+      group.setAttribute('aria-label', '继续核对当前结论');
+      const verify = document.createElement('button');
+      verify.type = 'button';
+      verify.textContent = '继续追证';
+      verify.title = '继续核对当前结论中最薄弱的证据';
+      verify.addEventListener('click', () => promptCorrection('请继续核对当前结论中最薄弱的证据，优先补充能够真正改变判断的信息，并明确还缺什么。'));
+      const counter = document.createElement('button');
+      counter.type = 'button';
+      counter.textContent = '检查反证';
+      counter.title = '主动寻找可能推翻当前结论的证据';
+      counter.addEventListener('click', () => promptCorrection('请主动寻找可能推翻当前结论的反证、冲突证据或错误假设。只有证据足够时再维持原结论。'));
+      group.append(verify, counter);
+      foot.appendChild(group);
+    });
+  }
+
+  function markCurrentProgress() {
+    const rows = [...document.querySelectorAll('#progressList .progress-item')];
+    rows.forEach(row => {
+      row.classList.remove('current');
+      row.removeAttribute('aria-current');
+    });
+    const current = [...rows].reverse().find(row => !row.classList.contains('done'));
+    if (current) {
+      current.classList.add('current');
+      current.setAttribute('aria-current', 'step');
+    }
+  }
+
+  function animateNewMessages(root) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    root.querySelectorAll?.('.msg:not([data-motion-seen])').forEach(node => {
+      node.dataset.motionSeen = '1';
+      node.classList.add('ui-enter');
+      node.addEventListener('animationend', () => node.classList.remove('ui-enter'), { once: true });
+    });
+  }
+
+  function installMotion() {
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    if (!reduced.matches) requestAnimationFrame(() => document.documentElement.classList.add('ui-motion-ready'));
+
+    const messages = document.getElementById('messageList');
+    if (messages) {
+      animateNewMessages(messages);
+      new MutationObserver(() => animateNewMessages(messages)).observe(messages, { childList: true, subtree: true });
+    }
+
+    const progress = document.getElementById('progressList');
+    if (progress) {
+      markCurrentProgress();
+      new MutationObserver(markCurrentProgress).observe(progress, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+    }
+
+    reduced.addEventListener?.('change', event => {
+      document.documentElement.classList.toggle('ui-motion-ready', !event.matches);
+    });
+  }
+
   function installObservers() {
     const toast = document.getElementById('toast');
     if (toast) {
@@ -97,7 +186,10 @@
 
     const messages = document.getElementById('messageList');
     if (messages) {
-      new MutationObserver(() => genericizeAnswerFooters(messages)).observe(messages, { childList: true, subtree: true });
+      new MutationObserver(() => {
+        genericizeAnswerFooters(messages);
+        installCorrectionActions(messages);
+      }).observe(messages, { childList: true, subtree: true });
     }
   }
 
@@ -113,11 +205,12 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     document.documentElement.dataset.ui = 'ecomevo';
-    // The mobile engine control is absolutely positioned inside the task header.
-    // Make the header its explicit containing block instead of relying on the workspace ancestor.
     document.querySelector('.task-head')?.style.setProperty('position', 'relative');
     installObservers();
+    installMotion();
     genericizeProviders();
     genericizeAnswerFooters();
+    installCorrectionActions();
+    markCurrentProgress();
   });
 })();

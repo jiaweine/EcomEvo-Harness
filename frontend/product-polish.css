@@ -1,0 +1,161 @@
+/* EcomEvo UI refinement: CJK-stable typography, purposeful motion, and AI-native correction affordances. */
+:root{
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",Arial,sans-serif;
+  --font-display:var(--font-ui);
+  --font-mono:"SFMono-Regular","Cascadia Code","Roboto Mono","PingFang SC","Microsoft YaHei UI","Noto Sans CJK SC",ui-monospace,monospace;
+  --motion-fast:140ms;
+  --motion-medium:240ms;
+  --motion-slow:420ms;
+}
+
+html{font-size:16px}
+body{
+  font-family:var(--font-ui);
+  font-size:14px;
+  font-weight:400;
+  line-height:1.6;
+  letter-spacing:0;
+  font-synthesis:none;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+}
+button,input,textarea,select{font-family:var(--font-ui);font-weight:400}
+
+/* Standardize weights. Non-standard 610/680/730/760 values render inconsistently across CJK fallbacks. */
+.brand-copy b,.task-head h1,.welcome h2,.quick-card b,.msg-label b,.msg-content h3,
+.work-head b,.right-title b,.status-top b,.follow-title b,.panel-copy b,.action-card h4,.modal-head h3{font-family:var(--font-ui);font-weight:700}
+.new-task b,.scene b,.conv-item b,.privacy-mini b,.task-chip b,.provider-control select,
+.input-types span,.route-node strong,.progress-item b,.provider-card b,.action-buttons button,.send-btn{font-weight:600}
+
+/* Chinese product copy should not inherit a Latin monospace face. Use tabular numerals where alignment matters. */
+.nav-title,.eyebrow,.welcome-badge,.welcome-kicker,.composer-head b,.right-title small,
+.status-top>div:first-child small,.follow-title small,.modal-head small,.command-caption,.answer-provider,
+.agent-map-head,.route-node em,.composer-note{font-family:var(--font-ui)}
+kbd,.quick-index,.route-node>span,.status-ring span,.status-ring em,.progress-item>span,.action-status{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* Readability floor: operational metadata stays >= 10.5px, normal supporting copy >= 11.5px. */
+.brand-copy small{font-size:11px;letter-spacing:.035em}
+.nav-title{font-size:10.5px;letter-spacing:.08em}
+.scene b{font-size:13.5px;line-height:1.35}
+.scene small{font-size:11.5px;line-height:1.35}
+.conv-item b{font-size:13px}
+.conv-item small,.conv-item.active small{font-size:10.5px}
+.privacy-mini b{font-size:12px}.privacy-mini small{font-size:11px;line-height:1.55}
+.eyebrow{font-size:10.5px;letter-spacing:.04em}
+.task-head h1{font-size:clamp(23px,1.8vw,28px);line-height:1.18;letter-spacing:-.014em}
+.task-head p{font-size:13px;line-height:1.6}
+.task-chip small{font-size:10.5px}.task-chip b{font-size:11.5px}
+.provider-control small{font-size:10px;letter-spacing:.04em}.provider-control select{font-size:12px}
+.welcome-badge{font-size:10.5px;letter-spacing:.06em}
+.welcome h2{max-width:16em;font-size:clamp(31px,3vw,43px);line-height:1.13;letter-spacing:-.018em}
+.welcome-copy>p{max-width:66ch;font-size:14.5px;line-height:1.8}
+.welcome-kicker{font-size:10.5px;letter-spacing:.06em}
+.quick-index{font-size:10px}
+.quick-card b{font-size:14.5px;line-height:1.4}.quick-card:nth-child(1) b{font-size:19px;line-height:1.28}
+.quick-card small{font-size:12px;line-height:1.65}.quick-card em{font-size:10px}
+.input-types span{font-size:11.5px}.input-types b{font-size:10.5px;letter-spacing:0}
+.agent-map-head{font-size:10px}.agent-map-head b{font-size:11px}
+.route-node strong{font-size:12px}.route-node small{font-size:10.5px;line-height:1.45}.route-node em{font-size:9.5px}
+.agent-map-foot{font-size:10.5px}
+.msg-content{font-size:14.5px;line-height:1.82}.msg.user .msg-content{font-size:14.5px}
+.msg-content h3{font-size:18px;line-height:1.4;letter-spacing:-.01em}
+.answer-provider,.answer-action{font-size:10.5px}
+.work-head b{font-size:13px}.work-head small{font-size:11px}
+.composer-head b{font-size:10.5px;letter-spacing:.05em}.composer-head span{font-size:10.5px}
+.composer textarea{font-size:14.5px;line-height:1.7}.attach{font-size:11.5px}.send-row small{font-size:10px}.composer-note{font-size:10.5px;line-height:1.5}
+.right-title b{font-size:14.5px}.right-title small{font-size:10px}.right-tab{font-size:11px}
+.status-top>div:first-child small{font-size:10px}.status-top b{font-size:18px}.status-top p{font-size:11.5px;line-height:1.6}
+.progress-item b{font-size:11.5px}.progress-item small{font-size:10.5px;line-height:1.55}
+.follow-title b{font-size:12.5px}.follow-title small{font-size:10px}.suggestions button{font-size:10.5px;line-height:1.4}
+.panel-copy b{font-size:14.5px}.panel-copy p,.action-card p{font-size:11px;line-height:1.6}
+.action-status{font-size:9.5px}.action-card h4{font-size:14.5px}
+.modal-head h3{font-size:18px}.modal-head small,.command-caption{font-size:10.5px}.provider-card p{font-size:11px;line-height:1.5}
+
+/* Reduce visual gimmicks that fight typography. */
+.brand-mark{transform:none;border-radius:9px}
+.task-head,.chat-scroll{background-image:none}
+.quick-card:nth-child(1){background:color-mix(in oklch,var(--accent-soft) 38%,var(--paper))}
+.agent-map::before{opacity:.58}
+
+/* Responsive task path: keep the mental model visible on medium screens instead of deleting it. */
+@media(max-width:1360px){
+  .agent-map{display:block;min-height:auto;margin-top:28px;padding:17px 18px 16px;border-radius:15px}
+  .agent-route{grid-template-columns:repeat(5,minmax(150px,1fr));gap:7px;margin-top:16px;overflow-x:auto;padding-bottom:5px;scrollbar-width:thin}
+  .route-node{grid-template-columns:25px minmax(110px,1fr);min-height:64px;padding:9px}
+  .route-node em{display:none}
+  .agent-map-foot{position:relative;left:auto;right:auto;bottom:auto;margin-top:12px}
+}
+@media(max-width:820px){
+  .agent-map{margin-top:22px;padding:14px}
+  .agent-route{grid-template-columns:repeat(5,minmax(170px,1fr))}
+  .task-head h1{font-size:22px;letter-spacing:-.01em}
+  .welcome h2{font-size:32px;line-height:1.16}
+  .welcome-copy>p{font-size:14px}
+  .composer-note{padding:0 8px}
+}
+@media(max-width:520px){
+  .task-head h1{padding-right:118px;font-size:21px}
+  .welcome h2{font-size:28px;line-height:1.18}
+  .quick-card small{font-size:11.5px}
+  .input-types b{font-size:10px}
+}
+
+/* AI-native correction actions: corrections live where the output lives. */
+.answer-foot{flex-wrap:wrap}
+.answer-correction{display:flex;align-items:center;gap:5px;margin-left:auto}
+.answer-correction button{
+  min-height:28px;padding:0 9px;border:1px solid var(--line);border-radius:8px;background:var(--paper-warm);
+  color:var(--muted);font-size:10.5px;font-weight:500;transition:background var(--motion-fast) var(--ease),border-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease),transform var(--motion-fast) var(--ease)
+}
+.answer-correction button:hover{background:var(--accent-soft);border-color:color-mix(in oklch,var(--accent) 28%,var(--line));color:var(--accent-2);transform:translateY(-1px)}
+.answer-correction button:active{transform:translateY(0) scale(.98)}
+@media(max-width:620px){.answer-correction{width:100%;margin-left:0;margin-top:2px}.answer-correction button{flex:1}}
+
+/* Motion system: state explanation, not decoration. */
+@keyframes uiRise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes uiFade{from{opacity:0}to{opacity:1}}
+@keyframes uiScaleIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes uiMessageIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes uiCurrent{0%,100%{box-shadow:0 0 0 0 color-mix(in oklch,var(--accent) 0%,transparent)}50%{box-shadow:0 0 0 5px color-mix(in oklch,var(--accent) 12%,transparent)}}
+@keyframes uiWorking{0%{transform:translateX(-110%)}100%{transform:translateX(310%)}}
+
+html.ui-motion-ready .welcome-badge{animation:uiRise var(--motion-medium) var(--ease) both}
+html.ui-motion-ready .welcome h2{animation:uiRise var(--motion-slow) var(--ease) 55ms both}
+html.ui-motion-ready .welcome-copy>p{animation:uiRise var(--motion-slow) var(--ease) 105ms both}
+html.ui-motion-ready .welcome-kicker{animation:uiRise var(--motion-medium) var(--ease) 155ms both}
+html.ui-motion-ready .quick-card{animation:uiRise var(--motion-slow) var(--ease) both}
+html.ui-motion-ready .quick-card:nth-child(1){animation-delay:190ms}
+html.ui-motion-ready .quick-card:nth-child(2){animation-delay:235ms}
+html.ui-motion-ready .quick-card:nth-child(3){animation-delay:280ms}
+html.ui-motion-ready .quick-card:nth-child(4){animation-delay:325ms}
+html.ui-motion-ready .input-types{animation:uiFade var(--motion-slow) ease 370ms both}
+html.ui-motion-ready .agent-map{animation:uiScaleIn 520ms var(--ease) 170ms both}
+html.ui-motion-ready .route-node{animation:uiRise 360ms var(--ease) both}
+html.ui-motion-ready .route-node:nth-child(1){animation-delay:260ms}
+html.ui-motion-ready .route-node:nth-child(2){animation-delay:310ms}
+html.ui-motion-ready .route-node:nth-child(3){animation-delay:360ms}
+html.ui-motion-ready .route-node:nth-child(4){animation-delay:410ms}
+html.ui-motion-ready .route-node:nth-child(5){animation-delay:460ms}
+.ui-enter{animation:uiMessageIn var(--motion-medium) var(--ease) both}
+.right-panel.active:not([hidden]){animation:uiFade 170ms ease-out both}
+.work-card:not([hidden]){animation:uiScaleIn var(--motion-medium) var(--ease) both}
+.progress-item.current>span{border-color:color-mix(in oklch,var(--accent) 38%,var(--line));color:var(--accent-2);animation:uiCurrent 1.8s ease-in-out infinite}
+.task-chip.busy>i{animation:uiCurrent 1.55s ease-in-out infinite}
+.work-progress{position:relative;overflow:hidden}
+.work-progress::after{content:"";position:absolute;inset:0 auto 0 0;width:34%;background:linear-gradient(90deg,transparent,color-mix(in oklch,var(--paper) 74%,transparent),transparent);animation:uiWorking 1.45s linear infinite;pointer-events:none}
+.modal-backdrop:not([hidden]) .modal,.command-backdrop:not([hidden]) .command-modal{animation:uiScaleIn var(--motion-medium) var(--ease) both}
+.drop-mask:not([hidden])>div{animation:uiScaleIn var(--motion-medium) var(--ease) both}
+
+/* Strong keyboard target and touch target polish. */
+.answer-correction button,.suggestions button,.right-tab,.attach,.top-action,.icon-btn{min-height:32px}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid color-mix(in oklch,var(--accent) 58%,transparent);outline-offset:3px}
+
+@media(prefers-reduced-motion:reduce){
+  html.ui-motion-ready .welcome-badge,html.ui-motion-ready .welcome h2,html.ui-motion-ready .welcome-copy>p,
+  html.ui-motion-ready .welcome-kicker,html.ui-motion-ready .quick-card,html.ui-motion-ready .input-types,
+  html.ui-motion-ready .agent-map,html.ui-motion-ready .route-node,.ui-enter,.right-panel.active:not([hidden]),
+  .work-card:not([hidden]),.progress-item.current>span,.task-chip.busy>i,.modal-backdrop:not([hidden]) .modal,
+  .command-backdrop:not([hidden]) .command-modal,.drop-mask:not([hidden])>div{animation:none!important}
+  .work-progress::after{display:none}
+}
