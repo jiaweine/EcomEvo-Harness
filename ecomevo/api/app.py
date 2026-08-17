@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, hashlib, json, logging, mimetypes, os, re, shutil, subprocess, uuid, zipfile
+import asyncio, hashlib, json, logging, mimetypes, os, re, shutil, subprocess, time, uuid, zipfile
 from pathlib import Path
 from typing import Any, Literal
 import httpx
@@ -23,6 +23,10 @@ engine=EcomEvoEngine(DATA_DIR/'runtime.db',mcp=mcp,model_gateway=providers)
 analyzer=ProductAnalyzer(engine,providers,asset_meta_writer=store.patch_asset_meta)
 queues:dict[str,list[asyncio.Queue]]={}
 logger=logging.getLogger(__name__)
+try:WS_POLL_SECONDS=float(os.environ.get('ECOMEVO_WS_POLL_SECONDS','2'))
+except (TypeError,ValueError):WS_POLL_SECONDS=2.0
+WS_POLL_SECONDS=max(.5,min(15.0,WS_POLL_SECONDS))
+WS_HEARTBEAT_SECONDS=15.0
 
 app=FastAPI(title='EcomEvo 商业决策工作台 API',description='面向商品治理、商家审核、售后与风险核查的对话式多模态决策服务。',version='1.0.0')
 cors_origins=[x.strip() for x in os.environ.get('ECOMEVO_CORS_ORIGINS','').split(',') if x.strip()]
@@ -362,7 +366,7 @@ async def conversation_message(cid:str,req:ChatRequest,background_tasks:Backgrou
     try:
         user=store.add_message(cid,'user',req.content,{'asset_ids':req.asset_ids})
         if not had_messages:store.touch(cid,title=req.content.strip().replace('\n',' ')[:30] or '新的业务任务')
-        await emit(cid,'message.accepted',{'message_id':user['id'],'asset_count':len(req.asset_ids),'task_asset_count':len(assets)})
+        await emit(cid,'message.accepted',{'message_id':user['id'],'message':user,'asset_count':len(req.asset_ids),'task_asset_count':len(assets)})
     except Exception:
         store.release_turn(cid,lease)
         raise
@@ -448,21 +452,36 @@ async def conversation_ws(ws:WebSocket,cid:str):
         await ws.close(code=4404);return
     q:asyncio.Queue=asyncio.Queue(maxsize=500);queues.setdefault(cid,[]).append(q)
     try:
-        history=store.list_events(cid,limit=600);cutoff=history[-1]['id'] if history else 0
+        history=store.list_events(cid,limit=600);cutoff=int(history[-1]['id']) if history else 0
         for ev in history:await ws.send_json(ev)
+        last_heartbeat=time.monotonic()
         while True:
             try:
-                item=await asyncio.wait_for(q.get(),timeout=15)
-                if item.get('id',0)<=cutoff:continue
-                await ws.send_json(item)
+                item=await asyncio.wait_for(q.get(),timeout=WS_POLL_SECONDS)
+                item_id=int(item.get('id',0) or 0)
+                if item_id<=cutoff:continue
+                await ws.send_json(item);cutoff=max(cutoff,item_id)
             except asyncio.TimeoutError:
+                # The in-memory queue is only a low-latency hint. SQLite is the durable source of truth,
+                # so a WebSocket attached to another worker/process catches up from the event log.
+                pending=store.list_events(cid,after_id=cutoff,limit=200)
+                if pending:
+                    for ev in pending:
+                        event_id=int(ev.get('id',0) or 0)
+                        if event_id<=cutoff:continue
+                        await ws.send_json(ev);cutoff=max(cutoff,event_id)
+                    continue
                 recovered=store.recover_interrupted_turn(cid)
                 if recovered:
-                    cutoff=max(cutoff,int(recovered.get('id',0)));await ws.send_json(recovered)
-                else:
-                    await ws.send_json({'type':'heartbeat','conversation_id':cid})
+                    event_id=int(recovered.get('id',0) or 0)
+                    if event_id>cutoff:
+                        await ws.send_json(recovered);cutoff=event_id
+                    continue
+                now=time.monotonic()
+                if now-last_heartbeat>=WS_HEARTBEAT_SECONDS:
+                    await ws.send_json({'type':'heartbeat','conversation_id':cid,'after_id':cutoff})
+                    last_heartbeat=now
     except WebSocketDisconnect:pass
     finally:
         if q in queues.get(cid,[]):queues[cid].remove(q)
         if not queues.get(cid):queues.pop(cid,None)
-
