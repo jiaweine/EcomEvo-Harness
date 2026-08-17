@@ -19,6 +19,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+      - name: System media dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
       - name: Install
         run: python -m pip install -e '.[dev]'
       - name: Python compile
@@ -27,12 +29,16 @@ jobs:
         run: pytest -q
       - name: Frontend syntax
         run: |
+          node --check frontend/app.js
           node --check frontend/enhancements.js
           python - <<'PY'
           from html.parser import HTMLParser
           from pathlib import Path
-          HTMLParser().feed(Path('frontend/index.html').read_text())
-          css = Path('frontend/product-polish.css').read_text()
-          assert css.count('{') == css.count('}'), 'unbalanced product-polish.css'
+          html = Path('frontend/index.html').read_text()
+          HTMLParser().feed(html)
+          assert html.count('id="') == len({part.split('"',1)[0] for part in html.split('id="')[1:]}), 'duplicate DOM id'
+          for css_path in ('frontend/visual.css', 'frontend/product-polish.css'):
+              css = Path(css_path).read_text()
+              assert css.count('{') == css.count('}'), f'unbalanced {css_path}'
           print('frontend static checks ok')
           PY
