@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -35,13 +35,11 @@ jobs:
         run: python scripts/e2e_smoke.py
 
   capture-readme-gallery:
-    if: github.event_name == 'pull_request' && github.head_ref == 'docs/real-product-gallery' && github.actor != 'github-actions[bot]'
+    if: github.event_name == 'pull_request' && github.head_ref == 'docs/real-product-gallery'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: docs/real-product-gallery
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -57,17 +55,13 @@ jobs:
           uvicorn ecomevo.api.app:app --host 127.0.0.1 --port 8765 > "$RUNNER_TEMP/ecomevo-gallery.log" 2>&1 &
       - name: Capture desktop and mobile README gallery
         run: python scripts/capture_readme_gallery.py
-      - name: Publish verified captures
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- docs/images/real/*.png
-          if git diff --cached --quiet; then
-            echo "Gallery is already current"
-          else
-            git commit -m "Refresh real README product gallery [skip ci]"
-            git push origin HEAD:docs/real-product-gallery
-          fi
+      - name: Upload verified gallery artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: readme-real-gallery
+          path: docs/images/real/*.png
+          if-no-files-found: error
+          retention-days: 1
       - name: Show server log on failure
         if: failure()
         run: cat "$RUNNER_TEMP/ecomevo-gallery.log" || true
