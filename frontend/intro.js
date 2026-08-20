@@ -127,6 +127,59 @@ function ensureAssetPolicy(){
   note.querySelector('button').onclick=()=>byId('newTaskBtn')?.click();
   copy.after(note);
 }
+
+let searchConversations=[];
+function searchSceneRows(){
+  return Object.entries(SCENE_COPY).map(([key,v])=>({type:'scene',key,title:v.name,sub:v.meta,icon:v.name.slice(0,1)}));
+}
+function fmtSearchTime(ts){try{return new Date(Number(ts)*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}catch{return''}}
+async function loadExtendedSearch(){
+  try{
+    const r=await fetch('/api/conversations?limit=100');
+    if(r.ok)searchConversations=await r.json();
+  }catch{}
+}
+function renderExtendedSearch(query=''){
+  const box=byId('commandResults');if(!box)return;
+  const q=query.trim().toLowerCase();
+  const rows=[...searchSceneRows(),...searchConversations.map(c=>({type:'conversation',key:c.id,title:c.title,sub:`${SCENE_COPY[c.scene]?.name||'业务任务'} · ${fmtSearchTime(c.updated_at)}`,icon:'任'}))];
+  const filtered=q?rows.filter(x=>(x.title+' '+x.sub).toLowerCase().includes(q)):rows.slice(0,16);
+  box.innerHTML=filtered.length?filtered.map((r,i)=>`<button class="command-result ${i===0?'active':''}" data-evo-search="${i}"><span>${r.icon}</span><div><b>${r.title.replace(/[&<>\"']/g,'')}</b><small>${r.sub.replace(/[&<>\"']/g,'')}</small></div></button>`).join(''):'<div class="empty-side">没有找到匹配项。</div>';
+  box.querySelectorAll('[data-evo-search]').forEach(btn=>btn.onclick=()=>runExtendedSearch(filtered[Number(btn.dataset.evoSearch)]));
+}
+function closeCommandModal(){
+  const modal=byId('commandModal');if(modal)modal.hidden=true;
+  const input=byId('commandInput');if(input)input.value='';
+}
+function runExtendedSearch(row){
+  if(!row)return;
+  if(row.type==='scene'){
+    document.querySelector(`.scene[data-scene="${row.key}"]`)?.click();
+    closeCommandModal();
+    requestAnimationFrame(()=>byId('messageInput')?.focus());
+    return;
+  }
+  const u=new URL(location.href);u.searchParams.set('conversation',row.key);u.searchParams.delete('tour');location.assign(u.toString());
+}
+function setupExtendedCommandSearch(){
+  const trigger=byId('commandBtn'),input=byId('commandInput');
+  if(!trigger||!input)return;
+  trigger.addEventListener('click',()=>{loadExtendedSearch().then(()=>renderExtendedSearch(input.value))});
+  input.oninput=event=>renderExtendedSearch(event.target.value);
+  input.onkeydown=event=>{
+    const buttons=[...byId('commandResults').querySelectorAll('.command-result')];
+    let idx=buttons.findIndex(b=>b.classList.contains('active'));if(idx<0)idx=0;
+    if(event.key==='ArrowDown'||event.key==='ArrowUp'){
+      event.preventDefault();if(!buttons.length)return;
+      buttons[idx]?.classList.remove('active');idx=event.key==='ArrowDown'?(idx+1)%buttons.length:(idx-1+buttons.length)%buttons.length;
+      buttons[idx].classList.add('active');buttons[idx].scrollIntoView({block:'nearest'});
+    }else if(event.key==='Enter'){
+      event.preventDefault();buttons[Math.max(0,idx)]?.click();
+    }
+  };
+  loadExtendedSearch();
+}
+
 function bindProductPolish(){
   const guide=byId('productGuideBtn');if(guide)guide.onclick=()=>openTour('manual');
   const assets=byId('assetLibraryBtn');if(assets)assets.onclick=openAssetsPanel;
@@ -138,6 +191,7 @@ function bindProductPolish(){
   });
 
   ensureAssetPolicy();
+  setupExtendedCommandSearch();
   syncOutcomeVisual();
   clarifyExecutionTruth();
   const observer=new MutationObserver(()=>{syncOutcomeVisual();clarifyExecutionTruth();ensureAssetPolicy()});

@@ -49,3 +49,9 @@ def test_product_tour_remains_accessible():
     assert 'aria-describedby="productTourDescription"' in INDEX
     assert 'stopImmediatePropagation' in INTRO_JS
     assert 'focusables()' in INTRO_JS
+
+
+def test_command_search_loads_more_recent_tasks():
+    assert "/api/conversations?limit=100" in INTRO_JS
+    assert "setupExtendedCommandSearch" in INTRO_JS
+    assert "searchParams.set('conversation'" in INTRO_JS
