@@ -1,9 +1,9 @@
 name: README Real Gallery Capture
 
 on:
-  push:
+  pull_request:
     branches:
-      - docs/real-product-gallery
+      - main
     paths:
       - scripts/capture_readme_gallery.py
       - .github/workflows/readme-gallery-capture.yml
