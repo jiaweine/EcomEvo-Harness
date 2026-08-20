@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import urllib.request
 from pathlib import Path
@@ -116,7 +117,7 @@ def run() -> None:
         mobile_paths.append(capture(page, "product-mobile-workbench.png"))
 
         page.locator("#detailToggle").click()
-        expect(page.locator("#rightbar")).to_have_class(lambda value: bool(value and "open" in value.split()))
+        expect(page.locator("#rightbar")).to_have_class(re.compile(r"\bopen\b"))
         mobile_paths.append(capture(page, "product-mobile-detail.png"))
 
         page.locator("#tab-evidence").click()
