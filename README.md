@@ -1,201 +1,241 @@
-<p align="center"><sub>ECOMMERCE DECISION WORKBENCH</sub></p>
+<div align=center>
 
-<h1 align="center">EcomEvo</h1>
+# EcomEvo
 
-<p align="center"><strong>把复杂电商业务，从“问 AI”推进到“持续组织证据、形成判断、确认后执行”。</strong></p>
+### Evidence-Driven Commerce Decision Workbench
 
-<p align="center"><b>目标进入任务 · 证据持续累积 · 结论有依据 · 高影响动作始终受控</b></p>
+**不是把模型接进聊天框，而是把电商业务目标、资料、证据、判断和动作组织成一条可复核、可确认、可恢复的持续任务。**
 
-<p align="center">
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-1f6feb?logo=python&logoColor=white" />
-  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Backend-0f8a72?logo=fastapi&logoColor=white" />
-  <img alt="Multimodal" src="https://img.shields.io/badge/Evidence-Multimodal-344054" />
-  <img alt="Status" src="https://img.shields.io/badge/Main-Usable-14845d" />
-</p>
+`STATEFUL TASK` · `MULTIMODAL EVIDENCE` · `HUMAN GATED ACTION` · `AUDITABLE` · `RECOVERABLE`
 
-<p align="center">
-  <b>
-    <a href="#60-秒看懂产品">产品导览</a> ·
-    <a href="#quick-start">快速开始</a> ·
-    <a href="docs/ARCHITECTURE.md">架构</a> ·
-    <a href="docs/DESIGN.md">设计</a> ·
-    <a href="docs/VERIFICATION_REPORT.md">验证</a>
-  </b>
-</p>
+商品、商家、订单、内容与多模态资料进入同一个任务空间；系统持续形成证据和判断，高影响业务动作始终经过明确确认并保留执行结果。
 
-<br />
+</div>
 
-<p align="center">
-  <img src="docs/images/product-workbench.svg" alt="EcomEvo 商业决策工作台" width="100%" />
-</p>
-
-<p align="center">
-  <sub><b>EcomEvo 商业决策工作台</b> · 目标、对话、多模态资料、关键依据和待确认业务动作都属于同一个持续任务。</sub>
-</p>
+![EcomEvo 商业决策工作台](docs/images/product-workbench.svg)
 
 ---
 
-## EcomEvo 是什么
+## Product Thesis · 从问 AI 变成完成一次商业判断
 
-很多电商问题并不缺“一个答案”，缺的是一个**能把判断过程做完整的工作空间**。
+**目标 → 资料 → 证据 → 判断 → 人工确认 → 业务执行 → 审计结果**
 
-一次商品治理，可能同时要核对标题、主图、详情、功效声明、资质和品牌授权；一次售后判责，可能要把订单、物流、聊天、图片和平台规则拼回同一条事实时间线；一次商家审核，则要同时看主体、授权链、经营范围和历史风险。
+| CONTROL | TRUST | CONTEXT | EXECUTION |
+|---|---|---|---|
+| **权限可控**：退款、下架、审核、风险升级等高影响动作进入明确确认边界 | **结论可核验**：关键判断回到资料、结构化数据、工具结果与可验证状态 | **任务可持续**：消息、资料、证据、进度和动作属于同一个持续任务 | **执行可区分**：本地演示、真实执行、结果不确定和明确失败保持不同状态 |
 
-普通聊天式 AI 往往把这些步骤压缩成一次回答。EcomEvo 的产品目标不同：
+EcomEvo 把模型能力与商业决策工作台能力分开。模型可以替换；**任务状态、证据范围、执行权限、审计结果和恢复路径**属于产品 Runtime。
 
-> **把一个真实业务目标变成持续任务，把资料变成证据，把证据变成可复核判断，再把高影响动作留给明确确认。**
-
-这意味着用户不需要反复复制背景，也不需要在多个工具之间手动维护“刚才已经确认了什么”。
-
-<table>
-  <tr>
-    <td width="25%" valign="top"><b>Continuous Task</b><br/><br/>围绕一个 conversation 持续补资料、追问、修改要求，业务上下文不会因为一次回答结束而消失。</td>
-    <td width="25%" valign="top"><b>Multimodal Evidence</b><br/><br/>图片、视频、音频、PDF、Office、表格、JSON、日志和结构化业务数据进入同一个任务空间。</td>
-    <td width="25%" valign="top"><b>Evidence Oriented</b><br/><br/>不只输出结论，还把关键依据、资料缺口、冲突和仍需确认的部分显式呈现。</td>
-    <td width="25%" valign="top"><b>Controlled Action</b><br/><br/>退款、下架、审核、风险升级等会改变业务状态的动作，与认知判断分开并保留确认边界。</td>
-  </tr>
-</table>
-
-<br />
-
-## 60 秒看懂产品
-
-### 1. 先说清“要做什么判断”
-
-EcomEvo 不是从一个空白聊天框开始，而是先把任务放进明确业务场景：
-
-| 场景 | 典型问题 |
-| --- | --- |
-| **商品治理** | 标题、主图、详情、声明、品牌和资质是否一致，哪些商品需要补件、修改或下架 |
-| **商家审核** | 主体、资质、授权链、经营范围和历史风险能否形成可信闭环 |
-| **售后判责** | 订单、履约、聊天和举证如何还原事实，退款或责任应如何建议 |
-| **风险核查** | 哪些是强风险证据，哪些只是弱线索，是否需要升级人工复核 |
-| **内容审核** | 图片、视频、文案和商品事实是否一致，哪里可能违规、误导或缺证据 |
-
-<p align="center">
-  <img src="docs/images/product-scenes.svg" alt="EcomEvo 五类业务场景" width="96%" />
-</p>
-
-### 2. 资料持续进入同一个任务
-
-用户可以先提问题，也可以先上传材料。后续新增的截图、视频、录音、合同、表格、日志或结构化数据，会继续挂在同一个任务下。
-
-<p align="center">
-  <img src="docs/images/product-evidence-wall.svg" alt="EcomEvo 多模态证据空间" width="94%" />
-</p>
-
-这不是简单的“附件列表”。产品上更重要的是让用户能够区分：
-
-- **现有事实**：已经能从材料中直接确认的内容；
-- **关键依据**：当前结论真正依赖的证据；
-- **证据缺口**：还缺什么材料，为什么当前不能下定论；
-- **冲突信息**：不同资料之间哪里互相矛盾；
-- **业务动作**：哪些操作会影响真实商品、商家、订单或风险状态。
-
-### 3. 先看依据，再决定是否行动
-
-右侧任务详情把“进度 / 依据 / 待确认 / 资料”拆开。用户不需要看到隐藏思维链，但应该知道：
-
-**现在处理到哪一步、关键依据是什么、还缺什么、系统建议做什么，以及最后一步由谁确认。**
-
-<p align="center">
-  <img src="docs/images/product-runtime-control.svg" alt="EcomEvo 任务状态与权限控制" width="94%" />
-</p>
+它处理的不是一次回答，而是一次完整商业判断。
 
 ---
 
-## 当前主分支已经能做什么
+# System Architecture · Evidence Runtime × Controlled Action
 
-`main` 当前不是一个只有概念图的空壳。它已经包含一套可直接运行的产品闭环：
+EcomEvo 的主分支围绕持续任务组织产品状态。Web Workbench 负责交互，FastAPI 负责产品 API，Conversation Store 持久化任务轨迹，Provider Registry 提供模型能力，Product Analyzer 与 Runtime 负责证据组织和判断，MCP 负责可选的真实业务执行。
 
-- 五类业务入口：商品治理、商家审核、售后判责、风险核查、内容审核；
-- 持续 conversation：历史任务、任务切换、分享链接、消息记录；
-- 多资料输入：图片、视频、音频、PDF、Word、Excel、CSV、JSON、日志等；
-- 资料预览与元数据提取；
-- Provider 选择与本地演示执行器；
-- 任务进度、关键依据和后续建议；
-- 高影响 `BusinessAction` 提案与人工确认；
-- WebSocket 任务状态同步；
-- 桌面端与移动端响应式工作台；
-- 首次产品导览，可从顶部“导览”随时重新打开。
+```mermaid
+flowchart TB
+    U[Operator Goal] --> W[Web Workbench]
+    W --> API[FastAPI Product API]
 
-### 能力边界
+    API --> CONV[Conversation Store]
+    API --> PROV[Provider Registry]
+    API --> ANALYZE[Product Analyzer]
+    API --> MCP[MCP Registry]
 
-为了避免 README 把“规划中的能力”写成“已经上线”，这里明确区分当前可用能力和开发中的能力：
+    CONV --> SNAP[Task Context]
+    SNAP --> ANALYZE
+    PROV --> ANALYZE
+    ANALYZE --> RT[EcomEvo Runtime]
 
-| 能力 | 当前状态 |
-| --- | --- |
-| 持续业务任务 | ✅ 主分支可用 |
-| 五类业务场景 | ✅ 主分支可用 |
-| 文本 / 结构化资料本地演示 | ✅ 主分支可用 |
-| 图片 / 音视频 / 扫描件理解 | ✅ 需要配置支持对应能力的 Provider |
-| 证据面板 / 进度 / 待确认动作 | ✅ 主分支可用 |
-| 自动执行高影响业务动作 | ❌ 不允许静默执行，必须经过确认边界 |
-| Adaptive Autonomous Runtime | 🧪 在 Draft PR #3 中持续验证，未视为 `main` 已上线能力 |
+    RT --> EVID[Evidence + Decision]
+    EVID --> CONV
+    EVID --> ACTION[Business Action Proposal]
 
-> **认知可以自动，权限不能自动。**
->
-> EcomEvo 可以帮助组织证据和形成判断，但不会因为“模型更聪明”就自动获得更多业务权限。
+    ACTION --> GATE[Human Confirmation]
+    GATE --> SIM[Simulation]
+    GATE --> REAL[MCP Execution]
+
+    SIM --> AUDIT[Audit Trail]
+    REAL --> AUDIT
+    AUDIT --> CONV
+    CONV --> W
+```
+
+### 01 · 产品边界
+
+| Surface | Main 行为 | 边界 |
+|---|---|---|
+| Task state | 持久化 conversation、历史消息、资料、事件与动作 | 对话是交互方式，不是唯一状态 |
+| Evidence | 图片、视频、音频、PDF、Office、表格、JSON、日志与文本进入同一任务 | 关键结论需要能回到可检查来源 |
+| Asset lifecycle | 资料可参与后续分析、排除、重新启用 | 已进入历史证据链的资料不能直接物理删除 |
+| Provider | 支持本地演示与可配置外部 Provider | 多模态能力取决于实际 Provider 能力 |
+| Action | proposed、approved、simulated、executed、uncertain、failed 分开表达 | 本地演示不能冒充真实业务执行 |
+| Authority | 高影响动作必须经过人工确认 | 模型能力不会自动扩大业务权限 |
+| Recovery | 任务租约、WebSocket 恢复、失败状态和审计事件持续保留 | 资料范围变更不能与分析快照形成竞态 |
+| Adaptive Runtime | 独立开发线持续验证 | Draft PR #3 不作为当前 main 已上线能力 |
+
+### 02 · 单次任务
+
+```mermaid
+sequenceDiagram
+    participant U as Operator
+    participant W as Workbench
+    participant A as FastAPI
+    participant S as Conversation Store
+    participant P as Product Analyzer
+    participant R as Runtime
+    participant M as MCP
+
+    U->>W: 提交目标与资料
+    W->>A: message + asset scope
+    A->>S: claim task lease
+    S-->>A: stable task snapshot
+    A->>P: goal + evidence + history
+    P->>R: analyze and verify
+    R-->>P: evidence + decision + action proposals
+    P-->>A: result
+    A->>S: persist message + evidence + actions
+    A-->>W: answer ready
+    U->>W: confirm high impact action
+    W->>A: approve
+    alt MCP 已连接
+        A->>M: execute business tool
+        M-->>A: confirmed result
+        A->>S: executed
+    else 本地演示
+        A->>S: simulated
+    end
+```
+
+### 03 · 资料生命周期
+
+```mermaid
+flowchart LR
+    UPLOAD[Uploaded] --> ACTIVE[Active Evidence]
+    ACTIVE --> EXCLUDE[Excluded from Future Analysis]
+    EXCLUDE --> ACTIVE
+
+    ACTIVE --> REF{Historical Reference}
+    EXCLUDE --> REF
+
+    REF -->|No| DELETE[Permanent Delete]
+    REF -->|Yes| KEEP[Keep Audit History]
+```
+
+资料排除与资料删除是两个不同动作。排除只改变未来分析范围；永久删除只有在资料从未进入历史消息、证据或业务动作时才允许。
 
 ---
 
-## 产品设计上的关键差异
+## 工作台 · Real Product Surface
 
-### 不是“聊天记录”，而是“任务状态”
+下面的产品图对应当前仓库中的实际工作台设计资产，围绕场景、证据、状态和执行边界组织，而不是围绕模型配置组织。
 
-EcomEvo 中一个任务同时包含目标、消息、资料、证据、处理进度、结论和待确认动作。对话只是交互方式，不是系统唯一的数据结构。
+| **01 · 五类业务场景** | **02 · 多模态证据空间** |
+|---|---|
+| 商品治理、商家审核、售后判责、风险核查、内容审核从业务目标进入。<br><br>![EcomEvo 五类业务场景](docs/images/product-scenes.svg) | 图片、视频、音频、文档、表格与日志进入同一个持续任务。<br><br>![EcomEvo 多模态证据空间](docs/images/product-evidence-wall.svg) |
 
-### 不是“模型说了算”，而是“证据可回看”
-
-产品默认把模型输出视为候选判断，而不是天然事实。真正重要的结论应该能回到：
-
-- 用户上传的业务资料；
-- 结构化数据；
-- 已注册的业务工具结果；
-- 明确的平台规则或企业规则；
-- 可验证的状态变化。
-
-### 不是“自动化越多越好”，而是“权限边界越清楚越好”
-
-EcomEvo 将认知过程与业务执行拆开。系统可以建议退款、下架、拒绝、升级风险，但涉及真实业务副作用时，应保留确认、权限和执行结果。
+| **03 · 状态与权限控制** | **04 · 商业决策工作台** |
+|---|---|
+| 进度、关键依据、待确认动作与资料范围保持分层，执行结果不混淆。<br><br>![EcomEvo 任务状态与权限控制](docs/images/product-runtime-control.svg) | 目标、对话、资料、证据、判断和动作集中在同一个任务空间。<br><br>![EcomEvo 商业决策工作台](docs/images/product-workbench.svg) |
 
 ---
 
-## First-run Product Tour
+# Product Method · Evidence Before Action
 
-本次产品补全加入了真正的首次导览，而不是把用户直接丢进空白工作台。
+### 01 · Stateful Task
 
-首次打开时，产品会说明：
+一个任务同时拥有目标、消息、资料、证据、处理进度、结论、动作和事件。用户可以持续补资料、追问和修改要求，不需要反复重建背景。
 
-1. EcomEvo 解决的不是“回答问题”，而是“完成一次业务判断”；
-2. 如何按 **目标 → 证据 → 判断 → 确认** 使用工作台；
-3. 五类业务场景分别处理什么；
-4. 本地演示和外部多模态 Provider 的能力边界；
-5. 为什么高影响动作不会自动执行。
+### 02 · Multimodal Evidence
 
-顶部 **“导览”** 按钮可以随时重新打开产品介绍；共享 conversation 链接默认不会被首次导览打断。
+当前产品可以接收图片、视频、音频、PDF、Word、Excel、CSV、JSON、日志和文本。外部 Provider 决定视觉、音频与扫描件理解能力；本地演示能力用于文本与结构化流程体验。
+
+### 03 · Evidence Scope
+
+资料不是普通附件。每份资料都拥有明确生命周期：
+
+- **Active**：参与后续分析
+- **Excluded**：保留历史，但不再进入未来分析
+- **Deleted**：仅未进入历史证据链时允许永久删除
+
+这样可以同时满足任务清理、未来分析范围和历史审计三个目标。
+
+### 04 · Decision State
+
+系统输出不只包含结论，还应该持续表达：
+
+- 已确认事实
+- 关键依据
+- 证据缺口
+- 冲突信息
+- 后续建议
+- 待确认业务动作
+
+判断需要足够依据，权限需要独立确认。
+
+### 05 · Action Truthfulness
+
+```mermaid
+stateDiagram-v2
+    [*] --> proposed
+    proposed --> rejected
+    proposed --> approved
+    approved --> simulated: local demo
+    approved --> executed: confirmed MCP
+    approved --> uncertain: transport interrupted
+    approved --> failed: downstream failure
+```
+
+`simulated` 只代表本地演示链路完成，不代表真实商品、商家、订单或风险状态已经改变。
+
+`executed` 只用于已确认的真实下游执行结果。
 
 ---
 
-## Quick Start
+## Business Scenarios · Five Commerce Surfaces
 
-### 1. 本地运行
+| 场景 | 输入 | 主要判断 |
+|---|---|---|
+| **商品治理** | 标题、主图、详情、声明、品牌、资质 | 一致性、缺证据、高风险项、补件与下架建议 |
+| **商家审核** | 主体、营业执照、授权链、经营范围、历史风险 | 通过、补件、拒绝与风险升级建议 |
+| **售后判责** | 订单、物流、聊天、图片、视频、平台规则 | 时间线还原、责任判断、退款与后续处理建议 |
+| **风险核查** | 交易、账户、商品、履约与异常信号 | 强证据、弱线索、反证与人工复核优先级 |
+| **内容审核** | 图片、视频、文案与商品事实 | 一致性、误导风险、违规点与证据缺口 |
+
+---
+
+# Capability Boundary · Main Branch
+
+README 只描述当前主分支能够验证的能力，不把研究线能力提前写成已上线功能。
+
+| Capability | Status | 说明 |
+|---|---|---|
+| 持续业务任务 | **READY** | 历史任务、任务切换、消息、分享与状态持久化 |
+| 五类业务场景 | **READY** | 商品、商家、售后、风险、内容 |
+| 文本与结构化资料本地演示 | **READY** | 无外部模型也可以体验核心任务流程 |
+| 图片与音视频理解 | **CONFIG** | 需要支持对应模态的 Provider |
+| 证据面板与资料生命周期 | **READY** | 资料范围、排除、恢复与审计安全删除 |
+| 高影响业务动作 | **GUARDED** | 必须经过明确人工确认 |
+| 真实业务执行 | **CONFIG** | 需要可用 MCP 绑定与业务系统 |
+| Adaptive Autonomous Runtime | **EXPERIMENTAL** | 独立 Draft PR #3 持续验证 |
+
+---
+
+# Quick Start · Local Runtime
+
+### 01 · macOS / Linux
 
 ```bash
+git clone https://github.com/jiaweine/EcomEvo-Harness.git
+cd EcomEvo-Harness
+
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
+
 cp .env.example .env
-uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
-```
-
-Windows PowerShell：
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -e .
-Copy-Item .env.example .env
 uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 ```
 
@@ -205,9 +245,21 @@ uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 http://localhost:8000
 ```
 
-首次启动即使没有配置外部模型，也可以使用本地演示能力体验文本和结构化资料流程。
+### 02 · Windows PowerShell
 
-### 2. Docker
+```powershell
+git clone https://github.com/jiaweine/EcomEvo-Harness.git
+cd EcomEvo-Harness
+
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -e .
+
+Copy-Item .env.example .env
+uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
+```
+
+### 03 · Docker
 
 ```bash
 docker build -t ecomevo .
@@ -218,140 +270,90 @@ docker run --rm \
   ecomevo
 ```
 
-### 3. 配置外部 Provider
+### 04 · Provider Capability
 
-复制 `.env.example` 后按需要配置对应模型或 OpenAI-compatible 服务。没有配置的 Provider 会在界面中明确标记为“未配置”。
+复制 `.env.example` 后按实际环境配置 Provider。没有配置外部模型时，产品仍可使用本地演示能力完成文本与结构化资料流程。
 
-多模态能力取决于实际 Provider：
-
-- 图片理解需要 Provider 支持视觉输入；
-- 音频需要 Provider 或业务侧预处理支持；
-- 扫描 PDF 需要 OCR / 视觉能力；
-- 文本、CSV、JSON、日志等可直接走本地或文本 Provider 流程。
-
----
-
-## 典型使用方式
-
-### 商品治理
-
-上传商品标题、主图、详情页、资质和品牌授权后，可以直接要求：
-
-```text
-帮我核对这批商品的标题、主图和详情，
-找出需要下架或补资质的高风险项，并说明依据。
-```
-
-### 商家审核
-
-```text
-结合营业执照、品牌授权、经营范围和历史风险，
-给出通过、补件或拒绝建议，并列出仍然缺失的证据。
-```
-
-### 售后判责
-
-```text
-结合订单、物流、聊天记录和用户举证，
-还原时间线并给出责任判断。不要自动退款。
-```
-
-### 风险核查
-
-```text
-把这些异常交易里的强证据、弱线索和反证分开，
-判断是否值得升级人工复核。
-```
-
-### 内容审核
-
-```text
-核对这组商品图片、视频和文案与商品事实是否一致，
-标出误导、违规或需要补证据的内容。
-```
+| Input | Requirement |
+|---|---|
+| Text / CSV / JSON / Log | 本地演示或文本 Provider |
+| Image | 支持视觉输入的 Provider |
+| Audio | 支持音频输入的 Provider 或业务侧预处理 |
+| Video | 支持视觉理解的 Provider，关键帧由本地媒体流程提取 |
+| Scanned PDF | OCR 或视觉能力 |
+| Office / PDF / Table | 文档解析能力与必要的外部 Provider |
 
 ---
 
-## Architecture
+# Verification · Release Gate
 
-当前主分支可以概括为：
+仓库包含 GitHub Actions CI。每次 Pull Request 会执行完整工程门禁，而不是只做静态展示检查。
 
-```mermaid
-flowchart LR
-    U[Operator] --> W[Web Workbench]
-    W --> A[FastAPI]
-    A --> C[Conversation Store]
-    A --> P[Provider Registry]
-    A --> R[EcomEvo Runtime]
-    A --> M[Media / Document Processing]
-    R --> E[Evidence / Result]
-    E --> W
-    R --> B[BusinessAction Proposal]
-    B --> H[Human Confirmation]
-```
+| Gate | Command / Scope |
+|---|---|
+| Python environment | Python 3.11 + editable install |
+| System media dependency | ffmpeg |
+| Python regression | `pytest -q` |
+| Frontend syntax | `node --check frontend/app.js` |
+| Product layer syntax | `node --check frontend/intro.js` |
+| Product smoke | `python scripts/e2e_smoke.py` |
+| Packaging | setuptools 显式限制 Python package discovery |
 
-更详细的组件边界见 **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**。
+资料生命周期、动作状态真实性、审计引用和任务租约并发边界都已经进入回归覆盖。
 
 ---
 
-## Adaptive Runtime 开发线
+# Production Boundary · Before Real Commerce
 
-仓库中另有 **[Draft PR #3](https://github.com/jiaweine/EcomEvo-Harness/pull/3)**，用于验证更进一步的 Adaptive Autonomous Runtime，包括：
+开源主分支提供可验证的产品与代码路径，但真实商业系统部署仍然需要结合企业环境完成安全与治理门禁。
 
-- 受约束的自主 evidence acquisition；
-- adaptive routing；
-- verifier-grounded credit；
-- durable execution；
-- RBAC / tenant boundaries；
-- MCP uncertainty；
-- 更完整的 release gates。
+| Area | Production requirement |
+|---|---|
+| Identity | 企业 SSO、用户身份、角色与操作人追踪 |
+| Authorization | 高影响动作 RBAC、审批策略与动作白名单 |
+| Provider | 凭证管理、超时、限流、成本与能力检测 |
+| MCP | 真实业务系统绑定、幂等、重试与不确定结果核对 |
+| Data | 保留策略、脱敏、敏感资料治理与审计要求 |
+| Deployment | 多实例一致性、数据库与队列策略、备份与恢复 |
+| Browser | Safari、Edge、移动设备与企业浏览器验证 |
+| Security | 异常文件、恶意输入、大文件与上传边界验证 |
 
-这条开发线有价值，但它与当前稳定产品介绍分开表达。README 不再把 Draft PR 的研究性能力放在最前面，也不把“正在验证”写成“主分支已完成”。
-
----
-
-## Production Readiness
-
-在把 EcomEvo 接入真实电商系统前，仍需要结合部署环境完成至少以下检查：
-
-- 企业 SSO / 身份与角色体系；
-- 真实 Provider / MCP 凭证、限流和超时策略；
-- 数据保留、脱敏和审计要求；
-- 对高影响动作的业务审批策略；
-- Safari / Edge / 移动设备兼容验证；
-- 大文件、异常文件和恶意输入测试；
-- 多实例部署下的数据库、队列和一致性策略；
-- 企业规则、平台规则和可执行动作白名单。
-
-开源仓库可以验证代码路径，但不会伪造真实生产环境已经完成这些验证。
+EcomEvo 的产品原则保持简单：**认知过程可以自动推进，真实业务权限必须明确授予。**
 
 ---
 
-## Documentation
+# Documentation
 
 | 文档 | 内容 |
-| --- | --- |
+|---|---|
 | **[ARCHITECTURE](docs/ARCHITECTURE.md)** | 当前主分支架构与组件边界 |
 | **[DESIGN](docs/DESIGN.md)** | UI、响应式、中文排版与产品交互原则 |
-| **[DEPLOYMENT](docs/DEPLOYMENT.md)** | 部署说明 |
-| **[VERIFICATION REPORT](docs/VERIFICATION_REPORT.md)** | 当前主分支已有验证记录 |
-| **[Adaptive Runtime · PR #3](https://github.com/jiaweine/EcomEvo-Harness/pull/3)** | 自主 Runtime 与下一阶段安全执行能力 |
+| **[DEPLOYMENT](docs/DEPLOYMENT.md)** | 部署说明与环境要求 |
+| **[VERIFICATION REPORT](docs/VERIFICATION_REPORT.md)** | 已有验证记录 |
+| **[Adaptive Runtime · PR #3](https://github.com/jiaweine/EcomEvo-Harness/pull/3)** | 下一阶段自主 Runtime 与安全执行研究线 |
 
 ---
 
-## Roadmap
+# Roadmap
 
-短期产品方向优先级：
+当前产品方向按主分支价值排序：
 
-1. 用真实浏览器截图替换仓库中的示意产品图；
-2. 为首次任务提供更完整的样例数据包和可重复 demo；
-3. 补齐 Provider 能力检测，让“文本 / 图片 / 音频 / 文档”支持情况更直观；
-4. 为证据项增加来源定位、引用和冲突展示；
-5. 加强生产级身份、租户和动作审批；
-6. 在 Draft Runtime 通过验证后，再评估是否逐步合入主分支。
+1. 用真实浏览器产品截图替换部分示意设计资产
+2. 提供可重复运行的首任务样例数据包
+3. 完善 Provider 模态能力检测与首次配置体验
+4. 增强证据来源定位、引用、时间线与冲突展示
+5. 增强身份、租户、RBAC 与审批审计
+6. 增加服务端任务搜索、分页与完整浏览器 E2E
+7. Adaptive Runtime 通过独立验证门禁后再评估分阶段合入
 
 ---
 
-<p align="center"><b>EcomEvo</b></p>
-<p align="center"><strong>把复杂任务组织成证据，把业务动作留在明确权限边界内。</strong></p>
-<p align="center"><sub>Evidence first. Continuous task. Controlled action.</sub></p>
+<div align=center>
+
+**EcomEvo**
+
+Evidence first · Stateful task · Controlled action
+
+**把复杂商业任务组织成证据，把真实业务动作留在明确权限边界内。**
+
+</div>
