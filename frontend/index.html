@@ -4,8 +4,10 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0d1728" />
+  <meta name="description" content="EcomEvo 是面向电商商品治理、商家审核、售后判责、风险核查和内容审核的证据驱动商业决策工作台。" />
   <title>EcomEvo 商业决策工作台</title>
   <link rel="stylesheet" href="/assets/app.css" />
+  <link rel="stylesheet" href="/assets/intro.css" />
 </head>
 <body>
 <div class="app-shell">
@@ -21,6 +23,7 @@
       <span class="command-symbol" aria-hidden="true">⌕</span><span class="command-placeholder">搜索任务、业务入口</span><kbd>⌘ K</kbd>
     </button>
     <div class="top-actions">
+      <button class="top-action" id="productGuideBtn"><span aria-hidden="true">◎</span><em>导览</em></button>
       <button class="top-action" id="assetLibraryBtn"><span aria-hidden="true">▤</span><em>资料</em></button>
       <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>服务</em></button>
       <button class="avatar" aria-label="当前用户">运</button>
@@ -74,14 +77,20 @@
 
     <div class="chat-scroll" id="chatScroll">
       <section class="welcome" id="welcomePanel">
-        <div class="welcome-badge"><span></span>新任务</div>
-        <h2>把目标交代清楚，剩下的过程都留在这里。</h2>
-        <p>商品、商家、订单、截图、视频、表格和沟通记录可以持续追加。工作台会把事实、风险、结论和需要你确认的操作分开整理。</p>
+        <div class="welcome-badge"><span></span>新任务 · 5 类业务场景</div>
+        <h2>把一次业务判断做完整，而不是只得到一段回答。</h2>
+        <p>选择场景、描述目标并持续补充资料。EcomEvo 会把事实、证据缺口、风险、结论和需要你确认的业务动作放在同一个任务里。</p>
+        <div class="welcome-method" aria-label="EcomEvo 工作方式">
+          <div><span>01</span><p><b>说清目标</b><small>选择业务场景，描述真正需要做出的判断。</small></p></div>
+          <div><span>02</span><p><b>持续补证据</b><small>图片、音视频、文档、表格和日志都可追加。</small></p></div>
+          <div><span>03</span><p><b>确认后行动</b><small>高影响操作先形成建议，确认后才进入执行。</small></p></div>
+        </div>
         <div class="quick-grid">
           <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对一批商品</b><small>找出风险声明、资料缺口和需要处理的商品</small></div><em>商品治理</em></button>
           <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家入驻</b><small>核对主体、资质、品牌授权和历史经营风险</small></div><em>商家审核</em></button>
           <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后争议</b><small>还原订单时间线，核对举证并给出判责建议</small></div><em>售后判责</em></button>
           <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查异常风险</b><small>区分明确证据和普通线索，决定是否需要升级</small></div><em>风险核查</em></button>
+          <button class="quick-card" data-scene="content_audit" data-prompt="帮我审核这组商品图片、视频和文案，核对它们与商品事实是否一致，标出违规、误导或需要补证据的内容。"><span class="quick-index">05</span><div><b>审核商品内容</b><small>核对图片、视频、文案与商品事实的一致性</small></div><em>内容审核</em></button>
         </div>
         <div class="input-types"><span>可直接加入</span><b>图片</b><b>视频</b><b>音频</b><b>PDF</b><b>Word</b><b>Excel</b><b>CSV / JSON</b><b>日志</b></div>
       </section>
@@ -167,7 +176,50 @@
   </div>
 </div>
 
+<div class="tour-backdrop" id="productTour" hidden role="dialog" aria-modal="true" aria-labelledby="productTourTitle" aria-describedby="productTourDescription">
+  <div class="tour-modal">
+    <button class="tour-close" id="tourCloseBtn" aria-label="关闭产品导览">×</button>
+    <div class="tour-kicker"><span aria-hidden="true">E</span><div><b>ECOMEVO PRODUCT TOUR</b><small>证据驱动的电商商业决策工作台</small></div></div>
+    <h2 id="productTourTitle">不是再加一个聊天框，而是把一次业务判断真正做完整。</h2>
+    <p class="tour-lead" id="productTourDescription">EcomEvo 把目标、业务资料、核对过程、关键依据、结论和待确认动作组织在同一个持续任务中。你可以随时补材料、追问或修改要求，不必重新建立上下文。</p>
+
+    <div class="tour-flow" aria-label="三步使用 EcomEvo">
+      <section><span>01</span><div><b>定义要做出的判断</b><p>从商品治理、商家审核、售后判责、风险核查或内容审核开始，直接说清目标。</p></div></section>
+      <section><span>02</span><div><b>让证据持续进入任务</b><p>图片、视频、音频、PDF、Office、表格、JSON 和日志都可以继续追加并关联到同一任务。</p></div></section>
+      <section><span>03</span><div><b>看依据，再决定是否行动</b><p>结论和关键依据分开呈现；退款、下架、审核、风险升级等高影响操作先等待人工确认。</p></div></section>
+    </div>
+
+    <div class="tour-grid">
+      <section>
+        <div class="tour-section-title"><small>适合处理</small><b>5 类高价值业务任务</b></div>
+        <div class="tour-scenes">
+          <span><i>品</i>商品治理</span><span><i>商</i>商家审核</span><span><i>售</i>售后判责</span><span><i>险</i>风险核查</span><span><i>审</i>内容审核</span>
+        </div>
+      </section>
+      <section>
+        <div class="tour-section-title"><small>产品边界</small><b>认知可以自动，权限不能自动</b></div>
+        <ul class="tour-boundaries">
+          <li>AI 输出不是天然事实，关键结论需要回到资料或核对结果。</li>
+          <li>未配置外部多模态服务时，本地演示更适合文本和结构化资料。</li>
+          <li>会改变真实业务状态的操作不会在后台静默执行。</li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="tour-status">
+      <span>当前版本</span>
+      <p><b>可直接运行：</b>持续任务、资料上传、证据面板、服务选择、待确认动作与 5 类业务入口。更高级的自主证据获取能力仍在开发验证阶段，不作为当前可用功能展示。</p>
+    </div>
+
+    <div class="tour-actions">
+      <button class="tour-secondary" id="tourSkipBtn">直接进入工作台</button>
+      <button class="tour-primary" id="tourStartBtn">用示例任务开始</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="/assets/app.js"></script>
+<script type="module" src="/assets/intro.js"></script>
 </body>
 </html>

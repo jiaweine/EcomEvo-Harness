@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ecomevo-harness"
 version = "1.0.0"
@@ -21,6 +25,10 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23"]
 
 [project.scripts]
 ecomevo = "ecomevo.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ecomevo*"]
+exclude = ["tests*", "frontend*", "outputs*", "docs*", "scripts*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
