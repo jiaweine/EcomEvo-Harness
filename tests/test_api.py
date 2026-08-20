@@ -26,7 +26,9 @@ def test_full_conversation_asset_message_and_action(tmp_path):
     assert assistant['payload']['runtime']['event_chain_valid'] is True
     actions=detail['actions'];assert actions
     row=c.post(f"/api/actions/{actions[0]['id']}/decision",json={'decision':'approve','note':'测试确认'})
-    assert row.status_code==200 and row.json()['status']=='executed'
+    assert row.status_code==200 and row.json()['status']=='simulated'
+    assert row.json()['payload']['execution_mode']=='simulation'
+    assert row.json()['payload']['execution_outcome']=='simulated'
 
 
 def test_frontend_is_customer_facing():
@@ -46,95 +48,69 @@ def test_invalid_scene_and_empty_upload_are_rejected():
 
 def test_asset_cannot_cross_conversations():
     c=TestClient(app)
-    a=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
-    b=c.post('/api/conversations',json={'scene':'aftersales'}).json()
+    a=c.post('/api/conversations',json={'scene':'merchant_review'}).json();b=c.post('/api/conversations',json={'scene':'aftersales'}).json()
     asset=c.post('/api/assets',files={'file':('private.txt','营业执照 91310000123456789A'.encode(),'text/plain')},data={'conversation_id':a['id']}).json()
     r=c.post(f"/api/conversations/{b['id']}/messages",json={'content':'帮我看看这个','asset_ids':[asset['id']],'provider':'demo'})
     assert r.status_code==409
 
 
 def test_conversation_scene_reaches_runtime():
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
     asset=c.post('/api/assets',files={'file':('m.txt','营业执照 91310000123456789A'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
-    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'帮我看看这个','asset_ids':[asset['id']],'provider':'demo'})
-    assert r.status_code==200
-    detail=c.get(f"/api/conversations/{conv['id']}").json()
-    assistant=[m for m in detail['messages'] if m['role']=='assistant'][-1]
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'帮我看看这个','asset_ids':[asset['id']],'provider':'demo'});assert r.status_code==200
+    detail=c.get(f"/api/conversations/{conv['id']}").json();assistant=[m for m in detail['messages'] if m['role']=='assistant'][-1]
     assert assistant['payload']['domain']=='merchant_review'
 
 
 def test_missing_evidence_action_is_not_executable_side_effect():
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
-    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'这个商家能过吗','asset_ids':[],'provider':'demo'})
-    assert r.status_code==200
-    detail=c.get(f"/api/conversations/{conv['id']}").json()
-    assert detail['actions']==[]
-    assert detail['messages'][-1]['payload']['runtime']['status']=='needs_evidence'
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'这个商家能过吗','asset_ids':[],'provider':'demo'});assert r.status_code==200
+    detail=c.get(f"/api/conversations/{conv['id']}").json();assert detail['actions']==[];assert detail['messages'][-1]['payload']['runtime']['status']=='needs_evidence'
 
 
 def test_action_approval_is_atomic_under_race():
     from concurrent.futures import ThreadPoolExecutor
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
     asset=c.post('/api/assets',files={'file':('m.txt','营业执照 91310000123456789A 品牌授权书齐全'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
     c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核商家主体资质授权','asset_ids':[asset['id']],'provider':'demo'})
-    action=c.get(f"/api/conversations/{conv['id']}").json()['actions'][0]
-    assert action['side_effect'] is True
+    action=c.get(f"/api/conversations/{conv['id']}").json()['actions'][0];assert action['side_effect'] is True
     def approve(i):
-        with TestClient(app) as tc:
-            return tc.post(f"/api/actions/{action['id']}/decision",json={'decision':'approve','note':str(i)}).status_code
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        codes=sorted(ex.map(approve,[1,2]))
+        with TestClient(app) as tc:return tc.post(f"/api/actions/{action['id']}/decision",json={'decision':'approve','note':str(i)}).status_code
+    with ThreadPoolExecutor(max_workers=2) as ex:codes=sorted(ex.map(approve,[1,2]))
     assert codes==[200,409]
 
 
 def test_empty_conversation_scene_can_change_but_historical_one_cannot():
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'product_governance'}).json()
-    changed=c.patch(f"/api/conversations/{conv['id']}",json={'scene':'merchant_review'})
-    assert changed.status_code==200 and changed.json()['scene']=='merchant_review'
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'product_governance'}).json()
+    changed=c.patch(f"/api/conversations/{conv['id']}",json={'scene':'merchant_review'});assert changed.status_code==200 and changed.json()['scene']=='merchant_review'
     c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'先看一下','asset_ids':[],'provider':'demo'})
-    blocked=c.patch(f"/api/conversations/{conv['id']}",json={'scene':'aftersales'})
-    assert blocked.status_code==409
+    blocked=c.patch(f"/api/conversations/{conv['id']}",json={'scene':'aftersales'});assert blocked.status_code==409
 
 
 def test_asset_ids_are_deduplicated_and_capped():
     c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'content_audit'}).json()
     a=c.post('/api/assets',files={'file':('x.txt',b'abc','text/plain')},data={'conversation_id':conv['id']}).json()
-    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'看资料','asset_ids':[a['id'],a['id']],'provider':'demo'})
-    assert r.status_code==200
-    detail=c.get(f"/api/conversations/{conv['id']}").json()
-    assert detail['messages'][0]['payload']['asset_ids']==[a['id']]
-    too_many=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'x','asset_ids':[f'a{i}' for i in range(31)],'provider':'demo'})
-    assert too_many.status_code==422
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'看资料','asset_ids':[a['id'],a['id']],'provider':'demo'});assert r.status_code==200
+    detail=c.get(f"/api/conversations/{conv['id']}").json();assert detail['messages'][0]['payload']['asset_ids']==[a['id']]
+    too_many=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'x','asset_ids':[f'a{i}' for i in range(31)],'provider':'demo'});assert too_many.status_code==422
 
 
 def test_confirmed_action_reaches_configured_mcp_mapping(monkeypatch):
     import importlib
-    appmod=importlib.import_module('ecomevo.api.app')
-    old_map=dict(appmod.mcp.action_map)
-    appmod.mcp.action_map={'merchant.review':{'server':'merchant-core','tool':'submit_review','arguments':{
-        'action_id':'${action_id}','conversation_id':'${conversation_id}','score':'${verifier_score}'
-    }}}
+    appmod=importlib.import_module('ecomevo.api.app');old_map=dict(appmod.mcp.action_map)
+    appmod.mcp.action_map={'merchant.review':{'server':'merchant-core','tool':'submit_review','arguments':{'action_id':'${action_id}','conversation_id':'${conversation_id}','score':'${verifier_score}'}}}
     seen={}
-    async def fake_call(server,tool,args):
-        seen.update({'server':server,'tool':tool,'args':args});return {'accepted':True,'business_id':'R-1'}
+    async def fake_call(server,tool,args):seen.update({'server':server,'tool':tool,'args':args});return {'accepted':True,'business_id':'R-1'}
     monkeypatch.setattr(appmod.mcp,'call_tool',fake_call)
     try:
-        c=TestClient(appmod.app)
-        conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+        c=TestClient(appmod.app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
         asset=c.post('/api/assets',files={'file':('m.txt','营业执照 91310000123456789A 品牌授权书'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
         c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核主体资质','asset_ids':[asset['id']],'provider':'demo'})
-        action=c.get(f"/api/conversations/{conv['id']}").json()['actions'][0]
-        assert action['payload']['arguments']['action_id']==action['id']
+        action=c.get(f"/api/conversations/{conv['id']}").json()['actions'][0];assert action['payload']['arguments']['action_id']==action['id']
         r=c.post(f"/api/actions/{action['id']}/decision",json={'decision':'approve','note':'确认'})
-        assert r.status_code==200 and r.json()['payload']['execution_mode']=='mcp'
-        assert seen['server']=='merchant-core' and seen['tool']=='submit_review'
-        assert seen['args']['action_id']==action['id'] and seen['args']['conversation_id']==conv['id']
-    finally:
-        appmod.mcp.action_map=old_map
+        assert r.status_code==200 and r.json()['status']=='executed' and r.json()['payload']['execution_mode']=='mcp'
+        assert seen['server']=='merchant-core' and seen['tool']=='submit_review';assert seen['args']['action_id']==action['id'] and seen['args']['conversation_id']==conv['id']
+    finally:appmod.mcp.action_map=old_map
 
 
 def test_whitespace_message_is_rejected():
@@ -143,109 +119,56 @@ def test_whitespace_message_is_rejected():
 
 
 def test_uploaded_asset_has_content_digest_and_runtime_keeps_it():
-    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
-    content='营业执照 91310000123456789A 品牌授权书'.encode()
-    asset=c.post('/api/assets',files={'file':('m.txt',content,'text/plain')},data={'conversation_id':conv['id']}).json()
-    digest=asset['meta']['sha256'];assert len(digest)==64
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json();content='营业执照 91310000123456789A 品牌授权书'.encode()
+    asset=c.post('/api/assets',files={'file':('m.txt',content,'text/plain')},data={'conversation_id':conv['id']}).json();digest=asset['meta']['sha256'];assert len(digest)==64
     c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核资料','asset_ids':[asset['id']],'provider':'demo'})
-    detail=c.get(f"/api/conversations/{conv['id']}").json();evidence=detail['messages'][-1]['payload']['evidence']
-    upload=next(x for x in evidence if x.get('asset_id')==asset['id'])
-    assert f'sha256:{digest}' in upload['tags']
+    detail=c.get(f"/api/conversations/{conv['id']}").json();evidence=detail['messages'][-1]['payload']['evidence'];upload=next(x for x in evidence if x.get('asset_id')==asset['id']);assert f'sha256:{digest}' in upload['tags']
 
 
 def test_api_security_headers_and_no_wildcard_cors_by_default():
-    c=TestClient(app)
-    r=c.get('/api/health',headers={'Origin':'https://evil.example'})
-    assert r.status_code==200
-    assert r.headers['x-content-type-options']=='nosniff'
-    assert r.headers['x-frame-options']=='DENY'
-    assert r.headers['cache-control']=='private, no-store'
-    assert r.headers.get('access-control-allow-origin') is None
+    c=TestClient(app);r=c.get('/api/health',headers={'Origin':'https://evil.example'});assert r.status_code==200;assert r.headers['x-content-type-options']=='nosniff';assert r.headers['x-frame-options']=='DENY';assert r.headers['cache-control']=='private, no-store';assert r.headers.get('access-control-allow-origin') is None
 
 
 def test_followup_reuses_task_assets_and_prior_user_context():
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
     asset=c.post('/api/assets',files={'file':('merchant.txt','营业执照 91310000123456789A 品牌授权书齐全'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
-    first=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'先核对这个商家的主体和授权','asset_ids':[asset['id']],'provider':'demo'})
-    assert first.status_code==200
-    second=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'那按刚才资料继续处理','asset_ids':[],'provider':'demo'})
-    assert second.status_code==200
-    detail=c.get(f"/api/conversations/{conv['id']}").json()
-    assistant=[m for m in detail['messages'] if m['role']=='assistant'][-1]
-    assert assistant['payload']['runtime']['status']=='completed'
-    assert any(e.get('asset_id')==asset['id'] for e in assistant['payload']['evidence'])
-    events=c.get(f"/api/runtime/sessions/{assistant['payload']['session_id']}/events").json()
-    goal=next(e['payload'] for e in events if e['event_type']=='goal.parsed')
-    assert goal['primary']=='那按刚才资料继续处理'
-    plan=next(e['payload'] for e in events if e['event_type']=='plan.created')
-    search=next(x for x in plan['calls'] if x['tool']=='evidence.search')
-    assert any('授权' in str(x) for x in search['args'].get('keywords',[]))
+    first=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'先核对这个商家的主体和授权','asset_ids':[asset['id']],'provider':'demo'});assert first.status_code==200
+    second=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'那按刚才资料继续处理','asset_ids':[],'provider':'demo'});assert second.status_code==200
+    detail=c.get(f"/api/conversations/{conv['id']}").json();assistant=[m for m in detail['messages'] if m['role']=='assistant'][-1];assert assistant['payload']['runtime']['status']=='completed';assert any(e.get('asset_id')==asset['id'] for e in assistant['payload']['evidence'])
+    events=c.get(f"/api/runtime/sessions/{assistant['payload']['session_id']}/events").json();goal=next(e['payload'] for e in events if e['event_type']=='goal.parsed');assert goal['primary']=='那按刚才资料继续处理'
+    plan=next(e['payload'] for e in events if e['event_type']=='plan.created');search=next(x for x in plan['calls'] if x['tool']=='evidence.search');assert any('授权' in str(x) for x in search['args'].get('keywords',[]))
 
 
 def test_asset_content_tampering_is_detected_before_runtime():
     import importlib
-    appmod=importlib.import_module('ecomevo.api.app')
-    c=TestClient(appmod.app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
-    asset=c.post('/api/assets',files={'file':('m.txt','营业执照 91310000123456789A'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
-    stored=appmod.store.get_asset(asset['id'])
+    appmod=importlib.import_module('ecomevo.api.app');c=TestClient(appmod.app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    asset=c.post('/api/assets',files={'file':('m.txt','营业执照 91310000123456789A'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json();stored=appmod.store.get_asset(asset['id'])
     from pathlib import Path
     Path(stored['path']).write_text('tampered content',encoding='utf-8')
-    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核资料','asset_ids':[asset['id']],'provider':'demo'})
-    assert r.status_code==409 and '指纹校验失败' in r.json()['detail']
-    detail=c.get(f"/api/conversations/{conv['id']}").json()
-    assert detail['messages']==[]
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核资料','asset_ids':[asset['id']],'provider':'demo'});assert r.status_code==409 and '指纹校验失败' in r.json()['detail'];assert c.get(f"/api/conversations/{conv['id']}").json()['messages']==[]
+
 
 def test_asset_api_hides_internal_paths_and_search_index(tmp_path,monkeypatch):
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'aftersales','title':'asset-public'}).json()
-    body=('prefix '*5000+' ORDER-PRIVATE-42 delivered').encode()
-    r=c.post('/api/assets',files={'file':('long.txt',body,'text/plain')},data={'conversation_id':conv['id']})
-    assert r.status_code==200
-    asset=r.json()
-    assert 'path' not in asset
-    assert 'search_text' not in asset.get('meta',{})
-    assert 'text' not in asset.get('meta',{})
-    assert 'keyframes' not in asset.get('meta',{})
-    assert asset['url'].endswith('/file')
-    detail=c.get(f"/api/conversations/{conv['id']}").json()
-    exposed=detail['assets'][0]
-    assert 'path' not in exposed
-    assert 'search_text' not in exposed.get('meta',{})
-    assert 'text' not in exposed.get('meta',{})
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'aftersales','title':'asset-public'}).json();body=('prefix '*5000+' ORDER-PRIVATE-42 delivered').encode()
+    r=c.post('/api/assets',files={'file':('long.txt',body,'text/plain')},data={'conversation_id':conv['id']});assert r.status_code==200;asset=r.json();assert 'path' not in asset;assert 'search_text' not in asset.get('meta',{});assert 'text' not in asset.get('meta',{});assert 'keyframes' not in asset.get('meta',{});assert asset['url'].endswith('/file')
+    exposed=c.get(f"/api/conversations/{conv['id']}").json()['assets'][0];assert 'path' not in exposed;assert 'search_text' not in exposed.get('meta',{});assert 'text' not in exposed.get('meta',{})
+
 
 def test_asset_upload_must_belong_to_a_task():
-    c=TestClient(app)
-    r=c.post('/api/assets',files={'file':('x.txt',b'abc','text/plain')})
-    assert r.status_code==422
+    c=TestClient(app);r=c.post('/api/assets',files={'file':('x.txt',b'abc','text/plain')});assert r.status_code==422
+
 
 def test_frontend_cross_scene_shortcut_creates_new_task_after_conversation_started():
-    js=TestClient(app).get('/assets/app.js').text
-    assert "state.messages.length>0&&state.conversation.scene!==scene){await newConversation(scene)" in js
+    js=TestClient(app).get('/assets/app.js').text;assert "state.messages.length>0&&state.conversation.scene!==scene){await newConversation(scene)" in js
 
 
 def test_missing_evidence_progress_ends_in_clear_waiting_state_without_duplicate_completion():
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
-    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'这个商家能过吗','asset_ids':[],'provider':'demo'})
-    assert r.status_code==200
-    d=c.get(f"/api/conversations/{conv['id']}").json()
-    progress=[e['payload'] for e in d['events'] if e['type']=='progress']
-    assert progress[-1]['step']=='等待补充资料' and progress[-1]['percent']==100
-    assert sum(1 for x in progress if x.get('percent')==100)==1
-    ninety_four=[x for x in progress if x.get('percent')==94][-1]
-    assert ninety_four['step']=='整理结论'
-    assert '可确认' not in ninety_four['detail']
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json();r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'这个商家能过吗','asset_ids':[],'provider':'demo'});assert r.status_code==200
+    d=c.get(f"/api/conversations/{conv['id']}").json();progress=[e['payload'] for e in d['events'] if e['type']=='progress'];assert progress[-1]['step']=='等待补充资料' and progress[-1]['percent']==100;assert sum(1 for x in progress if x.get('percent')==100)==1
+    ninety_four=[x for x in progress if x.get('percent')==94][-1];assert ninety_four['step']=='整理结论';assert '可确认' not in ninety_four['detail']
 
 
 def test_completed_progress_ends_once_with_business_completion():
-    c=TestClient(app)
-    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
-    asset=c.post('/api/assets',files={'file':('merchant.txt','营业执照 91310000123456789A 品牌授权书齐全 无历史处罚'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
-    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核这个商家的主体、授权和历史风险','asset_ids':[asset['id']],'provider':'demo'})
-    assert r.status_code==200
-    d=c.get(f"/api/conversations/{conv['id']}").json()
-    progress=[e['payload'] for e in d['events'] if e['type']=='progress']
-    assert progress[-1]['step']=='处理完成' and progress[-1]['percent']==100
-    assert sum(1 for x in progress if x.get('percent')==100)==1
-    assert [x for x in progress if x.get('percent')==94][-1]['step']=='整理待确认操作'
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json();asset=c.post('/api/assets',files={'file':('merchant.txt','营业执照 91310000123456789A 品牌授权书齐全 无历史处罚'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
+    r=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核这个商家的主体、授权和历史风险','asset_ids':[asset['id']],'provider':'demo'});assert r.status_code==200
+    d=c.get(f"/api/conversations/{conv['id']}").json();progress=[e['payload'] for e in d['events'] if e['type']=='progress'];assert progress[-1]['step']=='处理完成' and progress[-1]['percent']==100;assert sum(1 for x in progress if x.get('percent')==100)==1;assert [x for x in progress if x.get('percent')==94][-1]['step']=='整理待确认操作'
