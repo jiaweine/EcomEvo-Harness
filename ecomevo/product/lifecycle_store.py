@@ -115,19 +115,24 @@ def _contains_asset(value: Any, aid: str) -> bool:
     return False
 
 
+def _audit_payload_rows(db, cid):
+    rows = []
+    rows.extend(db.execute('SELECT payload FROM messages WHERE conversation_id=?', (cid,)).fetchall())
+    rows.extend(db.execute('SELECT payload FROM actions WHERE conversation_id=?', (cid,)).fetchall())
+    rows.extend(db.execute(
+        "SELECT payload FROM task_events WHERE conversation_id=? AND type NOT IN ('asset.scope_updated','asset.deleted')",
+        (cid,),
+    ).fetchall())
+    return rows
+
+
 def _asset_has_audit_references(self, aid) -> bool:
-    try:
-        asset = self.get_asset(aid)
-    except KeyError:
-        raise
+    asset = self.get_asset(aid)
     cid = asset.get('conversation_id')
     if not cid:
         return False
     with self._conn() as db:
-        payload_rows = []
-        payload_rows.extend(db.execute('SELECT payload FROM messages WHERE conversation_id=?', (cid,)).fetchall())
-        payload_rows.extend(db.execute('SELECT payload FROM task_events WHERE conversation_id=?', (cid,)).fetchall())
-        payload_rows.extend(db.execute('SELECT payload FROM actions WHERE conversation_id=?', (cid,)).fetchall())
+        payload_rows = _audit_payload_rows(db, cid)
     for row in payload_rows:
         try:
             payload = json.loads(row['payload'] or '{}')
@@ -177,10 +182,7 @@ def _delete_asset_if_unreferenced(self, aid):
         asset = _decode_asset(row)
         cid = asset.get('conversation_id')
         if cid:
-            payload_rows = []
-            payload_rows.extend(db.execute('SELECT payload FROM messages WHERE conversation_id=?', (cid,)).fetchall())
-            payload_rows.extend(db.execute('SELECT payload FROM task_events WHERE conversation_id=?', (cid,)).fetchall())
-            payload_rows.extend(db.execute('SELECT payload FROM actions WHERE conversation_id=?', (cid,)).fetchall())
+            payload_rows = _audit_payload_rows(db, cid)
             for payload_row in payload_rows:
                 try:
                     payload = json.loads(payload_row['payload'] or '{}')

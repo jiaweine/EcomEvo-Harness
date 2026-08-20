@@ -46,3 +46,47 @@ def test_excluded_historical_asset_remains_visible_but_future_turn_ignores_it():
     follow=c.post(f"/api/conversations/{conv['id']}/messages",json={'content':'继续，但不要使用已经排除的资料','asset_ids':[],'provider':'demo'});assert follow.status_code==200
     latest=c.get(f"/api/conversations/{conv['id']}").json()['messages'][-1]
     assert all(e.get('asset_id')!=asset['id'] for e in latest['payload']['evidence'])
+
+
+def test_scope_history_alone_does_not_block_permanent_delete():
+    c=TestClient(app);conv=c.post('/api/conversations',json={'scene':'content_audit'}).json()
+    asset=c.post('/api/assets',files={'file':('unused.txt',b'unused','text/plain')},data={'conversation_id':conv['id']}).json()
+    assert c.patch(f"/api/assets/{asset['id']}/scope",json={'active':False,'reason':'误传'}).status_code==200
+    deleted=c.delete(f"/api/assets/{asset['id']}")
+    assert deleted.status_code==200 and deleted.json()['status']=='deleted'
+
+
+def test_turn_lease_blocks_scope_change_while_asset_snapshot_is_being_verified(monkeypatch):
+    import importlib
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    appmod=importlib.import_module('ecomevo.api.app')
+    c=TestClient(appmod.app)
+    conv=c.post('/api/conversations',json={'scene':'merchant_review'}).json()
+    asset=c.post('/api/assets',files={'file':('lease.txt','营业执照 91310000123456789A 品牌授权书齐全'.encode(),'text/plain')},data={'conversation_id':conv['id']}).json()
+    stored=appmod.store.get_asset(asset['id'])
+    entered=threading.Event();release=threading.Event();real_hash=appmod._file_sha256
+
+    def slow_hash(path):
+        if str(path)==str(stored['path']) and not entered.is_set():
+            entered.set()
+            assert release.wait(5),'timed out waiting to release asset verification'
+        return real_hash(path)
+
+    monkeypatch.setattr(appmod,'_file_sha256',slow_hash)
+
+    def send_message():
+        with TestClient(appmod.app) as tc:
+            return tc.post(f"/api/conversations/{conv['id']}/messages",json={'content':'审核资料','asset_ids':[asset['id']],'provider':'demo'}).status_code
+
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        future=ex.submit(send_message)
+        assert entered.wait(5),'asset verification did not start'
+        try:
+            with TestClient(appmod.app) as tc:
+                blocked=tc.patch(f"/api/assets/{asset['id']}/scope",json={'active':False,'reason':'并发修改'})
+            assert blocked.status_code==409 and '正在处理' in blocked.json()['detail']
+        finally:
+            release.set()
+        assert future.result(timeout=10)==200

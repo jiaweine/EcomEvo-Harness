@@ -312,27 +312,27 @@ async def conversation_message(cid:str,req:ChatRequest,background_tasks:Backgrou
     try:conv=store.get_conversation(cid)
     except KeyError:raise HTTPException(404,'任务不存在')
     if req.provider not in {'auto','demo'} and req.provider not in providers.providers:raise HTTPException(422,'未知模型服务')
-    had_messages=store.has_messages(cid);prior_messages=store.list_messages(cid,limit=12)
-    for aid in req.asset_ids:
-        try:r=store.bind_asset(aid,cid)
-        except KeyError:raise HTTPException(404,f'资料不存在：{aid}')
-        if r is None:raise HTTPException(409,'不能引用其他任务中的资料')
-        if not r.get('active',True):raise HTTPException(409,f"资料已排除后续分析：{r['name']}；如需使用请先重新启用")
-        if not Path(r['path']).is_file():raise HTTPException(410,f"资料文件已不可用：{r['name']}")
-    assets=[];unavailable=[];integrity_failed=[]
-    task_assets=store.list_assets(cid,include_excluded=False)
-    for r in task_assets:
-        path=Path(r['path'])
-        if not path.is_file():unavailable.append(r['name']);continue
-        expected=str((r.get('meta') or {}).get('sha256') or '')
-        if expected:
-            actual=await asyncio.to_thread(_file_sha256,path)
-            if actual!=expected:integrity_failed.append(r['name']);continue
-        assets.append(r)
-    if integrity_failed:raise HTTPException(409,'资料内容指纹校验失败，请重新上传：'+'、'.join(integrity_failed[:5]))
     lease=store.claim_turn(cid)
     if lease is None:raise HTTPException(409,'当前任务正在处理上一条消息，请在结果返回后继续')
     try:
+        had_messages=store.has_messages(cid);prior_messages=store.list_messages(cid,limit=12)
+        for aid in req.asset_ids:
+            try:r=store.bind_asset(aid,cid)
+            except KeyError:raise HTTPException(404,f'资料不存在：{aid}')
+            if r is None:raise HTTPException(409,'不能引用其他任务中的资料')
+            if not r.get('active',True):raise HTTPException(409,f"资料已排除后续分析：{r['name']}；如需使用请先重新启用")
+            if not Path(r['path']).is_file():raise HTTPException(410,f"资料文件已不可用：{r['name']}")
+        assets=[];unavailable=[];integrity_failed=[]
+        task_assets=store.list_assets(cid,include_excluded=False)
+        for r in task_assets:
+            path=Path(r['path'])
+            if not path.is_file():unavailable.append(r['name']);continue
+            expected=str((r.get('meta') or {}).get('sha256') or '')
+            if expected:
+                actual=await asyncio.to_thread(_file_sha256,path)
+                if actual!=expected:integrity_failed.append(r['name']);continue
+            assets.append(r)
+        if integrity_failed:raise HTTPException(409,'资料内容指纹校验失败，请重新上传：'+'、'.join(integrity_failed[:5]))
         user=store.add_message(cid,'user',req.content,{'asset_ids':req.asset_ids})
         if not had_messages:store.touch(cid,title=req.content.strip().replace('\n',' ')[:30] or '新的业务任务')
         await emit(cid,'message.accepted',{'message_id':user['id'],'asset_count':len(req.asset_ids),'task_asset_count':len(assets)})
