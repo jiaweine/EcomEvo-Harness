@@ -32,6 +32,11 @@
 .welcome-method b{display:block;font-size:13px;color:var(--ink);margin-bottom:2px}
 .welcome-method small{display:block;font-size:12px;line-height:1.55;color:var(--muted)}
 
+.quick-grid>.quick-card:last-child:nth-child(odd){
+  grid-column:1/-1;
+  min-height:96px;
+}
+
 .tour-backdrop{
   position:fixed;
   inset:0;
@@ -281,7 +286,10 @@ body.tour-open{overflow:hidden}
   #productGuideBtn{width:36px;padding:0;justify-content:center}
 }
 @media (max-width:820px){
+  #productGuideBtn{display:flex;width:36px;padding:0;justify-content:center}
+  #productGuideBtn em{display:none}
   .welcome-method{grid-template-columns:1fr}
+  .quick-grid>.quick-card:last-child:nth-child(odd){grid-column:auto;min-height:94px}
   .tour-backdrop{padding:12px;align-items:end}
   .tour-modal{
     width:100%;
@@ -303,7 +311,6 @@ body.tour-open{overflow:hidden}
   .tour-secondary,.tour-primary{flex:1;padding:0 12px}
 }
 @media (max-width:560px){
-  #productGuideBtn{display:flex}
   .tour-scenes{grid-template-columns:1fr}
   .tour-scenes span:last-child{grid-column:auto}
   .tour-actions{flex-direction:column-reverse}

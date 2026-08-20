@@ -17,14 +17,14 @@ function focusables(){
 }
 function openTour(source='manual'){
   const tour=byId('productTour');
-  if(!tour)return;
+  if(!tour||!tour.hidden)return;
   returnFocus=document.activeElement;
   tour.hidden=false;
   tour.dataset.source=source;
   document.body.classList.add('tour-open');
   requestAnimationFrame(()=>byId('tourCloseBtn')?.focus());
 }
-function closeTour({remember=true}={}){
+function closeTour({remember=true,restoreFocus=true}={}){
   const tour=byId('productTour');
   if(!tour||tour.hidden)return;
   if(remember)markSeen();
@@ -32,22 +32,16 @@ function closeTour({remember=true}={}){
   document.body.classList.remove('tour-open');
   const target=returnFocus;
   returnFocus=null;
-  if(target&&document.contains(target))requestAnimationFrame(()=>target.focus());
+  if(restoreFocus&&target&&document.contains(target))requestAnimationFrame(()=>target.focus());
 }
 function startExample(){
   markSeen();
-  closeTour({remember:false});
-  const card=document.querySelector('.quick-card[data-scene="product_governance"]');
-  if(card){
-    card.click();
-    return;
-  }
+  closeTour({remember:false,restoreFocus:false});
   const input=byId('messageInput');
-  if(input){
-    input.value='帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。';
-    input.dispatchEvent(new Event('input',{bubbles:true}));
-    input.focus();
-  }
+  if(!input)return;
+  input.value='帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。';
+  input.dispatchEvent(new Event('input',{bubbles:true}));
+  requestAnimationFrame(()=>input.focus());
 }
 function bindTour(){
   const tour=byId('productTour');
