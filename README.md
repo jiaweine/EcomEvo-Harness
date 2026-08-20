@@ -12,13 +12,7 @@
 
 </div>
 
-![EcomEvo 商业决策工作台真实桌面截图](docs/images/real/product-overview.png)
-
-<div align=center>
-
-<sub>真实 Chromium 产品截图 · 1920 × 1200 逻辑视口 · DPR 2 · 3840 × 2400 PNG</sub>
-
-</div>
+![EcomEvo 商业决策工作台](docs/images/product-workbench.svg)
 
 ---
 
@@ -134,33 +128,17 @@ flowchart LR
 
 ---
 
-# 工作台 · Real Product Surface
+## 工作台 · Real Product Surface
 
-以下产品画面全部由当前 EcomEvo 分支启动 FastAPI / Uvicorn 后，通过真实 Chromium 交互采集。截图过程包含真实场景切换、真实资料上传、本地 Demo 分析、依据面板和任务搜索，不使用手绘界面、生成图或概念 SVG 代替产品截图。
+下面的产品图对应当前仓库中的实际工作台设计资产，围绕场景、证据、状态和执行边界组织，而不是围绕模型配置组织。
 
-桌面统一采用 **1920 × 1200 逻辑视口 + DPR 2**，源文件为 **3840 × 2400 PNG**。README 负责缩放展示，仓库保留高清源图。
-
-| **01 · 业务场景** | **02 · 依据核验** |
+| **01 · 五类业务场景** | **02 · 多模态证据空间** |
 |---|---|
-| 五类业务入口围绕真实业务目标组织，空任务可以直接切换场景，不制造无意义任务记录。<br><br>![EcomEvo 真实业务场景桌面截图](docs/images/real/product-scenes.png) | 完成处理后，关键依据单独进入证据面板，与普通回答、资料清单和待确认动作分层。<br><br>![EcomEvo 真实依据面板桌面截图](docs/images/real/product-evidence.png) |
+| 商品治理、商家审核、售后判责、风险核查、内容审核从业务目标进入。<br><br>![EcomEvo 五类业务场景](docs/images/product-scenes.svg) | 图片、视频、音频、文档、表格与日志进入同一个持续任务。<br><br>![EcomEvo 多模态证据空间](docs/images/product-evidence-wall.svg) |
 
-| **03 · 任务搜索** | **04 · 完整工作台** |
+| **03 · 状态与权限控制** | **04 · 商业决策工作台** |
 |---|---|
-| Command Palette 统一搜索业务入口和最近任务，键盘可直接进入下一项工作。<br><br>![EcomEvo 真实任务搜索桌面截图](docs/images/real/product-command.png) | 导航、持续对话、资料、证据、进度和业务动作保持在同一个商业决策工作台。<br><br>![EcomEvo 真实商业决策工作台桌面截图](docs/images/real/product-overview.png) |
-
-### Mobile · 真正按手机重新组织，而不是缩小桌面三栏
-
-手机端使用 **390 × 844 逻辑视口 + DPR 2** 采集，源文件为 **780 × 1688 PNG**。主任务保留在首屏；导航和任务详情按需进入抽屉，证据仍然拥有独立阅读层级。
-
-<table>
-  <tr>
-    <td width="33%" align="center" valign="top"><b>01 · 主工作区</b><br/><br/>持续任务、消息和输入保持优先。<br/><br/><img src="docs/images/real/product-mobile-workbench.png" alt="EcomEvo 真实手机主工作区截图" width="260" /></td>
-    <td width="33%" align="center" valign="top"><b>02 · 任务详情</b><br/><br/>进度、依据、动作和资料按需展开。<br/><br/><img src="docs/images/real/product-mobile-detail.png" alt="EcomEvo 真实手机任务详情截图" width="260" /></td>
-    <td width="33%" align="center" valign="top"><b>03 · 关键依据</b><br/><br/>手机上仍然可以独立核验证据。<br/><br/><img src="docs/images/real/product-mobile-evidence.png" alt="EcomEvo 真实手机依据面板截图" width="260" /></td>
-  </tr>
-</table>
-
-截图不是一次性的 README 装饰。仓库保留 `scripts/capture_readme_gallery.py`，可以从真实运行中的产品重新生成同一规格的桌面与手机图库，并对 PNG 尺寸做精确门禁。
+| 进度、关键依据、待确认动作与资料范围保持分层，执行结果不混淆。<br><br>![EcomEvo 任务状态与权限控制](docs/images/product-runtime-control.svg) | 目标、对话、资料、证据、判断和动作集中在同一个任务空间。<br><br>![EcomEvo 商业决策工作台](docs/images/product-workbench.svg) |
 
 ---
 
@@ -319,10 +297,9 @@ docker run --rm \
 | Frontend syntax | `node --check frontend/app.js` |
 | Product layer syntax | `node --check frontend/intro.js` |
 | Product smoke | `python scripts/e2e_smoke.py` |
-| README real gallery | Chromium desktop + mobile · DPR 2 · exact PNG dimension gate |
 | Packaging | setuptools 显式限制 Python package discovery |
 
-资料生命周期、动作状态真实性、审计引用和任务租约并发边界都已经进入回归覆盖。README 产品图库还额外验证桌面源图为 3840 × 2400、手机源图为 780 × 1688。
+资料生命周期、动作状态真实性、审计引用和任务租约并发边界都已经进入回归覆盖。
 
 ---
 
@@ -361,12 +338,12 @@ EcomEvo 的产品原则保持简单：**认知过程可以自动推进，真实�
 
 当前产品方向按主分支价值排序：
 
-1. 提供可重复运行的首任务样例数据包
-2. 完善 Provider 模态能力检测与首次配置体验
-3. 增强证据来源定位、引用、时间线与冲突展示
-4. 增强身份、租户、RBAC 与审批审计
-5. 增加服务端任务搜索、分页与完整浏览器 E2E
-6. 将真实产品截图采集纳入稳定 Release Gallery 更新流程
+1. 用真实浏览器产品截图替换部分示意设计资产
+2. 提供可重复运行的首任务样例数据包
+3. 完善 Provider 模态能力检测与首次配置体验
+4. 增强证据来源定位、引用、时间线与冲突展示
+5. 增强身份、租户、RBAC 与审批审计
+6. 增加服务端任务搜索、分页与完整浏览器 E2E
 7. Adaptive Runtime 通过独立验证门禁后再评估分阶段合入
 
 ---
