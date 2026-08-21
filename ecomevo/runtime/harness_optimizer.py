@@ -13,6 +13,7 @@ from pathlib import Path
 from statistics import NormalDist
 from typing import Any, Iterable
 
+from .replay_gate import HarnessReplayGate
 from .tools import _query_terms
 
 
@@ -89,7 +90,7 @@ class HarnessEvolutionOptimizer:
         "delegation": {"roles", "guidance"},
     }
 
-    def __init__(self, db_path: str | Path):
+    def __init__(self, db_path: str | Path, *, sandbox=None):
         self.path = str(db_path)
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
@@ -103,6 +104,7 @@ class HarnessEvolutionOptimizer:
         except (TypeError, ValueError):
             budget = 3
         self.edit_budget = max(1, min(8, budget))
+        self.replay_gate = HarnessReplayGate(sandbox=sandbox)
         self._init()
 
     def _conn(self) -> sqlite3.Connection:
@@ -152,6 +154,14 @@ class HarnessEvolutionOptimizer:
                     reason TEXT NOT NULL,
                     created_at REAL NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS harness_replay_cases(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    domain TEXT NOT NULL,
+                    trajectory_json TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_harness_replay_cases_domain
+                    ON harness_replay_cases(domain,created_at DESC);
                 """
             )
 
@@ -569,6 +579,29 @@ class HarnessEvolutionOptimizer:
             output.append({"proposal": proposal, "reason": row["reason"]})
         return output
 
+    def _record_replay_case(self, domain: str, trajectory: dict[str, Any]) -> None:
+        with self._lock, self._conn() as connection:
+            connection.execute(
+                "INSERT INTO harness_replay_cases(domain,trajectory_json,created_at) VALUES(?,?,?)",
+                (domain, json.dumps(trajectory, ensure_ascii=False, default=str)[:24000], time.time()),
+            )
+
+    def _replay_cases(self, domain: str, limit: int = 24) -> list[dict[str, Any]]:
+        with self._conn() as connection:
+            rows = connection.execute(
+                "SELECT trajectory_json FROM harness_replay_cases WHERE domain=? ORDER BY id DESC LIMIT ?",
+                (domain, max(1, int(limit))),
+            ).fetchall()
+        output: list[dict[str, Any]] = []
+        for row in reversed(rows):
+            try:
+                value = json.loads(row["trajectory_json"])
+            except Exception:
+                continue
+            if isinstance(value, dict):
+                output.append(value)
+        return output
+
     @staticmethod
     def _json_payload(text: str) -> dict[str, Any] | None:
         raw = str(text or "").strip()
@@ -651,6 +684,7 @@ class HarnessEvolutionOptimizer:
         reasoner=None,
     ) -> dict[str, Any] | None:
         """Generate at most one task-agnostic, rollback-safe shadow coordinate."""
+        self._record_replay_case(domain, trajectory)
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_domain(connection, domain)
@@ -734,6 +768,17 @@ class HarnessEvolutionOptimizer:
                 self._record_rejection(domain, kind, proposal, "no_safe_effective_edit")
             return None
 
+        replay = self.replay_gate.evaluate(
+            kind=kind,
+            base=base.content,
+            candidate=candidate_content,
+            cases=self._replay_cases(domain),
+            tool_catalog=tool_catalog,
+        )
+        if not replay.passed:
+            self._record_rejection(domain, kind, proposal or candidate_content, "sandbox_replay_regression_gate:" + ",".join(replay.failures))
+            return None
+
         now = time.time()
         component_id = f"hc-{uuid.uuid4().hex[:12]}"
         with self._lock, self._conn() as connection:
@@ -775,6 +820,7 @@ class HarnessEvolutionOptimizer:
                 "risk": self.accept_risk,
                 "shadow_allocation": "posterior_probability",
                 "fixed_run_threshold": False,
+                "sandbox_replay": replay.as_dict(),
             },
             "authority": "cognition-only",
         }

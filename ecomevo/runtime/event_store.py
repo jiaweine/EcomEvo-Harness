@@ -25,6 +25,11 @@ class EventStore:
             cols={r['name'] for r in c.execute('PRAGMA table_info(evolution_patches)').fetchall()}
             if 'fingerprint' not in cols:
                 c.execute('ALTER TABLE evolution_patches ADD COLUMN fingerprint TEXT')
+            snapshot_cols={r['name'] for r in c.execute('PRAGMA table_info(snapshots)').fetchall()}
+            if 'state_hash' not in snapshot_cols:
+                c.execute('ALTER TABLE snapshots ADD COLUMN state_hash TEXT')
+            if 'event_hash' not in snapshot_cols:
+                c.execute('ALTER TABLE snapshots ADD COLUMN event_hash TEXT')
             rows=c.execute('SELECT patch_id,payload_json,created_at FROM evolution_patches ORDER BY created_at DESC').fetchall()
             seen=set()
             for r in rows:
@@ -73,17 +78,55 @@ class EventStore:
             prev=e.hash
         return True
     def save_snapshot(self,session_id:str,seq:int,snapshot:dict[str,Any]):
-        blob='json:'+json.dumps(snapshot,ensure_ascii=False,separators=(',',':'),default=str)
-        with self._lock,self._conn() as c:c.execute('INSERT OR REPLACE INTO snapshots VALUES(?,?,?,?)',(session_id,seq,blob,time.time()))
-    def get_snapshot(self,session_id:str,seq:int|None=None):
-        q='SELECT snapshot_blob FROM snapshots WHERE session_id=?'; p=[session_id]
-        if seq is not None:q+=' AND seq<=?';p.append(seq)
+        self.save_checkpoint(session_id,snapshot,seq=seq)
+    def latest_seq(self,session_id:str)->int:
+        with self._conn() as c:
+            row=c.execute('SELECT MAX(seq) AS seq FROM events WHERE session_id=?',(session_id,)).fetchone()
+        return int(row['seq'] or 0) if row else 0
+    @staticmethod
+    def _state_body(snapshot:dict[str,Any])->str:
+        return json.dumps(snapshot,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
+    def save_checkpoint(self,session_id:str,snapshot:dict[str,Any],seq:int|None=None)->dict[str,Any]:
+        """Persist a state checkpoint bound to the exact event-chain position."""
+        if not self.has_session(session_id):raise KeyError(f'unknown session: {session_id}')
+        checkpoint_seq=self.latest_seq(session_id) if seq is None else int(seq)
+        if checkpoint_seq<0 or checkpoint_seq>self.latest_seq(session_id):raise ValueError('checkpoint seq is outside the session event range')
+        with self._lock,self._conn() as c:
+            event_hash='GENESIS'
+            if checkpoint_seq:
+                row=c.execute('SELECT hash FROM events WHERE session_id=? AND seq=?',(session_id,checkpoint_seq)).fetchone()
+                if row is None:raise ValueError('checkpoint seq does not exist')
+                event_hash=str(row['hash'])
+            body=self._state_body(snapshot);state_hash=hashlib.sha256(body.encode()).hexdigest();blob='json:'+body
+            c.execute(
+                'INSERT OR REPLACE INTO snapshots(session_id,seq,snapshot_blob,created_at,state_hash,event_hash) VALUES(?,?,?,?,?,?)',
+                (session_id,checkpoint_seq,blob,time.time(),state_hash,event_hash),
+            )
+        return {'session_id':session_id,'seq':checkpoint_seq,'state_hash':state_hash,'event_hash':event_hash}
+    def restore_checkpoint(self,session_id:str,seq:int|None=None)->dict[str,Any]|None:
+        """Load and integrity-check a checkpoint before it is used for recovery."""
+        q='SELECT seq,snapshot_blob,state_hash,event_hash FROM snapshots WHERE session_id=?';p:list[Any]=[session_id]
+        if seq is not None:q+=' AND seq<=?';p.append(int(seq))
         q+=' ORDER BY seq DESC LIMIT 1'
-        with self._conn() as c:r=c.execute(q,p).fetchone()
-        if not r:return None
-        blob=r['snapshot_blob']
-        if not str(blob).startswith('json:'):return None
-        return json.loads(blob[5:])
+        with self._conn() as c:
+            row=c.execute(q,p).fetchone()
+            if not row:return None
+            checkpoint_seq=int(row['seq']);event_hash='GENESIS'
+            if checkpoint_seq:
+                event=c.execute('SELECT hash FROM events WHERE session_id=? AND seq=?',(session_id,checkpoint_seq)).fetchone()
+                if event is None:return None
+                event_hash=str(event['hash'])
+        blob=str(row['snapshot_blob'])
+        if not blob.startswith('json:'):return None
+        state=json.loads(blob[5:]);body=self._state_body(state)
+        expected_state=str(row['state_hash'] or hashlib.sha256(body.encode()).hexdigest())
+        expected_event=str(row['event_hash'] or event_hash)
+        if hashlib.sha256(body.encode()).hexdigest()!=expected_state or event_hash!=expected_event:return None
+        return {**state,'_checkpoint':{'session_id':session_id,'seq':checkpoint_seq,'state_hash':expected_state,'event_hash':expected_event}}
+    def get_snapshot(self,session_id:str,seq:int|None=None):
+        restored=self.restore_checkpoint(session_id,seq)
+        if not restored:return None
+        restored.pop('_checkpoint',None);return restored
     def recent_completed(self,limit:int=100)->list[dict[str,Any]]:
         with self._conn() as c:rows=c.execute("SELECT session_id,payload_json,ts FROM events WHERE event_type='run.completed' ORDER BY ts DESC LIMIT ?",(limit,)).fetchall()
         out=[]

@@ -41,9 +41,9 @@ class EcomEvoEngine:
 
         self.events = component('event.store', lambda: EventStore(db_path))
         self.skills = component('memory.skills', lambda: AdaptiveSkillLibrary(db_path))
-        self.harness = component('evolver.harness', lambda: HarnessEvolutionOptimizer(db_path))
-        self.planner = component('planner.adaptive', AdaptivePlanner)
         self.sandbox = component('sandbox.action', ActionSandbox)
+        self.harness = component('evolver.harness', lambda: HarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
+        self.planner = component('planner.adaptive', AdaptivePlanner)
         self.mcp = overrides.get('mcp.remote', mcp)
         self.model_gateway = overrides.get('model.gateway', model_gateway)
         self.tools = component('tool.registry', lambda: ToolRegistry(self.mcp))
@@ -128,12 +128,22 @@ class EcomEvoEngine:
             'authority':'cognition-only',
         },sink)
         if prior_cases:await self._emit(sid,'memory.recalled',{'case_count':len(prior_cases),'watch_terms':memory_risks,'usage':'planning_only_not_evidence'},sink)
-        self.events.save_snapshot(sid,2,{'goal':goal.model_dump(),'belief':belief.model_dump(),'stage':'initial'})
+        self.events.save_checkpoint(sid,{'goal':goal.model_dump(),'belief':belief.model_dump(),'stage':'initial'})
         ctx={'text':text,'assets':assets,'goal':goal,'belief':belief}
         async def controller_emit(t,p):await self._emit(sid,t,p,sink)
+        async def controller_checkpoint(stage,state):
+            reference=self.events.save_checkpoint(sid,state)
+            await self._emit(sid,'runtime.checkpointed',{'stage':stage,**reference},sink)
+            return reference
+        async def controller_restore(reference):
+            seq=reference.get('seq') if isinstance(reference,dict) else None
+            return self.events.restore_checkpoint(sid,seq)
         profile_token=bind_harness_profile(harness_profile)
         try:
-            outcome=await self.autonomy.run(goal=goal,belief=belief,assets=assets,text=text,context=ctx,reasoner=reasoner,emit=controller_emit)
+            outcome=await self.autonomy.run(
+                goal=goal,belief=belief,assets=assets,text=text,context=ctx,reasoner=reasoner,
+                emit=controller_emit,checkpoint=controller_checkpoint,restore=controller_restore,
+            )
         finally:
             reset_harness_profile(profile_token)
         tool_results=outcome.tool_results;agents=outcome.agents;verification=outcome.verification

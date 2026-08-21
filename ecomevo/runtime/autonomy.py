@@ -14,6 +14,8 @@ from .delegation import CognitiveDelegator
 from .skills import AdaptiveSkillLibrary
 
 EmitFn = Callable[[str, dict[str, Any]], Awaitable[None]]
+CheckpointFn = Callable[[str, dict[str, Any]], Awaitable[dict[str, Any]]]
+RestoreFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]]
 
 
 @dataclass
@@ -98,11 +100,44 @@ class AutonomousController:
         return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
     async def run(self, *, goal: GoalState, belief: BeliefState, assets: list[dict[str, Any]], text: str,
-                  context: dict[str, Any], reasoner=None, emit: EmitFn) -> AutonomyOutcome:
+                  context: dict[str, Any], reasoner=None, emit: EmitFn,
+                  checkpoint: CheckpointFn | None = None, restore: RestoreFn | None = None) -> AutonomyOutcome:
         graph = TaskGraph(); root = graph.add("goal", goal.primary[:160], payload={"domain": goal.domain.value})
         total: list[ToolResult] = []; agents: list[SubAgentResult] = []; skills_used: list[str] = []
         delegated_count = recovery_events = autonomy_steps = 0; stagnated = False
         verification: VerificationResult | None = None
+
+        async def make_checkpoint(stage: str) -> dict[str, Any]:
+            state = {
+                "stage": stage,
+                "goal": goal.model_dump(mode="json"),
+                "belief": belief.model_dump(mode="json"),
+                "tool_result_count": len(total),
+                "review_count": len(agents),
+            }
+            return await checkpoint(stage, state) if checkpoint is not None else {"stage": stage}
+
+        async def rollback_belief(reference: dict[str, Any], reason: list[str]) -> bool:
+            restored = await restore(reference) if restore is not None else None
+            restored_belief = (restored or {}).get("belief")
+            if isinstance(restored_belief, dict):
+                clean = BeliefState.model_validate(restored_belief)
+                belief.facts = clean.facts
+                belief.risks = clean.risks
+                belief.uncertainties = clean.uncertainties
+                belief.missing_evidence = clean.missing_evidence
+                belief.confidence = clean.confidence
+                ok = True
+            else:
+                ok = False
+            await emit("runtime.rollback", {
+                "restored": ok,
+                "reason": reason,
+                "mode": "checkpoint_restore_then_replan",
+                "checkpoint_seq": reference.get("seq"),
+                "checkpoint_state_hash": reference.get("state_hash"),
+            })
+            return ok
 
         async def finish(reason: str, detail: str) -> AutonomyOutcome:
             nonlocal verification
@@ -131,6 +166,7 @@ class AutonomousController:
 
         initial_skills = self.skills.relevant(goal.domain.value, query=goal.primary, missing=belief.missing_evidence)
         skills_used.extend(x.skill_id for x in initial_skills)
+        recovery_checkpoint = await make_checkpoint("before_initial_plan")
         plan = list(self.planner.plan(goal, belief, assets))
         for remote in self.registry.planned_calls(goal.domain.value):
             if sum(x.estimated_cost for x in plan) + remote.estimated_cost <= goal.max_tool_cost:
@@ -166,8 +202,7 @@ class AutonomousController:
         if verification.passed:
             return await finish("verified", "证据和约束已通过验证")
 
-        await emit("runtime.rollback", {"restored": True, "reason": verification.issues + verification.missing_evidence,
-                                        "mode": "bounded_autonomous_replan"})
+        await rollback_belief(recovery_checkpoint, verification.issues + verification.missing_evidence)
         belief.missing_evidence = list(verification.missing_evidence); previous_fp = self._fingerprint(verification, total); stagnant_rounds = 0
         stop_reason = ""; stop_detail = ""
         for step in range(1, self.max_steps + 1):
@@ -202,6 +237,7 @@ class AutonomousController:
                 stop_reason = "no_high_value_action"; stop_detail = "当前预算和证据状态下没有更高价值的只读核对动作"; break
             controller_requested_stop = bool(decision.stop)
             recovery_events += 1
+            recovery_checkpoint = await make_checkpoint(f"before_replan_{step}")
             node = graph.add("replan", decision.objective or "自主补充核对", parents=[plan_node],
                              payload={"step": step, "calls": [x.tool for x in decision.calls]})
             await emit("plan.replanned", {"step": step, "calls": [x.model_dump() for x in decision.calls], "spent_cost": round(spent, 3),
@@ -213,6 +249,10 @@ class AutonomousController:
             belief.missing_evidence = list(verification.missing_evidence); await emit("verification.rechecked", {**verification.model_dump(), "step": step})
             if verification.passed:
                 stop_reason = "verified"; stop_detail = "证据和约束已通过验证"; break
+            if verification.recommendation == "rollback":
+                await rollback_belief(recovery_checkpoint, verification.issues + verification.missing_evidence)
+                belief.missing_evidence = list(verification.missing_evidence)
+                graph.finish(node, status="rolled_back", payload={"checkpoint_seq": recovery_checkpoint.get("seq")})
             if controller_requested_stop:
                 stop_reason = "controller_stop"; stop_detail = "认知控制器完成本轮指定核对后建议停止；最终状态仍由验证器决定"; break
             fingerprint = self._fingerprint(verification, total)

@@ -90,7 +90,7 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
         )
         self.delegator = CognitiveDelegator(reviewer, self.policy)
 
-    async def run(self, *, goal, belief, assets, text, context, reasoner=None, emit):
+    async def run(self, *, goal, belief, assets, text, context, reasoner=None, emit, checkpoint=None, restore=None):
         decisions: dict[int, dict[str, Any]] = {}
         batches: dict[int, list[Any]] = {}
         all_results: list[Any] = []
@@ -199,4 +199,6 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
             context=context,
             reasoner=reasoner,
             emit=learning_emit,
+            checkpoint=checkpoint,
+            restore=restore,
         )
