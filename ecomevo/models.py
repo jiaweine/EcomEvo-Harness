@@ -105,10 +105,24 @@ class RuntimeSummary(BaseModel):
     verifier_score: float = 0.0
     evolved: bool = False
     event_chain_valid: bool = True
+    autonomy_steps: int = 0
+    delegations: int = 0
+    evolution_events: int = 0
+    skills_used: list[str] = Field(default_factory=list)
+    task_graph: dict[str, Any] = Field(default_factory=dict)
     proposed_actions: list[BusinessAction] = Field(default_factory=list)
     evidence: list[EvidenceRecord] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
     risks: list[str] = Field(default_factory=list)
+    evidence_complete: bool = False
+    missing_evidence: list[str] = Field(default_factory=list)
+    tool_cost_used: float = 0.0
+    tool_cost_budget: float = 0.0
+    tool_cost_remaining: float = 0.0
+    stop_reason: str = ""
+    stop_detail: str = ""
+    stagnated: bool = False
+    autonomy_mode: str = "deterministic_fallback"
     belief: BeliefState = Field(default_factory=BeliefState)
 
 

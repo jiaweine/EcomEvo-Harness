@@ -1,0 +1,76 @@
+/* EcomEvo final product layer: CJK-first typography, restrained motion, operational clarity. */
+:root{
+  --font-ui:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Noto Sans CJK SC","Source Han Sans SC",sans-serif;
+  --font-mono:"SFMono-Regular","Cascadia Code","Roboto Mono",ui-monospace,monospace;
+  --ease-out:cubic-bezier(.23,1,.32,1);
+  --motion-fast:140ms;
+  --motion-ui:220ms;
+  --motion-reveal:280ms;
+}
+html{font-size:16px}
+body,button,input,textarea,select{font-family:var(--font-ui);font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+body{font-size:16px;font-weight:400;line-height:1.6;letter-spacing:0}
+
+/* Type roles: Chinese headings rely on size and rhythm before heavy weight. */
+.brand-copy b,.new-task b,.task-head h1,.welcome h2,.quick-card b,.msg-label b,.msg-content h3,.work-head b,.right-title b,.status-top b,.follow-title b,.panel-copy b,.action-card h4,.modal-head h3{font-weight:600}
+.scene b,.conv-item b,.privacy-mini b,.task-chip b,.provider-control select,.input-types span,.route-node strong,.progress-item b,.provider-card b,.action-buttons button,.send-btn{font-weight:600}
+.nav-title,.eyebrow,.welcome-badge,.welcome-kicker,.composer-head,.right-title small,.status-top small,.follow-title small,.panel-copy p,.modal-head small,.command-caption,.answer-provider,.composer-note{font-family:var(--font-ui)}
+kbd,.quick-index,.route-node>span,.status-ring span,.status-ring em,.progress-item>span,.action-status{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* Scale: 12 / 13 / 14 / 16 / 20 / 26 / display. */
+.brand-copy b{font-size:15px;line-height:1.2}.brand-copy small{font-size:12px;line-height:1.25;letter-spacing:.02em}
+.nav-title{font-size:12px;line-height:1.35;letter-spacing:.04em}.scene b{font-size:14px;line-height:1.35}.scene small{font-size:12px;line-height:1.5}
+.conv-item b{font-size:14px;line-height:1.35}.conv-item small{font-size:12px;line-height:1.45}.privacy-mini b{font-size:13px}.privacy-mini small{font-size:12px;line-height:1.55}
+.eyebrow{font-size:12px;letter-spacing:.02em}.task-head h1{font-size:clamp(24px,2vw,28px);line-height:1.16;letter-spacing:-.012em;text-wrap:balance}.task-head p{max-width:70ch;font-size:14px;line-height:1.62;text-wrap:pretty}
+.task-chip small{font-size:12px}.task-chip b{font-size:12px}.provider-control small{font-size:12px}.provider-control select{font-size:13px}
+.welcome-badge,.welcome-kicker{font-size:12px;letter-spacing:.03em}.welcome h2{max-width:15em;font-size:clamp(34px,3vw,46px);line-height:1.12;letter-spacing:-.018em;text-wrap:balance}
+.welcome-copy>p{max-width:68ch;font-size:16px;line-height:1.7;text-wrap:pretty}.quick-index{font-size:12px}.quick-card b{font-size:16px;line-height:1.35}.quick-card:nth-child(1) b{font-size:20px}.quick-card small{font-size:13px;line-height:1.58}.quick-card em{font-size:12px}
+.input-types span{font-size:13px}.input-types b{font-size:12px;letter-spacing:0}.agent-map-head{font-size:12px}.route-node strong{font-size:13px}.route-node small{font-size:12px;line-height:1.45}.route-node em{font-size:10px}.agent-map-foot{font-size:12px}
+.msg-content,.msg.user .msg-content{max-width:72ch;font-size:16px;line-height:1.68;text-wrap:pretty}.msg-content h3{font-size:20px;line-height:1.28;letter-spacing:-.008em;text-wrap:balance}
+.answer-provider,.answer-action{font-size:12px}.work-head b{font-size:14px}.work-head small{font-size:12px}.composer-head b,.composer-head span{font-size:12px}.composer textarea{font-size:16px;line-height:1.62}.attach{font-size:13px}.send-row small,.composer-note{font-size:12px;line-height:1.5}
+.right-title b{font-size:16px}.right-title small{font-size:12px}.right-tab{font-size:13px}.status-top>div:first-child small{font-size:12px}.status-top b{font-size:20px;line-height:1.25}.status-top p{font-size:13px;line-height:1.58}.progress-item b{font-size:13px}.progress-item small{font-size:12px;line-height:1.5}.follow-title b{font-size:14px}.follow-title small{font-size:12px}.suggestions button{font-size:12px}.panel-copy b{font-size:16px}.panel-copy p,.action-card p{font-size:13px;line-height:1.58}.action-status{font-size:11px}.action-card h4{font-size:16px}.modal-head h3{font-size:20px}.modal-head small,.command-caption,.provider-card p{font-size:12px;line-height:1.5}
+
+/* Let type and spacing lead. */
+.brand-mark{transform:none;border-radius:10px}.task-head,.chat-scroll{background-image:none}.quick-card:nth-child(1){background:color-mix(in oklch,var(--accent-soft) 34%,var(--paper))}.agent-map::before{opacity:.42}
+
+/* Upload is a real composer state: keep the pending boundary visible and non-interactive. */
+.composer.upload-busy{border-color:color-mix(in oklch,var(--accent) 34%,var(--line));box-shadow:0 0 0 3px color-mix(in oklch,var(--accent) 7%,transparent)}
+.composer.upload-busy .attach{opacity:.52;pointer-events:none}.composer.upload-busy textarea{opacity:.78}.composer.upload-busy .send-btn:disabled{cursor:progress;opacity:.78}
+
+/* Correction actions belong with the answer. */
+.answer-foot{flex-wrap:wrap}.answer-correction{display:flex;align-items:center;gap:6px;margin-left:auto}.answer-correction button{min-height:34px;padding:0 10px;border:1px solid var(--line);border-radius:9px;background:var(--paper-warm);color:var(--muted);font-size:12px;font-weight:500;transition:transform var(--motion-fast) var(--ease-out),background var(--motion-fast) var(--ease-out),border-color var(--motion-fast) var(--ease-out),color var(--motion-fast) var(--ease-out)}
+.answer-correction button:hover{background:var(--accent-soft);border-color:color-mix(in oklch,var(--accent) 28%,var(--line));color:var(--accent-2)}.answer-correction button:active{transform:scale(.97)}
+
+/* Runtime quality: operational telemetry, not a decorative metric wall. */
+.runtime-pulse{margin:12px 0 16px;padding:14px 0 13px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.runtime-pulse-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}.runtime-pulse-head>div{display:flex;align-items:center;gap:8px}.runtime-pulse-head b{font-size:13px;font-weight:600}.runtime-pulse-head small{font-size:11px;color:var(--muted)}
+.runtime-live{width:7px;height:7px;border-radius:50%;background:var(--warning);box-shadow:0 0 0 3px color-mix(in oklch,var(--warning) 10%,transparent)}.runtime-live.ok{background:var(--success);box-shadow:0 0 0 3px color-mix(in oklch,var(--success) 10%,transparent)}
+.runtime-pulse-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid color-mix(in oklch,var(--line) 76%,transparent);border-bottom:1px solid color-mix(in oklch,var(--line) 76%,transparent)}.runtime-pulse-grid>div{min-width:0;padding:10px 9px;border-left:1px solid color-mix(in oklch,var(--line) 76%,transparent)}.runtime-pulse-grid>div:nth-child(3n+1){padding-left:0;border-left:0}.runtime-pulse-grid>div:nth-child(n+4){border-top:1px solid color-mix(in oklch,var(--line) 76%,transparent)}.runtime-pulse-grid small{display:block;font-size:11px;line-height:1.3;color:var(--muted)}.runtime-pulse-grid strong{display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-mono);font-size:12px;font-weight:600;line-height:1.35;font-variant-numeric:tabular-nums;color:var(--ink)}
+.runtime-pulse-foot{display:flex;justify-content:space-between;gap:8px;margin-top:9px;color:var(--muted);font-size:11px;line-height:1.4}.runtime-pulse-foot span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Long conversations should not keep painting every off-screen message. */
+@supports(content-visibility:auto){.message-list .msg{content-visibility:auto;contain-intrinsic-size:auto 150px}}
+
+/* Keep the task mental model on intermediate screens. */
+@media(max-width:1360px){.agent-map{display:block;min-height:auto;margin-top:28px;padding:17px 18px 16px;border-radius:15px}.agent-route{grid-template-columns:repeat(5,minmax(160px,1fr));gap:8px;margin-top:16px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}.route-node{grid-template-columns:26px minmax(118px,1fr);min-height:66px;padding:10px}.route-node em{display:none}.agent-map-foot{position:relative;left:auto;right:auto;bottom:auto;margin-top:12px}}
+@media(max-width:820px){.agent-map{margin-top:22px;padding:14px}.agent-route{grid-template-columns:repeat(5,minmax(174px,1fr))}.task-head h1{font-size:24px}.welcome h2{font-size:34px}.welcome-copy>p{font-size:16px}.composer-note{padding:0 8px}}
+@media(max-width:620px){.answer-correction{order:3;width:100%;margin:4px 0 0}.answer-correction button{flex:1}.runtime-pulse-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.runtime-pulse-grid>div{padding:9px 8px}.runtime-pulse-grid>div:nth-child(3n+1){padding-left:8px;border-left:1px solid color-mix(in oklch,var(--line) 76%,transparent)}.runtime-pulse-grid>div:nth-child(odd){padding-left:0;border-left:0}.runtime-pulse-grid>div:nth-child(n+3){border-top:1px solid color-mix(in oklch,var(--line) 76%,transparent)}.runtime-pulse-foot{display:grid}.runtime-pulse-foot span{white-space:normal}}
+@media(max-width:520px){.task-head h1{padding-right:118px;font-size:22px}.welcome h2{font-size:30px;line-height:1.15}.quick-card small{font-size:13px}.input-types b{font-size:12px}}
+
+/* Motion is short and state-bound. */
+@keyframes uiRise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes uiFade{from{opacity:0}to{opacity:1}}
+@keyframes uiScaleIn{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes uiCurrent{0%,100%{box-shadow:0 0 0 0 color-mix(in oklch,var(--accent) 0%,transparent)}50%{box-shadow:0 0 0 5px color-mix(in oklch,var(--accent) 11%,transparent)}}
+@keyframes uiWorking{from{transform:translateX(-115%)}to{transform:translateX(315%)}}
+html.ui-motion-ready .welcome-badge{animation:uiRise var(--motion-ui) var(--ease-out) both}html.ui-motion-ready .welcome h2{animation:uiRise var(--motion-reveal) var(--ease-out) 35ms both}html.ui-motion-ready .welcome-copy>p{animation:uiRise var(--motion-reveal) var(--ease-out) 70ms both}html.ui-motion-ready .quick-card{animation:uiRise var(--motion-reveal) var(--ease-out) both}.ui-enter{animation:uiRise var(--motion-ui) var(--ease-out) both}.right-panel.active:not([hidden]){animation:uiFade var(--motion-fast) var(--ease-out) both}.work-card:not([hidden]),.modal-backdrop:not([hidden]) .modal,.command-backdrop:not([hidden]) .command-modal,.drop-mask:not([hidden])>div{animation:uiScaleIn var(--motion-ui) var(--ease-out) both}.progress-item.current>span,.task-chip.busy>i{animation:uiCurrent 1.8s ease-in-out infinite}.work-progress{position:relative;overflow:hidden}.work-progress::after{content:"";position:absolute;inset:0 auto 0 0;width:32%;background:linear-gradient(90deg,transparent,color-mix(in oklch,var(--paper) 72%,transparent),transparent);animation:uiWorking 1.45s linear infinite;pointer-events:none}
+
+/* Focus and touch targets are part of visual quality. */
+.answer-correction button,.suggestions button,.right-tab,.attach,.top-action,.icon-btn{min-height:36px}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid color-mix(in oklch,var(--accent) 58%,transparent);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){html.ui-motion-ready .welcome-badge,html.ui-motion-ready .welcome h2,html.ui-motion-ready .welcome-copy>p,html.ui-motion-ready .quick-card,.ui-enter,.right-panel.active:not([hidden]),.work-card:not([hidden]),.modal-backdrop:not([hidden]) .modal,.command-backdrop:not([hidden]) .command-modal,.drop-mask:not([hidden])>div,.progress-item.current>span,.task-chip.busy>i{animation:none!important}.work-progress::after{display:none}}
+
+/* Hardening pass: remove the remaining 7–9px visual-layer labels. */
+.scene-icon{font-size:12px;font-weight:600}
+.status-ring em{font-size:10px;letter-spacing:.02em}.status-ring span{font-size:13px}.status-ring small{font-size:10px}
+.progress-item>span{font-size:10px}.provider-logo{font-size:11px;font-weight:600}.provider-status{font-size:11px}
+.command-placeholder{font-size:13px}.top-action em{font-size:13px}.left-footer>button{font-size:12px}

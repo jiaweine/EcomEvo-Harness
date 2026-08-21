@@ -30,6 +30,9 @@ class MCPRegistry:
         self._legacy_sessions:dict[str,tuple[str,str|None]]={}
         self._tool_cache:dict[str,tuple[float,dict[str,dict[str,Any]]]]={}
         self._transport=transport
+        try:timeout=float(os.environ.get('ECOMEVO_MCP_TIMEOUT_SECONDS','30'))
+        except (TypeError,ValueError):timeout=30.0
+        self.timeout_s=max(3.0,min(120.0,timeout))
         self._load_env()
 
     def _load_env(self):
@@ -121,12 +124,17 @@ class MCPRegistry:
         return final
 
     async def _post(self,s:MCPServer,payload:dict[str,Any],headers:dict[str,str])->tuple[httpx.Response,dict[str,Any]]:
-        async with httpx.AsyncClient(timeout=60,transport=self._transport) as client:
+        async with httpx.AsyncClient(timeout=self.timeout_s,transport=self._transport) as client:
             r=await client.post(s.url,headers=headers,json=payload)
         data={}
         if r.content:
             try:data=self._json_from_response(r,str(payload.get('id')) if payload.get('id') is not None else None)
-            except RuntimeError:
+            except RuntimeError as exc:
+                if r.status_code<400 and payload.get('method')=='tools/call':
+                    raise httpx.RemoteProtocolError(
+                        'MCP tool-call response could not be confirmed',
+                        request=r.request,
+                    ) from exc
                 if r.status_code<400:raise
         return r,data
 
@@ -137,6 +145,40 @@ class MCPRegistry:
             raise RuntimeError(f'MCP HTTP {r.status_code}: {detail}')
         if data.get('error'):raise RuntimeError(str(data['error']))
         return data.get('result',{})
+
+    @staticmethod
+    def _raise_if_ambiguous_tool_transport(r:httpx.Response)->None:
+        if r.status_code==408 or r.status_code>=500:
+            raise httpx.RemoteProtocolError(
+                f'MCP tool-call response is ambiguous: HTTP {r.status_code}',
+                request=r.request,
+            )
+
+    @classmethod
+    def _tool_result_or_raise(cls,r:httpx.Response,data:dict[str,Any])->dict[str,Any]:
+        """Return a confirmed tool result or distinguish definite rejection from ambiguity."""
+        cls._raise_if_ambiguous_tool_transport(r)
+        if r.status_code>=400:
+            return cls._result_or_raise(r,data)
+        if not isinstance(data,dict) or ('result' not in data and 'error' not in data):
+            raise httpx.RemoteProtocolError('MCP tool-call response has no confirmable result',request=r.request)
+        error=data.get('error')
+        if error:
+            code=error.get('code') if isinstance(error,dict) else None
+            if code in {-32600,-32601,-32602}:
+                # Invalid request/method/params are pre-execution rejections and are safe to
+                # classify as explicit failures. Server/internal/application errors are not.
+                raise RuntimeError(str(error))
+            raise httpx.RemoteProtocolError(
+                f'MCP tool-call returned an ambiguous JSON-RPC error: {error}',
+                request=r.request,
+            )
+        result=data.get('result')
+        if not isinstance(result,dict):
+            raise httpx.RemoteProtocolError('MCP tool-call result has an invalid shape',request=r.request)
+        if result.get('isError') is True:
+            raise httpx.RemoteProtocolError('MCP tool reported an unconfirmed execution error',request=r.request)
+        return result
 
     def _modern_meta(self)->dict[str,Any]:
         return {
@@ -153,6 +195,7 @@ class MCPRegistry:
         if name is not None:headers['Mcp-Name']=self._header_value(name)
         if extra_headers:headers.update(extra_headers)
         r,data=await self._post(s,payload,headers)
+        if method=='tools/call':return self._tool_result_or_raise(r,data)
         if allow_legacy_probe and r.status_code in {400,404,405}:
             err=data.get('error',{}) if isinstance(data,dict) else {}
             code=err.get('code') if isinstance(err,dict) else None
@@ -223,12 +266,20 @@ class MCPRegistry:
         headers={**self._auth_headers(s),'MCP-Protocol-Version':version}
         if session:headers['MCP-Session-Id']=session
         r,data=await self._post(s,payload,headers)
-        if r.status_code==404 and session and retry:
-            self._legacy_sessions.pop(s.key,None);return await self._call_legacy(s,tool_name,arguments,retry=False)
-        return self._result_or_raise(r,data)
+        if r.status_code==404 and session:
+            # A tools/call may already have reached business logic before the session failure is observed.
+            # Never replay it automatically. Clear the stale session and surface an ambiguous transport result.
+            self._legacy_sessions.pop(s.key,None)
+            raise httpx.RemoteProtocolError('MCP legacy session expired during tool call',request=r.request)
+        return self._tool_result_or_raise(r,data)
 
     async def call_tool(self,server_key:str,tool_name:str,arguments:dict[str,Any])->dict[str,Any]:
         s=self.servers.get(server_key)
         if not s or not s.enabled:raise RuntimeError('MCP server not configured')
-        try:return await self._call_modern(s,tool_name,arguments)
-        except _LegacyRequired:return await self._call_legacy(s,tool_name,arguments)
+        try:
+            try:return await self._call_modern(s,tool_name,arguments)
+            except _LegacyRequired:return await self._call_legacy(s,tool_name,arguments)
+        except httpx.TimeoutException as exc:
+            # Normalize every transport timeout to ReadTimeout so the action API uses the
+            # conservative `uncertain` outcome instead of claiming an explicit business failure.
+            raise httpx.ReadTimeout('MCP request timed out',request=getattr(exc,'request',None)) from exc

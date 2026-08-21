@@ -1,71 +1,210 @@
-# EcomEvo 验证报告
+# EcomEvo 工程验证与压力记录
 
-## 结论
+## 当前结论
 
-本轮按“上线前阻断问题”重新做了业务反例、长任务、并发、副作用、多模态、上传安全、MCP、真实网络和响应式 UI 验证。当前已覆盖路径未发现阻断级问题；没有真实厂商密钥或企业 MCP 的部分不冒充线上通过。
+截至 2026-08-21，本修复分支已在本地当前工作树完成以下验证：
 
-### 最终检查
+- `python -m compileall -q ecomevo`；
+- 完整 `pytest -q`，234 项；
+- 9 个业务 Gold Set × fresh / persisted replay 两阶段 promotion gate；
+- 所有 `frontend/*.js` 的 `node --check`；
+- 产品 API smoke；
+- 当前工作树 1 / 8 / 32 / 64 / 120 / 240 并发 runtime pressure gate，所有 safety failures 为空。
+- 同一隔离 durable root 连续执行两轮完整 pytest 后，`product.db` 与 `runtime.db` 的 `PRAGMA quick_check` 均为 `ok`。
 
-- 自动化回归：**136 项通过**。
-- 售后 E2E：创建任务、上传资料、判责、生成待确认操作、确认执行、事件链校验通过。
-- 真实 Uvicorn：`/api/health`、首页、`/assets/app.js`、`/docs` 实际 HTTP 200。
-- 真实 WebSocket：任务接收、处理进度、最终结果事件通过。
-- 同任务并发：连续 5 组双请求均为 **一个 200 + 一个 409**，未出现重复并行处理。
-- 安全响应头：nosniff、DENY frame、CSP、no-store API cache 已验证。
-- Python `compileall`、前端 `node --check` 通过。
-- Chromium 静态真实渲染：1600×1000、1024×900、390×844 无横向溢出；桌面输入区、平板详情抽屉、移动端双抽屉、键盘 Tab、弹窗焦点和初始隐藏层均验证。
+Draft PR #3 的旧 head 曾在 GitHub Actions 通过 regression、pressure 与真实 Chromium E2E；它是历史实现来源的证据，不自动证明本次与最新 `main` 融合后的工作树。当前环境成功安装 Playwright Python 包，但 Chromium 下载返回截断的 0 MiB artifact，因此本轮没有伪造浏览器通过结论。合并前仍必须让当前提交在 GitHub Actions 重新跑完 browser-e2e。
 
-## 本轮新增发现与修复
+这些结论都**不等同于真实企业生产环境已经验收**；真实外部 provider/MCP、企业 IdP/反向代理、Safari/Edge 实机和真实大媒体数据仍需要部署环境验证。
 
-1. **明确选择“本地演示”仍可能命中外部服务**：现在本地演示是明确的数据流向边界，不会自动出站。
-2. **商品价格问题可能被 SKU/库存等其他数字误判为有价格证据**：价格问题只接受真实价格字段或可信企业数据。
-3. **文字附件可能替代未读取的图片/视频完成审核**：用户明确问某种媒体时，该媒体本身必须可读取或有可信多媒体观察结果。
-4. **风险问卷后置否定误判**：`刷单：否`、`处罚记录：无`、`套现风险：否`、未回答的“是否…”字段不再作为正向风险证据。
-5. **长日志后段证据可能被前置索引截断**：前置索引未命中且确认已截断时，对原始文本继续流式检索；不会把整份大日志塞进数据库。
-6. **流式检索第一个命中就返回**：改为继续汇总本轮所需命中词，避免先见 SKU、后见关键声明时漏证据。
-7. **连续对话旧问题污染当前要求**：当前消息决定本轮验收条件；历史用户内容只作为对象承接和检索提示。
-8. **已缓存多媒体事实的来源归因丢失**：即使后续换文本模型做表达，证据仍保留最初读取该媒体的服务来源。
-9. **缺证据任务仍调用一次最终外部模型再丢弃结果**：资料不足时直接输出受控结果，避免无效费用和文案绕过后端结论。
-10. **任务运行记忆可能写入未完成案例**：只有最终复核通过的完成案例才进入后续同场景提醒。
-11. **MCP 现代调用失败可能错误回退旧协议并重复业务动作**：`tools/call` 不做危险重放；旧协议探测只用于安全的只读能力探测。
-12. **MCP 服务器配置可能向前端暴露内部地址/令牌环境变量名**：公开运行信息已做脱敏。
-13. **慢 WebSocket 客户端队列满时可能丢最新/最终事件**：改为丢最旧事件并保留最新状态。
-14. **长会话浏览器状态持续增长**：接口和实时页面都只保留最近可读窗口；服务端审计记录仍完整保留。
-15. **动作历史持续增长拖大任务详情响应**：所有未完成/待核对动作保留，已完成历史只返回最近窗口。
-16. **图片像素炸弹异常可能落成 500**：现在明确返回 413，不把异常堆栈变成客户错误。
-17. **模型服务能力与附件类型不匹配**：选择固定服务时会明确降级到受控结果，不假装已读取不支持的媒体。
-18. **UI `hidden` 被组件 display 规则覆盖**：全局硬规则修复，模型服务弹窗、拖拽层、命令面板不会首屏误显示。
-19. **移动端隐藏右侧栏后审批入口丢失**：右侧详情改为可打开抽屉，待确认操作仍可访问。
-20. **任务切换/多文件上传/WebSocket 竞态**：上传绑定原任务，旧连接事件不能污染新任务，失败导航不会提前断开当前任务。
-21. **重复点击业务操作**：前端执行中锁定，后端继续使用数据库原子 compare-and-set 双层保护。
-22. **键盘与可访问性不足**：右侧 Tab 增加 `aria-selected/aria-controls`，补焦点样式与 reduced-motion 支持。
+---
 
+## 1. 当前回归门禁
 
-23. **历史提示隐藏导致输入框被 Grid 自动排版挤出视口**：任务头、历史提示、工作记录和输入区改为显式 Grid 行；桌面/平板/手机都重新测量输入区在可视范围内。
-24. **资料预览失败显示浏览器原生破图**：图片/视频预览失败时降级为业务化占位，结论与资料名称仍可读。
-25. **待补资料却显示大号 100%**：未完成任务优先显示“待补/重试”等业务状态，只有真实完成才以完成百分比表达。
-26. **多行用户指令展示时丢换行**：工作记录保留用户原始分段，适合粘贴结构化任务说明。
-27. **服务弹窗关闭后键盘焦点丢失**：打开来源被显式记录，关闭后焦点返回原按钮。
+### Regression
 
-## 此前已保留的关键保护
+当前 regression job 硬性验证：
 
-- 证据完整性是高影响操作硬条件；资料不足不会生成可执行动作。
-- 用户选择的业务场景是任务确定场景，不由关键词在底层偷偷切换。
-- 附件有任务归属隔离、源文件 SHA-256 校验、视频派生关键帧校验。
-- Event Store append 使用 SQLite 写事务，多进程写入保持连续序号和 hash chain。
-- checkpoint 使用 JSON；支持 checkpoint / restore / replan / fork / replay。
-- 失败改进项经过隔离回放与 regression gate，接受后实际应用、去重并可重启恢复。
-- 多媒体事实先进入证据链再做业务复核；低置信度读取 fail closed。
-- 上传拒绝损坏图片、伪媒体、伪 PDF、伪 Office ZIP、可执行文件、异常解压体积和错误流类型。
-- 下游响应中断时业务动作进入 `uncertain`，要求先核对真实业务状态，避免盲目重试。
+1. Python 包可重复安装；
+2. 全量 Python 测试；
+3. Gold Set fresh + persisted replay 不退化；
+4. 恶意 controller 不能扩大工具集合、绕过证据门槛、伪造完成状态或直接执行高影响动作；
+5. durable job、跨进程 lease、WebSocket durable catch-up、并发上传配额、MCP uncertain 语义、tenant/RBAC、审批 actor audit 等长期回归；
+6. 所有生产 JS 语法与基础 DOM/CSS 静态结构。
 
-## 尚需目标环境完成的验证
+最新 Gold Set 结果：`ok=true`，9 个 case、2 个 phase、0 failures。完整 case 覆盖五个产品域，并同时包含 evidence-complete 与 evidence-incomplete 场景。
 
-- OpenAI、DeepSeek、Qwen、Doubao、Claude、Gemini 的真实 API Key、区域网络、配额和数据合规；仓库内已用协议级 mock 验证请求与错误分支。
-- 真实企业 MCP 地址、鉴权、工具 schema、权限和幂等策略；仓库内已覆盖现代/legacy 协议路径与副作用防重放。
-- 当前执行容器策略会阻止 Chromium 直接导航 `localhost`（`ERR_BLOCKED_BY_ADMINISTRATOR`），因此没有伪报真实 GUI 网络 E2E；响应式页面使用 Chromium 静态真实渲染验证，真实 HTTP 与 WebSocket 则独立通过。
-- EComAgentBench、τ³-bench Retail、TUA-Bench 未在本轮重新跑数据集；本地自动化测试不代替 benchmark 复现。
+### 测试状态隔离与生命周期清理
 
-## 生产部署建议
+本轮修复了两个此前会影响重复验证的问题：
 
-当前工程按单企业工作区设计。公网环境应接企业 SSO / API Gateway / 反向代理；真实退款、下架、冻结等企业工具应继续使用下游幂等键、最小权限和企业审计策略。
+- pytest 在收集 API 模块前强制绑定 test-only durable root，即使调用者误设 `ECOMEVO_DATA` 也不会写入操作者数据；
+- 产品 smoke 使用自己的临时 durable root，不再污染 `outputs/runtime`；
+- durable worker 由 FastAPI lifespan 创建和回收，不再使用已弃用的 `on_event`；
+- dev 依赖显式安装 `httpx2`，不再走 Starlette 已弃用的 `httpx` TestClient 兼容路径。
+
+当前完整 pytest 输出无上述生命周期或 TestClient 弃用警告。
+
+---
+
+## 2. Durable Execution 验证
+
+对话处理不再只依赖进程内 `BackgroundTasks`：
+
+- 用户消息、`message.accepted` 与 durable job 在同一 SQLite 事务写入；
+- job 持久化 immutable input / asset SHA snapshot；
+- worker 使用 cross-process job lease；
+- worker/process 崩溃后，lease 到期可由另一 worker reclaim；
+- 运行期间不允许把新资料悄悄插入当前 evidence snapshot；
+- assistant message、action proposals、`answer.ready`、job success、runtime `session_id` 与匹配 turn lease 释放原子提交；
+- 失败路径写入 `answer.error` 与 durable failed 状态；
+- WebSocket 的进程内 queue 仅是低延迟 wake hint，SQLite `task_events` 才是跨 worker 顺序真相。
+
+回归覆盖 job reclaim、active-job upload/turn blocking、原子 terminal event、跨 worker event catch-up 与 event-id ordering。
+
+---
+
+## 3. Tenant / Identity / RBAC / Approval Audit
+
+当前实现两种身份模式：
+
+- `local`：开发兼容，默认 local-admin；
+- `hmac`：供可信企业 SSO / API Gateway / 反向代理在服务端签入 tenant/user/role/timestamp/signature。
+
+角色层级：`viewer < operator < approver < admin`。
+
+安全约束：
+
+- `/api` 与 `/ws` 进入统一身份边界；
+- tenant-scoped conversation / asset / action 读取不泄露其他 tenant 的资源存在性；
+- action decision 需要 `approver`；
+- runtime/evolution 全局控制面需要 `admin`；
+- durable session trace 在 hardened 模式下先验证 session → tenant ownership；
+- 审批 CAS 自动持久化 `actor_tenant / actor_user / actor_role / actor_auth_mode`；
+- HMAC secret 只能位于服务端或可信代理，不能下发到浏览器。
+
+这里完成的是**可信代理后的身份/RBAC边界**，不是某一个具体企业 IdP 的 SSO 产品集成。
+
+---
+
+## 4. Gold Set / Adversarial Promotion Gate
+
+Gold Set promotion gate 每次 CI 对同一业务集跑两遍：
+
+1. fresh priors；
+2. 使用同一个持久 runtime DB 的 persisted replay。
+
+两遍都必须保持：
+
+- domain/status 正确；
+- required evidence 缺口正确；
+- event chain 有效；
+- stop reason 明确；
+- tool cost 不超过预算；
+- evidence-incomplete 不产生业务动作；
+- side effect 必须等待人工确认；
+- runtime 不得把 action 自主推进为 executed/approved。
+
+恶意 controller 专项还会显式要求模型绕过证据、调用非法副作用工具并谎称完成；最终 Verifier/Governance/Sandbox 仍必须拒绝越权候选。
+
+---
+
+## 5. 当前工作树 1→240 Runtime Pressure
+
+2026-08-21 本地当前工作树的 pressure gate 实测如下；所有 level 的 `failures=[]`：
+
+| 并发任务 | Throughput | p50 | p95 | p99 | Safety failures |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 15.605 tasks/s | 0.0640 s | 0.0640 s | 0.0640 s | 0 |
+| 8 | 27.953 tasks/s | 0.2169 s | 0.2326 s | 0.2326 s | 0 |
+| 32 | 27.643 tasks/s | 0.8551 s | 0.8885 s | 0.8942 s | 0 |
+| 64 | 25.535 tasks/s | 1.8733 s | 2.0178 s | 2.0245 s | 0 |
+| 120 | 29.891 tasks/s | 2.8340 s | 2.8697 s | 2.8997 s | 0 |
+| 240 | 31.160 tasks/s | 5.6841 s | 6.1374 s | 6.1649 s | 0 |
+
+每个 level 都硬性检查：session 唯一、event chain、stop reason、tool budget、合法 status、incomplete-evidence action leak、side-effect confirmation。所有 level `failures=[]`。
+
+这些数字是**当前工作树在本地容器中的 runtime 压力**，不包含真实外部认知引擎、MCP 网络、复杂媒体解析和企业数据库，因此不能被宣传成 GitHub-hosted runner 数据或真实业务 QPS。
+
+---
+
+## 6. Chromium Browser E2E
+
+仓库的 browser-e2e job 使用真实 Playwright Chromium 启动 Uvicorn 与独立 `ECOMEVO_DATA`，设计为验证：
+
+- 首屏与输入框可用；
+- provider 品牌不出现在客户表面；
+- 空任务切业务场景不制造垃圾任务；
+- durable message 发送后能收到 assistant result；
+- Runtime Pulse 正常出现；
+- 命令面板键盘打开/关闭和 focus 正常；
+- 390×844 窄屏任务控制面可打开和关闭；
+- 第二标签页对同一 durable conversation 发消息时，第一标签页会同步显示远端 user message，不出现孤立 assistant reply；
+- 两边 busy 最终释放；
+- 测试期间无 page error / console error。
+- 桌面截图必须为 3840×2400 PNG，移动截图必须为 780×1688 PNG。
+
+Draft PR #3 的历史 browser job 曾完整通过上述路径，并修复过移动端 class 断言。本次融合工作树尚未取得新的 Chromium 通过记录：本地浏览器 artifact 下载失败，必须由当前提交的 GitHub Actions 补齐。
+
+即使当前提交的 Chromium CI 通过，也**不会证明真实 Safari 或 Microsoft Edge 实机路径**。
+
+---
+
+## 7. Adaptive Routing / Learning 工程证据
+
+已保留并持续回归的学习层证据包括：
+
+- posterior 可覆盖 cold-start prior；
+- global → domain transfer 有界；
+- evidence value 与 tool reliability 分开建模；
+- deterministic UCB 可重复；
+- contextual abstention 与同状态 no-op 比较，而不是固定绝对阈值；
+- verifier difference credit 使用 deterministic leave-one-out；
+- learner exception 被隔离，不能改变业务执行结果；
+- routing learner 不能扩大 action space。
+
+历史隔离 routing-store microbenchmark 在 64 workers 下曾从约 59 rounds/s 改进到约 299.5 rounds/s；该数字仍只属于 persistence 微基准，不是当前完整业务吞吐。
+
+---
+
+## 8. MCP / 高影响动作失败语义
+
+当前代码与回归已经区分：
+
+- 明确前置/参数/业务拒绝 → `failed`；
+- timeout、连接断线、HTTP 5xx/408、损坏协议响应、JSON-RPC internal error、`CallToolResult.isError` 等无法证明副作用未发生的情况 → `uncertain`；
+- stale MCP session 不自动 replay `tools/call`；
+- 浏览器在 approve 请求后断线时提示“状态待核对”，不会诱导直接重复确认；
+- `uncertain` action 再次 approve 被状态机拒绝。
+- approval / rejection / simulated / executed / failed / uncertain 状态与 `action.updated` task event 原子提交，事件写入异常不会反向篡改已经确认的下游结果。
+
+这仍需要真实下游系统配合幂等键和业务状态查询才能构成生产级端到端执行保证。
+
+---
+
+## 9. 仍需真实部署环境完成的验证
+
+仓库内自动化 release gates 已闭环。以下项目不能在当前仓库/Hosted CI 中诚实地宣称完成：
+
+1. **真实企业 IdP / SSO / Gateway 集成**：HMAC trusted-proxy 边界已经实现，但具体企业身份平台尚未连接；
+2. **真实 provider / MCP 凭证与区域**：需要真实 auth、429/rate-limit、schema drift、网络故障、下游幂等和业务结果核对；
+3. **真实 Safari / Microsoft Edge 实机**：当前 CI 是 Chromium；
+4. **真实大媒体矩阵**：大型/畸形 PDF、Office、图片、视频、音频需要业务样本与目标机器资源验证；
+5. **多节点生产数据库/队列拓扑**：当前 durable control plane 基于 SQLite WAL，仍存在单 writer 扩展边界；大规模多节点部署应迁移到适合的生产数据库/队列并重新跑同一套不变量；
+6. **真实业务 decision-quality 扩展 Gold Set**：仓库已具备 promotion gate，但最终生产 Gold Set 应由业务团队用真实案例持续扩充。
+
+---
+
+## 10. 当前发布判断
+
+当前工作树可以被描述为：
+
+- 本地完整功能回归通过；
+- 两轮连续完整回归后的 SQLite quick-check 通过；
+- 本地 Gold Set fresh / persisted replay gate 通过；
+- durable execution、资料生命周期、crash-reclaim、tenant/RBAC 与 approver audit 已落地并进入回归；
+- 当前工作树本地 1→240 runtime pressure gate 通过；
+- 当前提交的 GitHub CI 与 Chromium E2E 仍待远端重跑，不能沿用旧 head 的绿灯。
+
+但在真实 provider/MCP、企业 SSO、Safari/Edge、生产多节点拓扑未验证之前，仍不应把它表述为“所有生产环境均已验收”或“零缺陷生产就绪”。
+
+核心原则保持不变：**认知自治，权限确定。**
