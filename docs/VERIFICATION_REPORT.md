@@ -5,14 +5,14 @@
 截至 2026-08-21，本修复分支已在本地当前工作树完成以下验证：
 
 - `python -m compileall -q ecomevo`；
-- 完整 `pytest -q`，234 项；
+- 完整 `pytest -q`，242 项；
 - 9 个业务 Gold Set × fresh / persisted replay 两阶段 promotion gate；
 - 所有 `frontend/*.js` 的 `node --check`；
 - 产品 API smoke；
-- 当前工作树 1 / 8 / 32 / 64 / 120 / 240 并发 runtime pressure gate，所有 safety failures 为空。
+- 当前工作树 1 / 8 / 32 / 64 / 120 / 240 并发 runtime pressure gate，以及 PTC total-deadline / adaptive-policy contention 探针，所有 failures 为空。
 - 同一隔离 durable root 连续执行两轮完整 pytest 后，`product.db` 与 `runtime.db` 的 `PRAGMA quick_check` 均为 `ok`。
 
-Draft PR #3 的旧 head 曾在 GitHub Actions 通过 regression、pressure 与真实 Chromium E2E；它是历史实现来源的证据，不自动证明后续融合提交。一次 current-head browser-e2e 也确实发现了视觉层融合时漏载 `intro.css`、导致屏幕外导览抢占 `Esc` 的缺陷。该失败记录不能被历史绿灯覆盖；合并只接受当前 head 的完整 GitHub Actions 结果。
+主线基线 PR #3 曾在 GitHub Actions 通过 regression、pressure 与真实 Chromium E2E；它不自动证明本轮后续修复。此前 current-head browser-e2e 也确实发现过视觉层融合时漏载 `intro.css`、导致屏幕外导览抢占 `Esc` 的缺陷。历史绿灯不能覆盖新提交；合并只接受当前 head 的完整 GitHub Actions 结果。
 
 这些结论都**不等同于真实企业生产环境已经验收**；真实外部 provider/MCP、企业 IdP/反向代理、Safari/Edge 实机和真实大媒体数据仍需要部署环境验证。
 
@@ -54,12 +54,14 @@ Draft PR #3 的旧 head 曾在 GitHub Actions 通过 regression、pressure 与�
 - job 持久化 immutable input / asset SHA snapshot；
 - worker 使用 cross-process job lease；
 - worker/process 崩溃后，lease 到期可由另一 worker reclaim；
+- progress event 原子校验 `job_id + worker_id + unexpired lease`，handoff 后旧 worker 不能继续写客户可见进度；
+- 续租拒绝或续租存储异常会取消旧 analyzer，旧 worker 不会释放接管者正在使用的 turn lease；
 - 运行期间不允许把新资料悄悄插入当前 evidence snapshot；
 - assistant message、action proposals、`answer.ready`、job success、runtime `session_id` 与匹配 turn lease 释放原子提交；
 - 失败路径写入 `answer.error` 与 durable failed 状态；
 - WebSocket 的进程内 queue 仅是低延迟 wake hint，SQLite `task_events` 才是跨 worker 顺序真相。
 
-回归覆盖 job reclaim、active-job upload/turn blocking、原子 terminal event、跨 worker event catch-up 与 event-id ordering。
+回归覆盖 job reclaim、mid-run ownership handoff、renewal fault cancellation、stale progress fencing、active-job upload/turn blocking、原子 terminal event、跨 worker event catch-up 与 event-id ordering。
 
 ---
 
@@ -114,14 +116,16 @@ Gold Set promotion gate 每次 CI 对同一业务集跑两遍：
 
 | 并发任务 | Throughput | p50 | p95 | p99 | Safety failures |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 15.605 tasks/s | 0.0640 s | 0.0640 s | 0.0640 s | 0 |
-| 8 | 27.953 tasks/s | 0.2169 s | 0.2326 s | 0.2326 s | 0 |
-| 32 | 27.643 tasks/s | 0.8551 s | 0.8885 s | 0.8942 s | 0 |
-| 64 | 25.535 tasks/s | 1.8733 s | 2.0178 s | 2.0245 s | 0 |
-| 120 | 29.891 tasks/s | 2.8340 s | 2.8697 s | 2.8997 s | 0 |
-| 240 | 31.160 tasks/s | 5.6841 s | 6.1374 s | 6.1649 s | 0 |
+| 1 | 15.033 tasks/s | 0.0664 s | 0.0664 s | 0.0664 s | 0 |
+| 8 | 22.231 tasks/s | 0.2896 s | 0.2999 s | 0.2999 s | 0 |
+| 32 | 26.863 tasks/s | 0.9102 s | 0.9582 s | 0.9712 s | 0 |
+| 64 | 28.294 tasks/s | 1.6657 s | 1.7406 s | 1.7540 s | 0 |
+| 120 | 28.424 tasks/s | 3.1558 s | 3.3747 s | 3.4051 s | 0 |
+| 240 | 28.645 tasks/s | 6.1133 s | 6.6074 s | 6.6597 s | 0 |
 
 每个 level 都硬性检查：session 唯一、event chain、stop reason、tool budget、合法 status、incomplete-evidence action leak、side-effect confirmation。所有 level `failures=[]`。
+
+定向探针同样为 `failures=[]`：64 个工具调用在 2 slots / 50 ms total deadline 下 wall 52.1 ms、p99 50.882 ms、peak active 2；8 个独立 policy writer 完整提交 8 次更新，最终 exploration 为 0.800000。
 
 这些数字是**当前工作树在本地容器中的 runtime 压力**，不包含真实外部认知引擎、MCP 网络、复杂媒体解析和企业数据库，因此不能被宣传成 GitHub-hosted runner 数据或真实业务 QPS。
 

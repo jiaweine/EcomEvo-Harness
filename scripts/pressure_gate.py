@@ -5,11 +5,17 @@ import asyncio
 import json
 import statistics
 import tempfile
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+from ecomevo.models import ToolCall
 from ecomevo.runtime import EcomEvoEngine
+from ecomevo.runtime.resilient_executor import ResilientPTCExecutor
+from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
 
 def percentile(values: list[float], q: float) -> float:
@@ -18,6 +24,127 @@ def percentile(values: list[float], q: float) -> float:
     ordered = sorted(values)
     index = max(0, min(len(ordered) - 1, int(round((len(ordered) - 1) * q))))
     return ordered[index]
+
+
+class _AllowReadSandbox:
+    def validate_tool(self, _tool):
+        return SimpleNamespace(allowed=True, reason="", requires_confirmation=False)
+
+
+class _PressureRegistry:
+    def __init__(self, tool):
+        self.tools = {tool.key: tool}
+
+
+class _SlowPressureTool:
+    key = "pressure.read"
+    cost = 0.1
+
+    def __init__(self):
+        self.active = 0
+        self.peak = 0
+
+    async def execute(self, _ctx, _args):
+        self.active += 1
+        self.peak = max(self.peak, self.active)
+        try:
+            await asyncio.sleep(1)
+            return {"ok": True}
+        finally:
+            self.active -= 1
+
+
+async def run_backpressure_probe(tasks: int = 64) -> dict[str, Any]:
+    tool = _SlowPressureTool()
+    executor = ResilientPTCExecutor(_PressureRegistry(tool), _AllowReadSandbox())
+    executor.timeout_s = 0.05
+    executor.max_inflight = 2
+    executor._slots = asyncio.Semaphore(2)
+    calls = [
+        ToolCall(
+            call_id=f"pressure-{index}",
+            tool=tool.key,
+            purpose="overload deadline probe",
+            parallel_group="overload",
+        )
+        for index in range(tasks)
+    ]
+    started = time.perf_counter()
+    results = await executor.execute(calls, {})
+    wall = time.perf_counter() - started
+    failures: list[str] = []
+    expected_error = "tool_timeout:0.05s"
+    if any(result.error != expected_error for result in results):
+        failures.append("overloaded calls did not converge to the bounded timeout result")
+    # A generous 15x scheduling envelope avoids runner-load flakes while still
+    # distinguishing the legacy per-queue-slot timeout (~1.6s for this probe).
+    if wall >= 0.75:
+        failures.append(f"backpressure queue exceeded total deadline envelope: {wall:.4f}s")
+    if tool.peak > 2:
+        failures.append(f"tool fan-out exceeded semaphore bound: {tool.peak}")
+    if tool.active:
+        failures.append(f"cancelled tools remained active: {tool.active}")
+    durations = [result.duration_ms for result in results]
+    return {
+        "name": "ptc_backpressure_deadline",
+        "tasks": tasks,
+        "max_inflight": 2,
+        "deadline_seconds": 0.05,
+        "wall_seconds": round(wall, 4),
+        "duration_ms_p99": round(percentile(durations, 0.99), 3),
+        "peak_active": tool.peak,
+        "failures": failures,
+    }
+
+
+class _CoordinatedReadLibrary(AdaptiveSkillLibrary):
+    def __init__(self, db_path: Path, barrier: threading.Barrier):
+        self._pressure_barrier = barrier
+        super().__init__(db_path)
+
+    def policy(self, domain: str):
+        value = super().policy(domain)
+        self._pressure_barrier.wait(timeout=5)
+        return value
+
+
+def run_policy_contention_probe(root: Path, workers: int = 8) -> dict[str, Any]:
+    db = root / "adaptive-policy-contention.db"
+    barrier = threading.Barrier(workers)
+    libraries = [_CoordinatedReadLibrary(db, barrier) for _ in range(workers)]
+    started = time.perf_counter()
+    failures: list[str] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [
+            pool.submit(
+                library.note_run,
+                "merchant_review",
+                success=False,
+                skill_used=False,
+            )
+            for library in libraries
+        ]
+        for future in futures:
+            try:
+                future.result(timeout=10)
+            except Exception as exc:
+                failures.append(f"policy worker failed: {exc!r}")
+    policy = AdaptiveSkillLibrary(db).policy("merchant_review")
+    expected_exploration = 0.60 + workers * 0.025
+    if policy["updates"] != workers:
+        failures.append(f"policy updates lost: {policy['updates']} != {workers}")
+    if abs(policy["exploration"] - expected_exploration) > 1e-9:
+        failures.append(
+            f"policy value lost an update: {policy['exploration']:.6f} != {expected_exploration:.6f}"
+        )
+    return {
+        "name": "adaptive_policy_contention",
+        "workers": workers,
+        "wall_seconds": round(time.perf_counter() - started, 4),
+        "updates": policy["updates"],
+        "exploration": round(policy["exploration"], 6),
+        "failures": failures,
+    }
 
 
 async def run_level(level: int, root: Path) -> dict[str, Any]:
@@ -76,11 +203,30 @@ async def run_level(level: int, root: Path) -> dict[str, Any]:
 async def main_async(levels: list[int]) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix="ecomevo-pressure-") as tmp:
         root = Path(tmp)
+        probes = [
+            await run_backpressure_probe(),
+            await asyncio.to_thread(run_policy_contention_probe, root),
+        ]
         results = []
         for level in levels:
             results.append(await run_level(level, root))
-        failures = [f"c={row['concurrency']}: {failure}" for row in results for failure in row["failures"]]
-        return {"ok": not failures, "levels": levels, "results": results, "failures": failures}
+        failures = [
+            f"probe={row['name']}: {failure}"
+            for row in probes
+            for failure in row["failures"]
+        ]
+        failures.extend(
+            f"c={row['concurrency']}: {failure}"
+            for row in results
+            for failure in row["failures"]
+        )
+        return {
+            "ok": not failures,
+            "levels": levels,
+            "probes": probes,
+            "results": results,
+            "failures": failures,
+        }
 
 
 def main() -> int:

@@ -188,9 +188,21 @@ def wake(cid: str) -> None:
                 pass
 
 
-async def emit(cid: str, event_type: str, payload: dict[str, Any]):
-    event = store.add_event(cid, event_type, payload)
-    wake(cid)
+async def emit(
+    cid: str,
+    event_type: str,
+    payload: dict[str, Any],
+    job_id: str | None = None,
+    worker_id: str | None = None,
+):
+    if job_id is not None or worker_id is not None:
+        if not job_id or not worker_id:
+            return None
+        event = store.add_job_event(job_id, worker_id, event_type, payload)
+    else:
+        event = store.add_event(cid, event_type, payload)
+    if event:
+        wake(str(event["conversation_id"]))
     return event
 
 

@@ -1,4 +1,5 @@
 import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -76,3 +77,33 @@ async def test_resilient_executor_bounds_parallel_fanout():
 
     assert all(result.ok for result in results)
     assert tool.peak == 2
+
+
+@pytest.mark.asyncio
+async def test_resilient_executor_timeout_includes_backpressure_wait():
+    executor = ResilientPTCExecutor(Registry(SlowTool()), AllowSandbox())
+    executor.timeout_s = 0.03
+    executor.max_inflight = 1
+    executor._slots = asyncio.Semaphore(1)
+    calls = [
+        ToolCall(call_id=f"c{i}", tool="slow.read", purpose="overload", parallel_group="g")
+        for i in range(10)
+    ]
+
+    started = time.perf_counter()
+    results = await executor.execute(calls, {})
+    wall = time.perf_counter() - started
+
+    assert all(result.error == "tool_timeout:0.03s" for result in results)
+    assert wall < 0.15, "queued calls must share a bounded end-to-end deadline"
+    assert max(result.duration_ms for result in results) < 150
+
+
+def test_resilient_executor_uses_safe_defaults_for_malformed_environment(monkeypatch):
+    monkeypatch.setenv("ECOMEVO_TOOL_TIMEOUT_SECONDS", "not-a-number")
+    monkeypatch.setenv("ECOMEVO_TOOL_MAX_INFLIGHT", "not-an-integer")
+
+    executor = ResilientPTCExecutor(Registry(SlowTool()), AllowSandbox())
+
+    assert executor.timeout_s == 25.0
+    assert executor.max_inflight == 16

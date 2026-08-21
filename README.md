@@ -59,10 +59,10 @@ flowchart TB
 | Provider | 支持本地演示与可配置外部 Provider | 多模态能力取决于实际 Provider 能力 |
 | Action | proposed、approved、simulated、executed、uncertain、failed 分开表达；状态与 `action.updated` 原子落库 | 本地演示不能冒充真实业务执行 |
 | Authority | 高影响动作必须经过人工确认 | 模型能力不会自动扩大业务权限 |
-| Durable execution | 消息、accepted event、不可变资料快照和 job 原子落库；终态与 turn lease 释放原子提交 | BackgroundTasks 只做低延迟触发，不是任务事实源 |
+| Durable execution | 消息、accepted event、不可变资料快照和 job 原子落库；进度事件按 job owner fencing；终态与 turn lease 释放原子提交 | 丢失 lease 的旧 worker 会取消分析，不能继续写进度或释放接管者的 turn lease；BackgroundTasks 不是任务事实源 |
 | Event sourcing | Runtime event append-only、hash chain、checkpoint、fork；Task event 按 SQLite id 排序 | WebSocket queue 只是 wake hint |
-| Adaptive runtime | Bayesian posterior routing、收益/成本选择、no-op abstention、Verifier 反事实 credit | 学习只影响认知路由，不改变业务证据和权限 |
-| Recovery | Verifier 驱动 stop / replan / rollback，耐久 worker 可恢复失败任务 | 资料范围变更在存储事务内检查 active work，不能与分析快照形成竞态 |
+| Adaptive runtime | Bayesian posterior routing、收益/成本选择、no-op abstention、Verifier 反事实 credit；多 Runtime 策略更新使用单事务 read/derive/write | 学习只影响认知路由，不改变业务证据和权限 |
+| Recovery | Verifier 驱动 stop / replan / rollback；耐久 worker 可 reclaim，并在续租失败或 ownership handoff 时停止旧分析 | 资料范围变更在存储事务内检查 active work，不能与分析快照形成竞态 |
 | Harness evolution | Prompt / Tool / Memory / Delegation 认知组件走 shadow、cohort posterior、promote / rollback | Sandbox、Verifier、RBAC 与动作权限不可被演进器修改 |
 
 ### 02 · Runtime 执行链
@@ -81,7 +81,7 @@ flowchart TB
     E --> S[10. Sandbox Replay + Regression Gate]
 ```
 
-PTC（Parallel Tool Composition）只并行组合经过 Sandbox 允许的读工具；会改变商品、商家、订单或风险状态的动作不会进入自主 PTC，而是形成 `BusinessAction` 并等待 approver 明确确认。
+PTC（Parallel Tool Composition）只并行组合经过 Sandbox 允许的读工具；共享 semaphore 限制 Runtime fan-out，单次工具 deadline 从排队前开始并覆盖“背压等待 + 实际执行”，因此过载不会为每个排队调用重新获得一份超时预算。会改变商品、商家、订单或风险状态的动作不会进入自主 PTC，而是形成 `BusinessAction` 并等待 approver 明确确认。
 
 ### 03 · Plugin Runtime
 
@@ -287,16 +287,16 @@ docker run --rm \
 |---|---|
 | Python environment | Python 3.11 + editable install |
 | System media dependency | ffmpeg |
-| Python regression | `pytest -q`，234 项；每个 pytest 进程使用隔离的 durable data root |
+| Python regression | `pytest -q`，242 项；每个 pytest 进程使用隔离的 durable data root |
 | Python compile | `python -m compileall -q ecomevo` |
 | Frontend syntax | 对 `frontend/*.js` 全量执行 `node --check` |
 | Product smoke | `python scripts/e2e_smoke.py`，使用临时 durable root，不读写操作者默认数据 |
 | Gold Set | `python scripts/eval_gate.py`，fresh + persisted replay |
-| Concurrency | `python scripts/pressure_gate.py`，1 / 8 / 32 / 64 / 120 / 240 并发安全门禁 |
+| Concurrency | `python scripts/pressure_gate.py`，1 / 8 / 32 / 64 / 120 / 240 Runtime；另含 64-call PTC deadline 与 8-worker adaptive-policy contention 探针 |
 | Browser E2E | 真实 Uvicorn + Chromium，桌面、移动、WebSocket、任务恢复与截图尺寸硬校验 |
 | Packaging | setuptools 显式限制 Python package discovery |
 
-自适应路由、反事实 credit、Harness cohort posterior、耐久 job、资料生命周期、动作状态真实性、租户/RBAC、MCP 不确定结果与任务租约并发边界都进入回归覆盖。
+自适应路由、反事实 credit、Harness cohort posterior、耐久 job ownership handoff、资料生命周期、动作状态真实性、租户/RBAC、MCP 不确定结果、PTC 背压总期限与任务租约并发边界都进入回归覆盖。
 
 本地完整门禁：
 

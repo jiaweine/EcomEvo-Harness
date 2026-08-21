@@ -28,16 +28,25 @@ EcomEvo 的性能不是单一 QPS，而是同时关注：
 1 / 8 / 32 / 64 / 120 / 240 concurrent tasks
 ```
 
-2026-08-21 当前融合工作树在本地容器的一次可复现运行：
+2026-08-21 当前修复工作树在本地容器的一次可复现运行：
 
 | 并发 | Throughput | p50 | p95 | p99 | Safety failures |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 15.605 tasks/s | 0.0640 s | 0.0640 s | 0.0640 s | 0 |
-| 8 | 27.953 tasks/s | 0.2169 s | 0.2326 s | 0.2326 s | 0 |
-| 32 | 27.643 tasks/s | 0.8551 s | 0.8885 s | 0.8942 s | 0 |
-| 64 | 25.535 tasks/s | 1.8733 s | 2.0178 s | 2.0245 s | 0 |
-| 120 | 29.891 tasks/s | 2.8340 s | 2.8697 s | 2.8997 s | 0 |
-| 240 | 31.160 tasks/s | 5.6841 s | 6.1374 s | 6.1649 s | 0 |
+| 1 | 15.033 tasks/s | 0.0664 s | 0.0664 s | 0.0664 s | 0 |
+| 8 | 22.231 tasks/s | 0.2896 s | 0.2999 s | 0.2999 s | 0 |
+| 32 | 26.863 tasks/s | 0.9102 s | 0.9582 s | 0.9712 s | 0 |
+| 64 | 28.294 tasks/s | 1.6657 s | 1.7406 s | 1.7540 s | 0 |
+| 120 | 28.424 tasks/s | 3.1558 s | 3.3747 s | 3.4051 s | 0 |
+| 240 | 28.645 tasks/s | 6.1133 s | 6.6074 s | 6.6597 s | 0 |
+
+同一命令还运行两类定向故障压力探针：
+
+| Probe | Load | Current-head result | Failures |
+|---|---|---:|---:|
+| PTC total deadline | 64 calls、2 slots、50 ms | wall 52.1 ms、p99 50.882 ms、peak active 2 | 0 |
+| Adaptive policy contention | 8 独立 Runtime/library instances | 8 updates、exploration 0.800000 | 0 |
+
+PTC 探针要求 deadline 同时覆盖 semaphore wait 与工具执行；策略探针故意让旧式 read/compute/write 路径读取同一版本，用于阻止跨实例 lost update 回归。
 
 每个 level 硬检查：
 
@@ -161,6 +170,9 @@ request
 - durable worker poll 默认 1s，代码 clamp 0.25..10s；
 - job lease 默认 120s，代码 clamp 60..600s；
 - job crash 后可被其他 worker reclaim；
+- progress event 在同一 SQLite 事务验证 job owner；
+- ownership handoff、续租拒绝或续租存储异常会取消旧 worker 的 analyzer；
+- 旧 worker 不再在 `finally` 释放共享 token，terminal transaction 才能释放匹配 turn lease；
 - asset SHA snapshot 防止 resume 时证据被静默替换；
 - active job/turn 阻止当前 evidence snapshot 被新上传资料改变。
 
@@ -269,6 +281,8 @@ SQLite 仍是单 writer。如果目标部署需要多节点、高频并发 learn
 ### pressure
 
 - 1 / 8 / 32 / 64 / 120 / 240 current-head runtime；
+- 64-call / 2-slot PTC overload total-deadline probe；
+- 8-worker adaptive policy lost-update contention probe；
 - correctness / budget / authority invariants；
 - 输出 throughput + p50/p95/p99；
 - 不用 hosted-runner QPS 阈值制造 flaky gate。
@@ -310,6 +324,6 @@ SQLite 仍是单 writer。如果目标部署需要多节点、高频并发 learn
 1. adaptive posterior 的小矩阵数学不是主要 CPU 瓶颈；
 2. writer transaction amplification 曾是明确瓶颈，batching/lock shortening 已改善；
 3. current-head 1→240 runtime gate 已自动化并成功运行；
-4. 240 并发在本轮记录中为 31.160 tasks/s、p95 6.1374s、0 safety failures；
+4. 240 并发在本轮记录中为 28.645 tasks/s、p95 6.6074s、0 safety failures；
 5. 真 Chromium 交互 E2E 已成为持续 gate；
 6. 真实生产性能仍必须在真实 provider/MCP/media/DB 环境重新测量。
