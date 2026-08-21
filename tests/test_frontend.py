@@ -19,6 +19,8 @@ def test_mobile_navigation_and_task_detail_drawers_exist():
 def test_command_palette_and_keyboard_shortcuts_are_present():
     assert 'id="commandModal"' in HTML and 'id="commandInput"' in HTML
     assert "e.key.toLowerCase()==='k'" in JS and "e.key.toLowerCase()==='n'" in JS
+    assert "$('productTour')?.hidden===false" in JS
+    assert "$('providerModal')?.hidden===false" in JS
 
 
 def test_action_ui_handles_inflight_and_uncertain_state():

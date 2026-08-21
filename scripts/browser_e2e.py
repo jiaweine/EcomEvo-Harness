@@ -69,6 +69,17 @@ def run() -> None:
             expect(page.locator("#conversationTitle")).to_be_visible()
             expect(page.locator("#messageInput")).to_be_visible()
             expect(page.locator("#sceneEyebrow")).to_have_text("商品治理")
+
+            # A fresh browser gets the first-run tour. It must be styled as the
+            # active modal, block nested command palettes, and release body state.
+            expect(page.locator("#productTour")).to_be_visible()
+            expect(page.locator("#tourCloseBtn")).to_be_focused()
+            capture(page, "product-tour.png")
+            page.keyboard.press("Control+K")
+            expect(page.locator("#commandModal")).to_be_hidden()
+            page.keyboard.press("Escape")
+            expect(page.locator("#productTour")).to_be_hidden()
+            expect(page.locator("body")).not_to_have_class(re.compile(r"\btour-open\b"))
             capture(page, "product-overview.png")
 
             page.locator("#providerBtn").click()

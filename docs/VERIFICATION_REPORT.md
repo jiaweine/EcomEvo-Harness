@@ -12,7 +12,7 @@
 - 当前工作树 1 / 8 / 32 / 64 / 120 / 240 并发 runtime pressure gate，所有 safety failures 为空。
 - 同一隔离 durable root 连续执行两轮完整 pytest 后，`product.db` 与 `runtime.db` 的 `PRAGMA quick_check` 均为 `ok`。
 
-Draft PR #3 的旧 head 曾在 GitHub Actions 通过 regression、pressure 与真实 Chromium E2E；它是历史实现来源的证据，不自动证明本次与最新 `main` 融合后的工作树。当前环境成功安装 Playwright Python 包，但 Chromium 下载返回截断的 0 MiB artifact，因此本轮没有伪造浏览器通过结论。合并前仍必须让当前提交在 GitHub Actions 重新跑完 browser-e2e。
+Draft PR #3 的旧 head 曾在 GitHub Actions 通过 regression、pressure 与真实 Chromium E2E；它是历史实现来源的证据，不自动证明后续融合提交。一次 current-head browser-e2e 也确实发现了视觉层融合时漏载 `intro.css`、导致屏幕外导览抢占 `Esc` 的缺陷。该失败记录不能被历史绿灯覆盖；合并只接受当前 head 的完整 GitHub Actions 结果。
 
 这些结论都**不等同于真实企业生产环境已经验收**；真实外部 provider/MCP、企业 IdP/反向代理、Safari/Edge 实机和真实大媒体数据仍需要部署环境验证。
 
@@ -143,7 +143,7 @@ Gold Set promotion gate 每次 CI 对同一业务集跑两遍：
 - 测试期间无 page error / console error。
 - 桌面截图必须为 3840×2400 PNG，移动截图必须为 780×1688 PNG。
 
-Draft PR #3 的历史 browser job 曾完整通过上述路径，并修复过移动端 class 断言。本次融合工作树尚未取得新的 Chromium 通过记录：本地浏览器 artifact 下载失败，必须由当前提交的 GitHub Actions 补齐。
+Draft PR #3 的历史 browser job 曾完整通过上述路径，并修复过移动端 class 断言。后续每个候选 head 都必须重新通过同一 Chromium job；失败 trace、截图与日志用于定位问题，不能作为通过证据，也不能沿用其他 commit 的绿灯。
 
 即使当前提交的 Chromium CI 通过，也**不会证明真实 Safari 或 Microsoft Edge 实机路径**。
 
@@ -203,7 +203,7 @@ Draft PR #3 的历史 browser job 曾完整通过上述路径，并修复过移�
 - 本地 Gold Set fresh / persisted replay gate 通过；
 - durable execution、资料生命周期、crash-reclaim、tenant/RBAC 与 approver audit 已落地并进入回归；
 - 当前工作树本地 1→240 runtime pressure gate 通过；
-- 当前提交的 GitHub CI 与 Chromium E2E 仍待远端重跑，不能沿用旧 head 的绿灯。
+- 合并门禁要求当前 head 的 GitHub CI 与 Chromium E2E 全绿，不能沿用旧 head 的绿灯。
 
 但在真实 provider/MCP、企业 SSO、Safari/Edge、生产多节点拓扑未验证之前，仍不应把它表述为“所有生产环境均已验收”或“零缺陷生产就绪”。
 

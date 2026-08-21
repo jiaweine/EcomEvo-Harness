@@ -49,6 +49,8 @@ def test_asset_lifecycle_has_exclude_restore_and_guarded_delete():
 
 def test_product_tour_remains_accessible():
     assert 'aria-describedby="productTourDescription"' in INDEX
+    assert 'href="/assets/intro.css"' in INDEX
+    assert INDEX.index('/assets/intro.css') < INDEX.index('/assets/visual.css')
     assert 'stopImmediatePropagation' in INTRO_JS
     assert 'focusables()' in INTRO_JS
 
