@@ -37,10 +37,11 @@
 独立 release gates 还会验证：
 
 1. `pip-audit` Runtime 依赖与 Bandit medium/high 安全扫描；
-2. wheel 干净安装和真实服务启动，防止 editable-only 假绿；
-3. Docker 非 root 用户、只读根文件系统、独立数据挂载和最小 health probe；
-4. CodeQL Python + JavaScript PR/main/weekly 扫描；
-5. Dependabot 每周检查 pip、GitHub Actions 与 Docker base image 更新。
+2. Python 3.11 最低版本与 Python 3.14 最新生产版本的完整 pytest / smoke 双端回归；
+3. wheel 干净安装和真实服务启动，防止 editable-only 假绿；
+4. Docker 非 root 用户、只读根文件系统、独立数据挂载和最小 health probe；
+5. CodeQL Python + JavaScript PR/main/weekly 扫描；
+6. Dependabot 每周检查 pip、GitHub Actions 与 Docker base image 更新。
 
 最新 Gold Set 结果：`ok=true`，9 个 case、2 个 phase、0 failures。完整 case 覆盖五个产品域，并同时包含 evidence-complete 与 evidence-incomplete 场景。
 

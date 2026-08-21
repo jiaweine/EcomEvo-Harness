@@ -1,6 +1,6 @@
 # Deployment notes
 
-- Python 3.11+
+- Python 3.11+；CI 对最低支持版本 3.11 和当前生产镜像版本 3.14 分别执行完整回归。
 - 需要 ffmpeg/ffprobe 处理视频；Dockerfile 已安装 ffmpeg。
 - `ECOMEVO_DATA` 应指向持久卷。
 - wheel 已包含 Web Workbench 静态资源；CI 会在干净环境安装 wheel 后实际启动服务。
