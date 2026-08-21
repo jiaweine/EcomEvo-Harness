@@ -1,0 +1,33 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 2 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+concurrency:
+  group: ecomevo-codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Python and JavaScript analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3
+        with:
+          languages: python,javascript-typescript
+      - name: Analyze
+        uses: github/codeql-action/analyze@f3712979fa5f215279b101dd0a2e3bdfb4353324 # v3

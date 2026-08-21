@@ -5,11 +5,14 @@
 截至 2026-08-21，本修复分支已在本地当前工作树完成以下验证：
 
 - `python -m compileall -q ecomevo`；
-- 完整 `pytest -q`，243 项；
+- 完整 `pytest -q`，245 项；
 - 9 个业务 Gold Set × fresh / persisted replay 两阶段 promotion gate；
 - 所有 `frontend/*.js` 的 `node --check`；
 - 产品 API smoke；
 - 当前工作树 1 / 8 / 32 / 64 / 120 / 240 并发 runtime pressure gate，以及 PTC total-deadline / adaptive-policy contention 探针，所有 failures 为空。
+- Pillow 12.3.0 下完成上传/媒体回归；`pip-audit` 解析 24 个 Runtime 依赖，已知漏洞为 0；Bandit medium/high 结果为空。
+- 构建正式 wheel，在干净虚拟环境安装后实际启动 CLI，并验证 `/healthz`、首页和 `app.js`；wheel 内静态 Workbench 资源完整。
+- GitHub Actions workflow 通过 actionlint，第三方 Actions 均固定到完整 commit SHA。
 - 同一隔离 durable root 连续执行两轮完整 pytest 后，`product.db` 与 `runtime.db` 的 `PRAGMA quick_check` 均为 `ok`。
 
 主线基线 PR #3 曾在 GitHub Actions 通过 regression、pressure 与真实 Chromium E2E；它不自动证明本轮后续修复。此前 current-head browser-e2e 也确实发现过视觉层融合时漏载 `intro.css`、导致屏幕外导览抢占 `Esc` 的缺陷。历史绿灯不能覆盖新提交；合并只接受当前 head 的完整 GitHub Actions 结果。
@@ -30,6 +33,14 @@
 4. 恶意 controller 不能扩大工具集合、绕过证据门槛、伪造完成状态或直接执行高影响动作；
 5. durable job、跨进程 lease、WebSocket durable catch-up、并发上传配额、MCP uncertain 语义、tenant/RBAC、审批 actor audit 等长期回归；
 6. 所有生产 JS 语法与基础 DOM/CSS 静态结构。
+
+独立 release gates 还会验证：
+
+1. `pip-audit` Runtime 依赖与 Bandit medium/high 安全扫描；
+2. wheel 干净安装和真实服务启动，防止 editable-only 假绿；
+3. Docker 非 root 用户、只读根文件系统、独立数据挂载和最小 health probe；
+4. CodeQL Python + JavaScript PR/main/weekly 扫描；
+5. Dependabot 每周检查 pip、GitHub Actions 与 Docker base image 更新。
 
 最新 Gold Set 结果：`ok=true`，9 个 case、2 个 phase、0 failures。完整 case 覆盖五个产品域，并同时包含 evidence-complete 与 evidence-incomplete 场景。
 

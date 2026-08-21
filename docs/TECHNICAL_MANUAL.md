@@ -543,7 +543,7 @@ app.css
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -e .
 cp .env.example .env
 uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 ```
@@ -555,22 +555,20 @@ docker build -t ecomevo .
 docker run --rm -p 8000:8000 --env-file .env -v ecomevo-data:/app/outputs ecomevo
 ```
 
+镜像以 UID/GID `10001:10001` 非 root 运行，`/healthz` 只返回最小存活状态。详细运行信息继续由受身份保护的 `/api/health` 提供。wheel 会携带 `frontend` 静态资源，默认数据目录从当前工作目录解析；部署时仍应显式设置 `ECOMEVO_DATA`。
+
 ---
 
 ## 22. Production gaps
 
-当前仍需继续完成：
+仓库内已经具备回归、Gold Set、240 并发压力、durable cross-process lease、tenant/RBAC、真实 Chromium、wheel smoke、依赖审计与容器启动门禁。仍需目标环境完成：
 
-- full regression on latest adaptive head；
-- current-head concurrency pressure rerun；
-- business gold set；
-- CI eval gate；
-- off-policy / replay policy promotion；
-- durable cross-process execution；
-- tenant / SSO / RBAC / approver identity；
-- distributed routing / skill state；
-- real browser visual regression；
-- production MCP idempotency / credential isolation。
+- 具体企业 IdP / SSO / Gateway 集成与角色映射；
+- 真实 Provider / MCP 凭证、区域网络、限流、schema drift 与数据合规；
+- 下游业务幂等、结果查询、权限复核和 `uncertain` 人工处置流程；
+- 多节点集中式数据库、队列、备份恢复与灾难演练；
+- Safari、Edge、企业终端和真实大媒体样本验证；
+- 使用真实业务 Gold Set 持续校准 Adaptive Routing 与 Harness promotion。
 
 这些问题属于系统工程和验证问题，不应该依赖“换更强模型”来掩盖。
 

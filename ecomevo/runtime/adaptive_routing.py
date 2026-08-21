@@ -196,8 +196,9 @@ class AdaptiveRoutingStore:
         if not tools:
             return {}
         placeholders = ",".join("?" for _ in tools)
+        # Only the number of bound placeholders is formatted into the statement.
         rows = c.execute(
-            f"SELECT domain,tool,alpha,beta,uses FROM routing_tool_stats WHERE domain IN (?,?) AND tool IN ({placeholders})",
+            f"SELECT domain,tool,alpha,beta,uses FROM routing_tool_stats WHERE domain IN (?,?) AND tool IN ({placeholders})",  # nosec
             ["*", domain, *tools],
         ).fetchall()
         indexed = {(str(row["domain"]), str(row["tool"])): row for row in rows}
@@ -371,8 +372,9 @@ class AdaptiveRoutingStore:
         if not tools:
             return
         placeholders = ",".join("?" for _ in tools)
+        # Only the number of bound placeholders is formatted into the statement.
         existing_rows = c.execute(
-            f"SELECT * FROM routing_tool_stats WHERE domain IN (?,?) AND tool IN ({placeholders})",
+            f"SELECT * FROM routing_tool_stats WHERE domain IN (?,?) AND tool IN ({placeholders})",  # nosec
             ["*", domain, *tools],
         ).fetchall()
         state = {(str(row["domain"]), str(row["tool"])): dict(row) for row in existing_rows}

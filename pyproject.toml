@@ -6,7 +6,17 @@ build-backend = "setuptools.build_meta"
 name = "ecomevo-harness"
 version = "1.0.0"
 description = "Autonomous and self-evolving e-commerce agent runtime with dynamic task graphs, Bayesian skill evolution, multimodal evidence, deterministic authority and controlled business execution."
+readme = "README.md"
 requires-python = ">=3.11"
+keywords = ["agent-runtime", "event-sourcing", "ecommerce", "mcp", "adaptive-planning"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: FastAPI",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.30",
@@ -14,7 +24,7 @@ dependencies = [
   "pydantic>=2.7",
   "httpx>=0.27",
   "python-multipart>=0.0.9",
-  "pillow>=10,<12",
+  "pillow>=12.3,<13",
   "pypdf>=5",
   "python-docx>=1.1",
   "openpyxl>=3.1"
@@ -23,13 +33,22 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx2>=2,<3"]
 e2e = ["playwright>=1.50,<2"]
+security = ["pip-audit==2.10.1", "bandit==1.9.4"]
+
+[project.urls]
+Repository = "https://github.com/jiaweine/EcomEvo-Harness"
+Issues = "https://github.com/jiaweine/EcomEvo-Harness/issues"
+Documentation = "https://github.com/jiaweine/EcomEvo-Harness#documentation"
 
 [project.scripts]
 ecomevo = "ecomevo.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["ecomevo*"]
-exclude = ["tests*", "frontend*", "outputs*", "docs*", "scripts*"]
+include = ["ecomevo*", "frontend"]
+exclude = ["tests*", "outputs*", "docs*", "scripts*"]
+
+[tool.setuptools.package-data]
+frontend = ["*.html", "*.css", "*.js"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

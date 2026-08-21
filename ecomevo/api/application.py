@@ -9,6 +9,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,9 +35,8 @@ from .upload_security import (
     validate_uploaded_file as _validate_uploaded_file,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = Path(os.environ.get("ECOMEVO_DATA", ROOT / "outputs" / "runtime"))
-FRONTEND = ROOT / "frontend"
+DATA_DIR = Path(os.environ.get("ECOMEVO_DATA", Path.cwd() / "outputs" / "runtime"))
+FRONTEND = Path(str(files("frontend")))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 store = ConversationStore(DATA_DIR / "product.db", DATA_DIR / "assets")
 providers = ProviderRegistry()
@@ -229,6 +229,12 @@ def product_info():
         "accepted": ["图片", "视频", "音频", "PDF", "Word", "Excel", "CSV/JSON", "日志与文本"],
         "side_effect_policy": "高影响操作必须人工确认",
     }
+
+
+@app.get("/healthz", include_in_schema=False)
+def liveness():
+    """Minimal unauthenticated liveness probe for containers and orchestrators."""
+    return {"status": "ok"}
 
 
 @app.get("/api/health")

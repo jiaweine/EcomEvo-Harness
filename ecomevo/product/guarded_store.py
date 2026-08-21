@@ -118,8 +118,9 @@ class ConversationStore(BaseConversationStore):
                 return None
             if snapshot and snapshot[0] == cid:
                 scope_sql = "" if snapshot[2] else " AND active=1"
+                # The suffix is selected from the two internal constants above; values remain bound.
                 rows = c.execute(
-                    f"SELECT id,size,created_at,active FROM assets WHERE conversation_id=?{scope_sql}",
+                    f"SELECT id,size,created_at,active FROM assets WHERE conversation_id=?{scope_sql}",  # nosec
                     (cid,),
                 ).fetchall()
                 current = self._revision([dict(row) for row in rows])

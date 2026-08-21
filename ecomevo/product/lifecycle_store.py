@@ -250,12 +250,13 @@ def _list_actions(self, cid, status=None, terminal_limit: int = 100):
         return [self._decode_action(row) for row in rows]
     terminal = ','.join('?' for _ in _TERMINAL_ACTIONS)
     with self._conn() as db:
+        # Only the fixed number of bound placeholders is formatted into these statements.
         active = db.execute(
-            f'SELECT * FROM actions WHERE conversation_id=? AND status NOT IN ({terminal}) ORDER BY created_at DESC',
+            f'SELECT * FROM actions WHERE conversation_id=? AND status NOT IN ({terminal}) ORDER BY created_at DESC',  # nosec
             (cid, *_TERMINAL_ACTIONS),
         ).fetchall()
         recent = db.execute(
-            f'SELECT * FROM actions WHERE conversation_id=? AND status IN ({terminal}) ORDER BY created_at DESC LIMIT ?',
+            f'SELECT * FROM actions WHERE conversation_id=? AND status IN ({terminal}) ORDER BY created_at DESC LIMIT ?',  # nosec
             (cid, *_TERMINAL_ACTIONS, max(1, int(terminal_limit))),
         ).fetchall()
     rows = sorted(
