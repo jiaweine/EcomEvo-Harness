@@ -5,173 +5,273 @@
 [![EcomEvo CI](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml/badge.svg)](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/codeql.yml/badge.svg)](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/codeql.yml)
 
-### Evidence-Driven Commerce Decision Workbench
+### Self-Evolving Commerce Decision Agent Harness Runtime
 
-**不是把模型接进聊天框，而是把电商业务目标、资料、证据、判断和动作组织成一条可复核、可确认、可恢复的持续任务。**
+**让 Agent 在证据、权限与回滚边界内自主完成复杂电商决策，并从失败中安全演进。**
 
 `PLUGIN RUNTIME` · `EVENT SOURCING` · `ADAPTIVE PLANNER` · `RECURSIVE AGENT` · `MCP / PTC` · `VERIFIER` · `HARNESS EVOLUTION`
-
-商品、商家、订单、内容与多模态资料进入同一个任务空间；系统持续形成证据和判断，高影响业务动作始终经过明确确认并保留执行结果。
 
 </div>
 
 ![EcomEvo 商业决策工作台真实浏览器截图](docs/images/product-overview.png)
 
-<sub>真实产品截图：由仓库内 `scripts/browser_e2e.py` 启动 FastAPI + Chromium 后自动采集；不是概念稿或手绘界面。</sub>
+<sub>仓库真实产品截图，由 FastAPI 与 Chromium Browser E2E 自动采集。不是概念稿、设计稿或第三方产品界面。</sub>
 
 ---
 
-## Product Thesis · 从问 AI 变成完成一次商业判断
+# Product Thesis · Commerce Decisions Need a Runtime
 
 **目标解析 → Belief State → 自主规划 → 递归子 Agent → 工具执行 → 验证回滚 → Harness 演进**
 
-| CONTROL | TRUST | CONTEXT | EXECUTION |
+| CONTROL | TRUST | LIFECYCLE | EVOLUTION |
 |---|---|---|---|
-| **权限可控**：退款、下架、审核、风险升级等高影响动作进入明确确认边界 | **结论可核验**：关键判断回到资料、结构化数据、工具结果与可验证状态 | **任务可持续**：消息、资料、证据、进度和动作属于同一个持续任务 | **执行可区分**：本地演示、真实执行、结果不确定和明确失败保持不同状态 |
+| **权限可控**<br>退款、下架、审核、风险升级进入人工确认边界 | **结论可核验**<br>判断回到资料、工具结果与可验证状态 | **任务可持续**<br>目标、证据、动作和事件属于同一个耐久任务 | **失败可演进**<br>失败轨迹生成候选 patch，经回放与回归门禁后晋级 |
 
-EcomEvo 把模型能力与商业决策工作台能力分开。模型可以替换；**任务状态、证据范围、执行权限、审计结果和恢复路径**属于产品 Runtime。
+EcomEvo 不是把模型接入聊天框，而是把模型放入一个模型无关的 Agent Harness Runtime。Model、Tool、Skill、Memory、Sandbox 与 Verifier 都可以替换；任务事实、权限约束、事件历史和恢复路径由 Runtime 持有。
 
-它处理的不是一次回答，而是一次完整商业判断。
+模型负责推理，Harness 负责让推理可执行、可验证、可恢复、可演进。
 
 ---
 
-# System Architecture · Evidence Runtime × Controlled Action
-
-EcomEvo 以耐久任务和事件流组织产品状态。Web Workbench 负责交互，FastAPI 负责身份、租户和产品 API，Conversation Store 原子持久化消息、稳定资料快照与 durable job；Agent Harness Runtime 再围绕 Goal、Belief State、Task Graph 和 Verifier 推进自主执行。Model、Planner、Tool、Skill、Memory、Sandbox、Verifier 与 Agent Coordinator 都通过可注入实例注册到 Plugin Runtime。
+# Agent Architecture · Frozen Kernel × Evolvable Harness
 
 ```mermaid
 flowchart TB
-    U[Operator Goal] --> API[Workbench + FastAPI]
-    API --> JOB[Durable Job + Asset Snapshot]
-    JOB --> STATE[Goal + Belief + Task Graph]
+    GOAL[Commerce Goal] --> STATE[Goal · Belief · Task State]
     STATE --> PLAN[Adaptive Planner]
-    PLAN --> ACT[Recursive Agents + MCP / PTC]
-    ACT --> VERIFY[Verifier + Checkpoint]
-    VERIFY -->|replan / rollback| PLAN
-    VERIFY -->|verified| GATE[Human Action Gate]
-    VERIFY --> EVOLVE[Failure / Harness Evolution]
-    EVOLVE -->|shadow + regression| PLAN
-    GATE --> AUDIT[Event-Sourced Audit]
+    PLAN --> HARNESS[Recursive Harness]
+
+    subgraph EVOLVE[Evolvable Harness]
+        PROMPT[Prompt]
+        TOOL[Tool Routing]
+        MEMORY[Memory]
+        DELEGATE[Delegation]
+    end
+
+    subgraph EXEC[Bounded Execution]
+        AGENT[Sub-Agent]
+        PTC[MCP · PTC]
+        CHECK[Verifier]
+    end
+
+    subgraph KERNEL[Frozen Safety Kernel]
+        REGISTRY[Registry]
+        SANDBOX[Sandbox]
+        RBAC[RBAC · Approval]
+        ACTION[Business Action]
+    end
+
+    HARNESS --> EVOLVE
+    EVOLVE --> EXEC
+    EXEC --> KERNEL
+    CHECK -->|replan · rollback| PLAN
+    CHECK -->|failure trace| EVOLVE
 ```
 
-### 01 · 产品边界
+## 01 · What Can Evolve
 
-| Surface | Main 行为 | 边界 |
+| Coordinate | Runtime role | Evolution boundary |
 |---|---|---|
-| Task state | 持久化 conversation、历史消息、资料、事件与动作 | 对话是交互方式，不是唯一状态 |
-| Evidence | 图片、视频、音频、PDF、Office、表格、JSON、日志与文本进入同一任务 | 关键结论需要能回到可检查来源 |
-| Asset lifecycle | 资料可参与后续分析、排除、重新启用 | 已进入历史证据链的资料不能直接物理删除 |
-| Provider | 支持本地演示与可配置外部 Provider | 多模态能力取决于实际 Provider 能力 |
-| Action | proposed、approved、simulated、executed、uncertain、failed 分开表达；状态与 `action.updated` 原子落库 | 本地演示不能冒充真实业务执行 |
-| Authority | 高影响动作必须经过人工确认 | 模型能力不会自动扩大业务权限 |
-| Durable execution | 消息、accepted event、不可变资料快照和 job 原子落库；进度事件按 job owner fencing；终态与 turn lease 释放原子提交 | 丢失 lease 的旧 worker 会取消分析，不能继续写进度或释放接管者的 turn lease；BackgroundTasks 不是任务事实源 |
-| Event sourcing | Runtime event append-only、hash chain、checkpoint、fork；Task event 按 SQLite id 排序 | WebSocket queue 只是 wake hint |
-| Adaptive runtime | Bayesian posterior routing、收益/成本选择、no-op abstention、Verifier 反事实 credit；多 Runtime 策略更新使用单事务 read/derive/write | 学习只影响认知路由，不改变业务证据和权限 |
-| Recovery | Verifier 驱动 stop / replan / rollback；checkpoint 绑定 event hash 与 state hash，完整性校验通过后才恢复 Belief State；耐久 worker 可 reclaim | 资料范围变更在存储事务内检查 active work，不能与分析快照形成竞态 |
-| Harness evolution | Prompt / Tool / Memory / Delegation 候选先过无副作用 Sandbox Replay 与逐案例 Regression Gate，再进入 shadow cohort posterior、promote / rollback | Sandbox、Verifier、RBAC 与动作权限不可被演进器修改 |
+| Prompt | 任务解释、计划提示与角色约束 | 只修改认知提示，不改变权限 |
+| Tool | Skill 与只读工具的选择策略 | 只能从 Registry 与 Sandbox 允许集合中选择 |
+| Memory | 失败模式、业务经验与检索上下文 | 不覆盖事件事实与原始证据 |
+| Delegation | 子任务拆分、深度与 specialist 路由 | 受递归深度、预算、并发和 deadline 限制 |
 
-### 02 · Runtime 执行链
+## 02 · What Stays Frozen
+
+| Frozen component | Invariant |
+|---|---|
+| Registry | 插件类型、实例和允许能力明确注册 |
+| Sandbox | 工具副作用与执行边界不可被候选 patch 绕过 |
+| Verifier | 证据、约束、输出与副作用独立校验 |
+| RBAC / Approval | 高影响动作始终需要具备权限的人确认 |
+| BusinessAction | proposed、approved、simulated、executed、uncertain、failed 保持语义分离 |
+| Event Store | append-only hash chain、checkpoint 与 fork 构成任务事实源 |
+
+## 03 · Event-Sourced Execution
+
+```mermaid
+sequenceDiagram
+    participant U as Operator
+    participant R as Runtime
+    participant P as Planner
+    participant A as Recursive Agent
+    participant V as Verifier
+
+    U->>R: Goal + Assets
+    R->>R: Append Goal and Belief events
+    R->>P: State + budget + legal actions
+    P->>A: Skill · Tool · Sub-Agent · Stop
+    A->>A: Bounded MCP and PTC execution
+    A->>V: Output + evidence + side effects
+    V-->>R: pass · replan · rollback
+    R-->>U: Verified result or approval request
+```
+
+PTC 只并行组合 Sandbox 允许的读工具。共享 semaphore 限制 Runtime fan-out，单次工具 deadline 从排队前开始并覆盖背压等待与实际执行。会改变商品、商家、订单或风险状态的动作不进入自主 PTC，而是形成 `BusinessAction` 等待 approver 确认。
+
+## 04 · Failure-Driven Evolution
 
 ```mermaid
 flowchart TB
-    G[1. Parse Goal] --> B[2. Build Belief State]
-    B --> P[3. Rank Skill / Tool / Sub-Agent / Stop]
-    P --> R[4. Recursive Specialist Review]
-    R --> T[5. Bounded PTC Tool Execution]
-    T --> V[6. Verify Evidence / Constraint / Side Effect]
-    V -->|incomplete| C[7. Checkpoint Rollback + Replan]
-    C --> P
-    V -->|passed| O[8. Persist Outcome]
-    V --> E[9. Generate Evolution Candidate]
-    E --> S[10. Sandbox Replay + Regression Gate]
+    FAIL[Failure Trace] --> PATCH[Prompt · Tool · Memory · Delegation Patch]
+    PATCH --> REPLAY[Sandbox Replay]
+    REPLAY --> REGRESS[Per-Case Regression Gate]
+    REGRESS --> SHADOW[Shadow Cohort]
+    SHADOW --> DECIDE{Sequential Decision}
+    DECIDE -->|promote| ACTIVE[Active Harness]
+    DECIDE -->|reject| ROLLBACK[Reject and Rollback]
 ```
 
-PTC（Parallel Tool Composition）只并行组合经过 Sandbox 允许的读工具；共享 semaphore 限制 Runtime fan-out，单次工具 deadline 从排队前开始并覆盖“背压等待 + 实际执行”，因此过载不会为每个排队调用重新获得一份超时预算。会改变商品、商家、订单或风险状态的动作不会进入自主 PTC，而是形成 `BusinessAction` 并等待 approver 明确确认。
-
-### 03 · Plugin Runtime
-
-| Plugin kind | 默认实现 | 替换方式 |
-|---|---|---|
-| Model | `ProviderRegistry` / OpenAI-compatible / Anthropic / Gemini | `model.gateway` |
-| Planner | `AdaptivePlanner` + EvoGain-APR controller | `planner.adaptive` |
-| Tool | `ToolRegistry` + `ResilientPTCExecutor` + MCP read tools | `tool.registry` / `tool.ptc` |
-| Skill / Memory | `AdaptiveSkillLibrary` + `RuntimeMemory` | `memory.skills` / `memory.runtime` |
-| Agent | `RecursiveCoordinator` + autonomous controller | `agent.recursive` / `agent.autonomy` |
-| Sandbox | `ActionSandbox` | `sandbox.action` |
-| Verifier | `DecisionVerifier` | `verifier.decision` |
-| Evolver | failure-driven skill evolver + Harness coordinate optimizer | `evolver.failure` / `evolver.harness` |
-
-通过 `EcomEvoEngine(..., plugin_overrides={...})` 在启动时注入替代实例；注册表暴露的对象就是执行图使用的实例，不是只用于展示的标签。
-
-### 04 · 资料生命周期
-
-```mermaid
-flowchart LR
-    UPLOAD[Uploaded] --> ACTIVE[Active Evidence]
-    ACTIVE --> EXCLUDE[Excluded from Future Analysis]
-    EXCLUDE --> ACTIVE
-
-    ACTIVE --> REF{Historical Reference}
-    EXCLUDE --> REF
-
-    REF -->|No| DELETE[Permanent Delete]
-    REF -->|Yes| KEEP[Keep Audit History]
-```
-
-资料排除与资料删除是两个不同动作。排除只改变未来分析范围；永久删除只有在资料从未进入历史消息、证据或业务动作时才允许。
+Harness Evolution 采用 block-coordinate 更新，一次只改变一个认知坐标。候选版本先对历史失败轨迹做无副作用回放，再逐案例比较基线，通过后才进入 shadow cohort。在线证据不足时继续观察，后验风险越高，shadow 流量越低；达到晋级或拒绝边界后才提交决策。
 
 ---
 
-## 工作台 · Real Product Surface
+# Real Product · Commerce Decision Workbench
 
-下面全部是当前仓库 Web 产品的真实浏览器截图，来自成功的 Browser E2E 运行；截图流程会校验桌面/移动尺寸、关键交互、WebSocket 同步与浏览器错误。
+下面全部是当前仓库运行产生的真实浏览器截图。产品把目标、资料、证据、计划、恢复状态与待确认动作集中在同一个持续任务空间。
 
-| **01 · 五类业务场景** | **02 · 运行轨迹与恢复状态** |
+| **01 · Five Commerce Scenarios** | **02 · Runtime and Recovery** |
 |---|---|
-| 商品治理、商家审核、售后判责、风险核查、内容审核从真实工作台进入。<br><br>![EcomEvo 五类业务场景真实截图](docs/images/product-scenes.png) | 自主步骤、证据缺口、工具预算、停止原因与补证状态在任务控制面实时呈现。<br><br>![EcomEvo Runtime 真实截图](docs/images/product-runtime.png) |
+| 商品治理、商家审核、售后判责、风险核查、内容审核从统一工作台进入。<br><br>![EcomEvo 五类业务场景真实截图](docs/images/product-scenes.png) | 自主步骤、证据缺口、工具预算、停止原因和补证状态实时呈现。<br><br>![EcomEvo Runtime 真实截图](docs/images/product-runtime.png) |
 
-| **03 · 可追溯证据面板** | **04 · 商业决策工作台** |
+| **03 · Evidence Surface** | **04 · Decision Workspace** |
 |---|---|
-| 规则、资料检索、商家核对与风险信号以独立证据卡展示，不把模型措辞当作证据。<br><br>![EcomEvo 证据面板真实截图](docs/images/product-evidence.png) | 目标、对话、资料、证据、判断和动作集中在同一个持续任务空间。<br><br>![EcomEvo 工作台真实截图](docs/images/product-overview.png) |
+| 规则、资料、商家核对与风险信号形成独立证据卡，不把模型措辞当作证据。<br><br>![EcomEvo 证据面板真实截图](docs/images/product-evidence.png) | 对话、资料、判断、动作和审计轨迹保留在同一个耐久任务中。<br><br>![EcomEvo 工作台真实截图](docs/images/product-overview.png) |
 
-截图来源：[EcomEvo CI #267 / Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32457711643)，对应提交 `90a6dd6`。后续产品 UI 变更应重新运行 `scripts/browser_e2e.py` 并更新这些 PNG，避免 README 与真实产品漂移。
+截图证据来自 [EcomEvo CI #267 Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32457711643)。当前 Runtime 改动由 [EcomEvo CI #268](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32500923467) 与 [CodeQL #10](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32500923273) 验证。
 
 ---
 
-# Product Method · Evidence Before Action
+# Method · Adaptive Planning and Safe Evolution
 
-### 01 · Stateful Task
+## 01 · Legal Action Space Before Learning
 
-一个任务同时拥有目标、消息、资料、证据、处理进度、结论、动作和事件。用户可以持续补资料、追问和修改要求，不需要反复重建背景。
+Planner 先由 Registry、Sandbox、RBAC、预算与任务约束构造合法动作集合，再在集合内学习。不可执行动作不会因模型置信度或历史收益而被选中。
 
-### 02 · Multimodal Evidence
+$$
+\mathcal{A}_{legal}(s)=\mathcal{A}_{registered}\cap\mathcal{A}_{sandbox}\cap\mathcal{A}_{authority}\cap\mathcal{A}_{budget}
+$$
 
-当前产品可以接收图片、视频、音频、PDF、Word、Excel、CSV、JSON、日志和文本。外部 Provider 决定视觉、音频与扫描件理解能力；本地演示能力用于文本与结构化流程体验。
+## 02 · Bayesian Utility Routing
 
-### 03 · Evidence Scope
+EvoGain-APR 用 12 维上下文描述任务状态，对 Skill、Tool、Sub-Agent 与 Stop 维护 Bayesian posterior，并以确定性 UCB 在预期收益、风险和成本之间选择。
 
-资料不是普通附件。每份资料都拥有明确生命周期：
+$$
+a_t=\arg\max_{a\in\mathcal{A}_{legal}}\left(\mu_a(x_t)+\beta\sigma_a(x_t)-\lambda C(a)\right)
+$$
 
-- **Active**：参与后续分析
-- **Excluded**：保留历史，但不再进入未来分析
-- **Deleted**：仅未进入历史证据链时允许永久删除
+当所有候选的净价值不足时，Planner 可以 abstain，而不是为了制造轨迹继续调用工具。
 
-这样可以同时满足任务清理、未来分析范围和历史审计三个目标。
+## 03 · Verifier Difference Credit
 
-### 04 · Decision State
+Verifier 以证据完备性、约束满足度和副作用安全性形成调和势能，并用 leave-one-out 反事实衡量某次工具调用的真实增量。
 
-系统输出不只包含结论，还应该持续表达：
+$$
+\Delta_i=\Phi(E)-\Phi(E\setminus\{e_i\})
+$$
 
-- 已确认事实
-- 关键依据
-- 证据缺口
-- 冲突信息
-- 后续建议
-- 待确认业务动作
+无增益或重复证据不会因为出现在成功轨迹中而自动获得正向 credit。
 
-判断需要足够依据，权限需要独立确认。
+## 04 · Hash-Bound Recovery
 
-### 05 · Action Truthfulness
+Checkpoint 同时绑定事件位置、事件 hash 与状态 hash。恢复前重新计算并核验两条链，任何漂移都会拒绝 restore。
+
+$$
+c_k=(k, h^{event}_k, h^{state}_k)
+$$
+
+Verifier 触发 rollback 后，Runtime 只从完整性验证通过的 checkpoint 重建 Belief State，再基于失败证据 replan。
+
+## 05 · Replay Before Shadow
+
+候选 Harness 必须先通过逐案例回放门禁，不能用总体均值掩盖单个关键用例退化。
+
+$$
+\forall i,\; S_i(candidate)\ge S_i(baseline)-\epsilon_i
+$$
+
+通过回放后才进入 posterior shadow allocation；promotion 与 rejection 都需要跨越顺序决策边界。
+
+---
+
+# Evidence · What the Repository Proves
+
+| Gate | Verified scope |
+|---|---|
+| Python regression | 247 项测试，覆盖 Runtime、Event Store、Planner、Verifier、MCP、RBAC 与演进 |
+| Gold Set | 9 个业务案例执行 fresh run 与 persisted replay |
+| Product smoke | 临时 durable root 下验证任务、资料、动作与 API 主链 |
+| Pressure gate | 1 / 8 / 32 / 64 / 120 / 240 Runtime，并覆盖 PTC deadline 与 adaptive-policy contention |
+| Browser E2E | 真实 Uvicorn + Chromium，桌面、移动、WebSocket、任务恢复和截图尺寸 |
+| Packaging | 构建 wheel，在干净环境安装并启动 health、首页与静态资源 |
+| Container | 非 root、只读根文件系统、独立数据挂载与 health probe |
+| Security | pip-audit、Bandit 与 CodeQL Python / JavaScript |
+
+当前实现与恢复门禁的完整变更记录见 [PR #15](https://github.com/jiaweine/EcomEvo-Harness/pull/15)。
+
+## Why This Is Not Prompt Self-Optimization
+
+| Superficial approach | EcomEvo Harness Evolution |
+|---|---|
+| 直接改写系统 Prompt | Prompt、Tool、Memory、Delegation 分坐标更新 |
+| 成功轨迹统一奖励 | Verifier difference credit 识别真实增量 |
+| 离线平均分通过即上线 | 逐案例 replay gate 后再进入 shadow |
+| 在线全量替换 | posterior allocation 与 sequential promotion |
+| 失败后继续重试 | checkpoint integrity、rollback 与 evidence-driven replan |
+| 模型决定权限 | Frozen Sandbox、RBAC、Approval 与 BusinessAction |
+
+<details>
+<summary><b>Research Provenance</b></summary>
+
+EcomEvo 的核心方法来自仓库内可运行实现，而不是只在 README 中声明。算法说明集中在 [ALGORITHM](docs/ALGORITHM.md)，自主循环与停止条件见 [AUTONOMY](docs/AUTONOMY.md)，Harness 坐标、回放、shadow 与晋级规则见 [HARNESS EVOLUTION](docs/HARNESS_EVOLUTION.md)。
+
+当前设计吸收 contextual bandit、Bayesian linear posterior、counterfactual credit、event sourcing 与 sequential decision 的工程思想。仓库文档对外部研究只作为方法来源，不将预印本或内部验证描述为已接受论文结论。
+
+</details>
+
+<details>
+<summary><b>Engineering Map</b></summary>
+
+| Concern | Primary implementation |
+|---|---|
+| Plugin Runtime | `ecomevo/runtime/plugins.py` |
+| Event Store and checkpoint | `ecomevo/runtime/event_store.py` |
+| Adaptive Planner | `ecomevo/runtime/planner.py` |
+| Recursive Harness | `ecomevo/runtime/recursive.py` |
+| MCP and PTC | `ecomevo/runtime/mcp.py` · `ecomevo/runtime/tools.py` |
+| Verifier and recovery | `ecomevo/runtime/verifier.py` · `ecomevo/runtime/engine.py` |
+| Harness Evolution | `ecomevo/runtime/harness_evolution.py` |
+| Durable product API | `ecomevo/api/application.py` |
+| Regression and eval gates | `tests/` · `scripts/eval_gate.py` · `scripts/pressure_gate.py` |
+
+</details>
+
+---
+
+# Product Surface · Context, Tasks, Boundaries
+
+## Multimodal Context
+
+| Input | Runtime path |
+|---|---|
+| Text / CSV / JSON / Log | 本地解析与文本 Provider |
+| Image | 支持视觉输入的 Provider |
+| Audio | 音频 Provider 或业务侧预处理 |
+| Video | 本地关键帧提取与视觉 Provider |
+| PDF / Office / Table | 文档解析与必要的外部 Provider |
+
+## Suitable Work
+
+| Scenario | Decision focus |
+|---|---|
+| 商品治理 | 标题、主图、声明、品牌与资质一致性 |
+| 商家审核 | 主体、授权链、经营范围与历史风险 |
+| 售后判责 | 订单、物流、聊天、媒体证据与规则时间线 |
+| 风险核查 | 强证据、弱线索、反证与人工复核优先级 |
+| 内容审核 | 图文一致性、误导风险、违规点与证据缺口 |
+
+## Product Boundary
 
 ```mermaid
 stateDiagram-v2
@@ -180,53 +280,28 @@ stateDiagram-v2
     proposed --> approved
     approved --> simulated: local demo
     approved --> executed: confirmed MCP
-    approved --> uncertain: transport interrupted
+    approved --> uncertain: interrupted result
     approved --> failed: downstream failure
 ```
 
-`simulated` 只代表本地演示链路完成，不代表真实商品、商家、订单或风险状态已经改变。
+`simulated` 只代表本地演示链路完成。`executed` 只用于已经确认的真实下游结果。传输中断且无法确认副作用时进入 `uncertain`，不会伪装成成功或普通失败。
 
-`executed` 只用于已确认的真实下游执行结果。
-
----
-
-## Business Scenarios · Five Commerce Surfaces
-
-| 场景 | 输入 | 主要判断 |
+| Capability | Status | Boundary |
 |---|---|---|
-| **商品治理** | 标题、主图、详情、声明、品牌、资质 | 一致性、缺证据、高风险项、补件与下架建议 |
-| **商家审核** | 主体、营业执照、授权链、经营范围、历史风险 | 通过、补件、拒绝与风险升级建议 |
-| **售后判责** | 订单、物流、聊天、图片、视频、平台规则 | 时间线还原、责任判断、退款与后续处理建议 |
-| **风险核查** | 交易、账户、商品、履约与异常信号 | 强证据、弱线索、反证与人工复核优先级 |
-| **内容审核** | 图片、视频、文案与商品事实 | 一致性、误导风险、违规点与证据缺口 |
+| Plugin Runtime | READY | Model / Planner / Tool / Skill / Memory / Agent / Sandbox / Verifier 可注入 |
+| Event-Sourced Runtime | READY | Goal / Belief / Task 事件、hash chain、checkpoint 与 fork |
+| Adaptive Planner | READY | Bayesian routing、成本收益、abstention 与反事实 credit |
+| Recursive Agent + PTC | READY | 有界递归与有界并行只读工具组合 |
+| Verifier recovery | READY | 证据、约束、副作用验证与 hash-bound rollback |
+| Harness Evolution | GATED | Replay + Regression + shadow posterior；安全内核不可演进 |
+| High-impact action | GUARDED | 必须经过明确人工确认 |
+| Real commerce execution | CONFIG | 需要可用 MCP、企业身份与下游业务系统 |
 
 ---
 
-# Capability Boundary · Main Branch
+# Quick Start
 
-README 只描述当前仓库能够通过自动化门禁验证的能力；外部企业系统与生产拓扑仍单独列为部署验证。
-
-| Capability | Status | 说明 |
-|---|---|---|
-| 持续业务任务 | **READY** | 历史任务、任务切换、消息、分享与状态持久化 |
-| 五类业务场景 | **READY** | 商品、商家、售后、风险、内容 |
-| 文本与结构化资料本地演示 | **READY** | 无外部模型也可以体验核心任务流程 |
-| 图片与音视频理解 | **CONFIG** | 需要支持对应模态的 Provider |
-| 证据面板与资料生命周期 | **READY** | 资料范围、排除、恢复与审计安全删除 |
-| 高影响业务动作 | **GUARDED** | 必须经过明确人工确认 |
-| 真实业务执行 | **CONFIG** | 需要可用 MCP 绑定与业务系统 |
-| Plugin Runtime | **READY** | Model / Planner / Tool / Skill / Memory / Agent / Sandbox / Verifier 可注入 |
-| Event-Sourced Runtime | **READY** | Goal / Belief / Task 事件、hash chain、checkpoint / fork |
-| Adaptive Planner | **READY** | Bayesian routing、成本收益、abstention 与反事实 credit |
-| Recursive Agent + PTC | **READY** | 有界深度专项复核与有界并行只读工具组合 |
-| Verifier recovery | **READY** | 证据、约束、副作用验证；hash-bound checkpoint restore、rollback / replan |
-| Harness Evolution | **GATED** | Sandbox Replay + Regression Gate + shadow posterior；权限组件不可演进 |
-
----
-
-# Quick Start · Local Runtime
-
-### 01 · macOS / Linux
+## macOS / Linux
 
 ```bash
 git clone https://github.com/jiaweine/EcomEvo-Harness.git
@@ -240,13 +315,7 @@ cp .env.example .env
 uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-打开：
-
-```text
-http://localhost:8000
-```
-
-### 02 · Windows PowerShell
+## Windows PowerShell
 
 ```powershell
 git clone https://github.com/jiaweine/EcomEvo-Harness.git
@@ -260,121 +329,54 @@ Copy-Item .env.example .env
 uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-### 03 · Docker
+## Docker
 
 ```bash
 docker build -t ecomevo .
-docker run --rm \
-  -p 8000:8000 \
-  --env-file .env \
-  -v ecomevo-data:/app/outputs \
-  ecomevo
+docker run --rm -p 8000:8000 --env-file .env -v ecomevo-data:/app/outputs ecomevo
 ```
 
-生产镜像固定以 UID/GID `10001:10001` 非 root 运行，只安装 Runtime 依赖并通过 `/healthz` 提供不泄露 Provider、MCP 或任务统计的最小存活探针；CI 还会用只读根文件系统和独立数据 `tmpfs` 启动镜像。
-
-### 04 · Provider Capability
-
-复制 `.env.example` 后按实际环境配置 Provider。没有配置外部模型时，产品仍可使用本地演示能力完成文本与结构化资料流程。
-
-| Input | Requirement |
-|---|---|
-| Text / CSV / JSON / Log | 本地演示或文本 Provider |
-| Image | 支持视觉输入的 Provider |
-| Audio | 支持音频输入的 Provider 或业务侧预处理 |
-| Video | 支持视觉理解的 Provider，关键帧由本地媒体流程提取 |
-| Scanned PDF | OCR 或视觉能力 |
-| Office / PDF / Table | 文档解析能力与必要的外部 Provider |
+打开 `http://localhost:8000`。没有配置外部模型时，仍可使用本地演示能力体验文本、结构化资料与任务流程。
 
 ---
 
-# Verification · Release Gate
+# Runtime API
 
-仓库包含 GitHub Actions CI。每次 Pull Request 会执行完整工程门禁，而不是只做静态展示检查。
-
-| Gate | Command / Scope |
+| Surface | Endpoint |
 |---|---|
-| Python environment | Python 3.11 最低版本完整回归 + Python 3.14 最新版本兼容回归 |
-| System media dependency | ffmpeg |
-| Python regression | `pytest -q`，247 项；每个 pytest 进程使用隔离的 durable data root |
-| Python compile | `python -m compileall -q ecomevo` |
-| Frontend syntax | 对 `frontend/*.js` 全量执行 `node --check` |
-| Product smoke | `python scripts/e2e_smoke.py`，使用临时 durable root，不读写操作者默认数据 |
-| Gold Set | `python scripts/eval_gate.py`，fresh + persisted replay |
-| Concurrency | `python scripts/pressure_gate.py`，1 / 8 / 32 / 64 / 120 / 240 Runtime；另含 64-call PTC deadline 与 8-worker adaptive-policy contention 探针 |
-| Browser E2E | 真实 Uvicorn + Chromium，桌面、移动、WebSocket、任务恢复与截图尺寸硬校验 |
-| Dependency security | Pillow 安全版本下限、`pip-audit` 漏洞门禁与 Bandit medium/high gate |
-| Packaging | 构建 wheel，在干净环境安装并启动 `/healthz`、首页与静态资源 |
-| Container | 非 root 镜像、只读根文件系统、可写数据挂载与 health probe |
-| Code scanning | CodeQL 对 Python 与 JavaScript 执行 PR、main 与每周扫描 |
+| Product / health | `/api/product` · `/healthz` · `/api/health` |
+| Provider / runtime | `/api/providers` · `/api/runtime` · `/api/evolution` |
+| Conversations | `/api/conversations` · `/api/conversations/{id}` |
+| Assets | `/api/conversations/{id}/assets` · preview · scope · delete |
+| Messages / actions | `/api/conversations/{id}/messages` · `/api/conversations/{id}/actions` |
+| Runtime events | `/api/runtime/sessions/{session_id}/events` |
+| Live updates | WebSocket task event channel |
 
-自适应路由、反事实 credit、Harness cohort posterior、耐久 job ownership handoff、资料生命周期、动作状态真实性、租户/RBAC、MCP 不确定结果、PTC 背压总期限与任务租约并发边界都进入回归覆盖。
+---
 
-本地完整门禁：
+# Repository
 
-```bash
-python -m pip install -e '.[dev,e2e,security]'
-python -m compileall -q ecomevo
-pytest -q
-python scripts/eval_gate.py
-python scripts/e2e_smoke.py
-python scripts/pressure_gate.py
-pip-audit --strict --progress-spinner off .
-bandit -q -r ecomevo -ll
+```text
+ecomevo/
+├── api/                 Product API, durable jobs, identity and RBAC
+├── runtime/             Events, planner, agents, tools, verifier and evolution
+└── web/                 Commerce decision workbench
+
+docs/                    Architecture, algorithms, evolution and deployment
+scripts/                 Smoke, evaluation, pressure and browser gates
+tests/                   Runtime, product, security and concurrency regression
 ```
 
----
-
-# Production Boundary · Before Real Commerce
-
-开源主分支提供可验证的产品与代码路径，但真实商业系统部署仍然需要结合企业环境完成安全与治理门禁。
-
-| Area | Production requirement |
+| Document | Scope |
 |---|---|
-| Identity | 仓库已实现 local / HMAC trusted-gateway identity；生产仍需接入真实企业 SSO / Gateway |
-| Authorization | 仓库已实现 viewer / operator / approver / admin；生产仍需映射企业角色与审批策略 |
-| Provider | 凭证管理、超时、限流、成本与能力检测 |
-| MCP | 真实业务系统绑定、幂等、重试与不确定结果核对 |
-| Data | 保留策略、脱敏、敏感资料治理与审计要求 |
-| Deployment | 多实例一致性、数据库与队列策略、备份与恢复 |
-| Browser | Safari、Edge、移动设备与企业浏览器验证 |
-| Security | 异常文件、恶意输入、大文件与上传边界验证 |
-
-EcomEvo 的产品原则保持简单：**认知过程可以自动推进，真实业务权限必须明确授予。**
-
----
-
-# Documentation
-
-| 文档 | 内容 |
-|---|---|
-| **[ARCHITECTURE](docs/ARCHITECTURE.md)** | 当前主分支架构与组件边界 |
-| **[AUTONOMY](docs/AUTONOMY.md)** | 自主循环、任务图、停止、恢复与权限边界 |
-| **[ALGORITHM](docs/ALGORITHM.md)** | EvoGain-APR、Bayesian routing、UCB 与反事实归因 |
-| **[HARNESS EVOLUTION](docs/HARNESS_EVOLUTION.md)** | Harness 认知组件 shadow、posterior、promote / rollback |
-| **[TECHNICAL MANUAL](docs/TECHNICAL_MANUAL.md)** | API、durable job、MCP、身份/RBAC 与部署 |
-| **[PERFORMANCE](docs/PERFORMANCE.md)** | 压力门禁、性能范围与瓶颈 |
-| **[DESIGN](docs/DESIGN.md)** | UI、响应式、中文排版与产品交互原则 |
-| **[DEPLOYMENT](docs/DEPLOYMENT.md)** | 部署说明与环境要求 |
-| **[VERIFICATION REPORT](docs/VERIFICATION_REPORT.md)** | 已有验证记录 |
-| **[CONTRIBUTING](CONTRIBUTING.md)** | 开发门禁、PR 证据与架构不变量 |
-| **[SECURITY](SECURITY.md)** | 私密漏洞报告、支持范围与安全边界 |
-
----
-
-# Roadmap
-
-仓库发布治理仍有四项需要 owner 在 GitHub 设置或法律选择后完成：选择 MIT / Apache-2.0 等许可证、为 `main` 配置 required-check ruleset、启用 private vulnerability reporting，以及从当前 `1.0.0` 元数据创建首个签名 tag / GitHub Release。历史已合并分支也应在确认无保留需求后清理。
-
-当前产品方向按主分支价值排序：
-
-1. 按当前产品截图标准完成真实浏览器 Gallery 的人工验收
-2. 提供可重复运行的首任务样例数据包
-3. 完善 Provider 模态能力检测与首次配置体验
-4. 增强证据来源定位、引用、时间线与冲突展示
-5. 接入真实企业 IdP、MCP 凭证、下游幂等与结果核对
-6. 将 SQLite WAL 单 writer 拓扑迁移到目标生产数据库与任务队列
-7. 用真实业务 Gold Set 持续校准 Adaptive Routing 与 Harness promotion gate
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | 系统组件、数据流与边界 |
+| [AUTONOMY](docs/AUTONOMY.md) | 自主循环、停止、恢复与权限 |
+| [ALGORITHM](docs/ALGORITHM.md) | EvoGain-APR、Bayesian routing 与 credit |
+| [HARNESS EVOLUTION](docs/HARNESS_EVOLUTION.md) | Replay、shadow、promotion 与 rollback |
+| [TECHNICAL MANUAL](docs/TECHNICAL_MANUAL.md) | API、durable job、MCP、身份与部署 |
+| [VERIFICATION REPORT](docs/VERIFICATION_REPORT.md) | 工程验证记录 |
+| [CONTRIBUTING](CONTRIBUTING.md) | 开发门禁与架构不变量 |
+| [SECURITY](SECURITY.md) | 安全支持范围与漏洞报告 |
 
 ---
 
@@ -382,8 +384,8 @@ EcomEvo 的产品原则保持简单：**认知过程可以自动推进，真实�
 
 **EcomEvo**
 
-Evidence first · Stateful task · Controlled action
+Evidence First · Recovery by Design · Evolution Behind Gates
 
-**把复杂商业任务组织成证据，把真实业务动作留在明确权限边界内。**
+**让复杂商业决策自主推进，让每一次真实动作都可验证、可恢复、可追责。**
 
 </div>
