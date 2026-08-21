@@ -172,7 +172,7 @@ routing_tool_stats
 
 ### `runtime/event_store.py`
 
-SQLite WAL append-only event store：session、hash chain、JSON checkpoint、fork/replay、evolution patch 与 semantic deduplication。
+SQLite WAL append-only event store：session、hash chain、同时绑定 state hash / event hash 的 JSON checkpoint、完整性校验 restore、fork/replay、evolution patch 与 semantic deduplication。
 
 当前单节点横向扩展上限仍主要来自 SQLite single-writer。
 

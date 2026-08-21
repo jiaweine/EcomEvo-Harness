@@ -15,7 +15,9 @@
 
 </div>
 
-![EcomEvo 商业决策工作台](docs/images/product-workbench.svg)
+![EcomEvo 商业决策工作台真实浏览器截图](docs/images/product-overview.png)
+
+<sub>真实产品截图：由仓库内 `scripts/browser_e2e.py` 启动 FastAPI + Chromium 后自动采集；不是概念稿或手绘界面。</sub>
 
 ---
 
@@ -65,8 +67,8 @@ flowchart TB
 | Durable execution | 消息、accepted event、不可变资料快照和 job 原子落库；进度事件按 job owner fencing；终态与 turn lease 释放原子提交 | 丢失 lease 的旧 worker 会取消分析，不能继续写进度或释放接管者的 turn lease；BackgroundTasks 不是任务事实源 |
 | Event sourcing | Runtime event append-only、hash chain、checkpoint、fork；Task event 按 SQLite id 排序 | WebSocket queue 只是 wake hint |
 | Adaptive runtime | Bayesian posterior routing、收益/成本选择、no-op abstention、Verifier 反事实 credit；多 Runtime 策略更新使用单事务 read/derive/write | 学习只影响认知路由，不改变业务证据和权限 |
-| Recovery | Verifier 驱动 stop / replan / rollback；耐久 worker 可 reclaim，并在续租失败或 ownership handoff 时停止旧分析 | 资料范围变更在存储事务内检查 active work，不能与分析快照形成竞态 |
-| Harness evolution | Prompt / Tool / Memory / Delegation 认知组件走 shadow、cohort posterior、promote / rollback | Sandbox、Verifier、RBAC 与动作权限不可被演进器修改 |
+| Recovery | Verifier 驱动 stop / replan / rollback；checkpoint 绑定 event hash 与 state hash，完整性校验通过后才恢复 Belief State；耐久 worker 可 reclaim | 资料范围变更在存储事务内检查 active work，不能与分析快照形成竞态 |
+| Harness evolution | Prompt / Tool / Memory / Delegation 候选先过无副作用 Sandbox Replay 与逐案例 Regression Gate，再进入 shadow cohort posterior、promote / rollback | Sandbox、Verifier、RBAC 与动作权限不可被演进器修改 |
 
 ### 02 · Runtime 执行链
 
@@ -122,15 +124,17 @@ flowchart LR
 
 ## 工作台 · Real Product Surface
 
-下面的产品图对应当前仓库中的实际工作台设计资产，围绕场景、证据、状态和执行边界组织，而不是围绕模型配置组织。
+下面全部是当前仓库 Web 产品的真实浏览器截图，来自成功的 Browser E2E 运行；截图流程会校验桌面/移动尺寸、关键交互、WebSocket 同步与浏览器错误。
 
-| **01 · 五类业务场景** | **02 · 多模态证据空间** |
+| **01 · 五类业务场景** | **02 · 运行轨迹与恢复状态** |
 |---|---|
-| 商品治理、商家审核、售后判责、风险核查、内容审核从业务目标进入。<br><br>![EcomEvo 五类业务场景](docs/images/product-scenes.svg) | 图片、视频、音频、文档、表格与日志进入同一个持续任务。<br><br>![EcomEvo 多模态证据空间](docs/images/product-evidence-wall.svg) |
+| 商品治理、商家审核、售后判责、风险核查、内容审核从真实工作台进入。<br><br>![EcomEvo 五类业务场景真实截图](docs/images/product-scenes.png) | 自主步骤、证据缺口、工具预算、停止原因与补证状态在任务控制面实时呈现。<br><br>![EcomEvo Runtime 真实截图](docs/images/product-runtime.png) |
 
-| **03 · 状态与权限控制** | **04 · 商业决策工作台** |
+| **03 · 可追溯证据面板** | **04 · 商业决策工作台** |
 |---|---|
-| 进度、关键依据、待确认动作与资料范围保持分层，执行结果不混淆。<br><br>![EcomEvo 任务状态与权限控制](docs/images/product-runtime-control.svg) | 目标、对话、资料、证据、判断和动作集中在同一个任务空间。<br><br>![EcomEvo 商业决策工作台](docs/images/product-workbench.svg) |
+| 规则、资料检索、商家核对与风险信号以独立证据卡展示，不把模型措辞当作证据。<br><br>![EcomEvo 证据面板真实截图](docs/images/product-evidence.png) | 目标、对话、资料、证据、判断和动作集中在同一个持续任务空间。<br><br>![EcomEvo 工作台真实截图](docs/images/product-overview.png) |
+
+截图来源：[EcomEvo CI #267 / Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32457711643)，对应提交 `90a6dd6`。后续产品 UI 变更应重新运行 `scripts/browser_e2e.py` 并更新这些 PNG，避免 README 与真实产品漂移。
 
 ---
 
@@ -215,8 +219,8 @@ README 只描述当前仓库能够通过自动化门禁验证的能力；外部�
 | Event-Sourced Runtime | **READY** | Goal / Belief / Task 事件、hash chain、checkpoint / fork |
 | Adaptive Planner | **READY** | Bayesian routing、成本收益、abstention 与反事实 credit |
 | Recursive Agent + PTC | **READY** | 有界深度专项复核与有界并行只读工具组合 |
-| Verifier recovery | **READY** | 证据、约束、副作用验证与 rollback / replan |
-| Harness Evolution | **GATED** | 认知组件 shadow / promote / rollback；权限组件不可演进 |
+| Verifier recovery | **READY** | 证据、约束、副作用验证；hash-bound checkpoint restore、rollback / replan |
+| Harness Evolution | **GATED** | Sandbox Replay + Regression Gate + shadow posterior；权限组件不可演进 |
 
 ---
 
@@ -292,7 +296,7 @@ docker run --rm \
 |---|---|
 | Python environment | Python 3.11 最低版本完整回归 + Python 3.14 最新版本兼容回归 |
 | System media dependency | ffmpeg |
-| Python regression | `pytest -q`，245 项；每个 pytest 进程使用隔离的 durable data root |
+| Python regression | `pytest -q`，247 项；每个 pytest 进程使用隔离的 durable data root |
 | Python compile | `python -m compileall -q ecomevo` |
 | Frontend syntax | 对 `frontend/*.js` 全量执行 `node --check` |
 | Product smoke | `python scripts/e2e_smoke.py`，使用临时 durable root，不读写操作者默认数据 |

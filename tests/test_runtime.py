@@ -9,6 +9,18 @@ def test_event_store_hash_chain_and_snapshot(tmp_path):
     assert s.get_snapshot('s',2)['safe'] is True
 
 
+def test_checkpoint_is_bound_to_event_chain_and_tampering_blocks_restore(tmp_path):
+    import sqlite3
+    s=EventStore(tmp_path/'events.db');s.create_session('s');s.append('s','a',{'x':1})
+    reference=s.save_checkpoint('s',{'belief':{'confidence':.4}})
+    restored=s.restore_checkpoint('s',reference['seq'])
+    assert restored['belief']['confidence']==.4
+    assert restored['_checkpoint']['event_hash']==s.list_events('s')[-1].hash
+    with sqlite3.connect(s.path) as c:
+        c.execute("UPDATE snapshots SET snapshot_blob='json:{\"belief\":{\"confidence\":1}}' WHERE session_id='s'")
+    assert s.restore_checkpoint('s',reference['seq']) is None
+
+
 def test_engine_missing_evidence_recovers_but_never_proposes_side_effect(tmp_path):
     engine=EcomEvoEngine(tmp_path/'runtime.db')
     summary=asyncio.run(engine.run('帮我判断这个商家是否可以通过入驻审核',[],domain_hint='merchant_review'))
@@ -22,6 +34,11 @@ def test_engine_missing_evidence_recovers_but_never_proposes_side_effect(tmp_pat
     types={e.event_type for e in engine.events.list_events(summary.session_id)}
     assert {'goal.parsed','plan.created','tools.completed','verification.checked','run.completed'} <= types
     assert 'runtime.rollback' in types
+    rollback=next(e for e in engine.events.list_events(summary.session_id) if e.event_type=='runtime.rollback')
+    assert rollback.payload['restored'] is True
+    assert rollback.payload['checkpoint_seq']>=1
+    assert rollback.payload['checkpoint_state_hash']
+    assert 'runtime.checkpointed' in types
     assert engine.events.list_patches()
 
 
@@ -235,6 +252,7 @@ def test_plugin_overrides_are_wired_into_the_runtime_graph(tmp_path):
     assert engine.autonomy.planner is planner
     assert engine.autonomy.sandbox is sandbox
     assert engine.autonomy.verifier is verifier
+    assert engine.harness.replay_gate.sandbox is sandbox
 
 
 def test_evidence_search_can_find_fact_beyond_display_text_window(tmp_path):

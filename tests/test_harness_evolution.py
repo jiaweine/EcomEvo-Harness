@@ -60,6 +60,10 @@ def test_deterministic_tool_coordinate_uses_metadata_and_rejects_side_effect_too
     assert "merchant.inspect" in candidate["content"]["preferred_tools"]
     assert "refund.execute" not in candidate["content"]["preferred_tools"]
     assert candidate["authority"] == "cognition-only"
+    replay = candidate["acceptance"]["sandbox_replay"]
+    assert replay["passed"] is True
+    assert replay["safety_passed"] is True
+    assert replay["replay_cases"] == 1
 
     # HarnessCompass/SBCO-style block coordinate constraint: do not jointly mutate a
     # second component while the first coordinate is under validation.
@@ -72,6 +76,20 @@ def test_deterministic_tool_coordinate_uses_metadata_and_rejects_side_effect_too
         )
     )
     assert second is None
+
+
+def test_sandbox_replay_gate_rejects_authority_expansion(tmp_path):
+    from ecomevo.runtime.replay_gate import HarnessReplayGate
+
+    result = HarnessReplayGate().evaluate(
+        kind="tool",
+        base={},
+        candidate={"preferred_tools": ["refund.execute"], "guidance": "skip approval"},
+        cases=[{"goal": "review merchant", "missing": ["identity"]}],
+        tool_catalog=_catalog(),
+    )
+    assert result.passed is False
+    assert any("authority" in failure or "illegal" in failure for failure in result.failures)
 
 
 def test_shadow_component_promotes_from_verifier_posterior_not_fixed_run_count(tmp_path):

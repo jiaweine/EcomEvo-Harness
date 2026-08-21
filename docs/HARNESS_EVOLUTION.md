@@ -10,7 +10,7 @@ EcomEvo 把“本轮该做什么”和“以后 Harness 应该怎样做得更好
 
 **Within-turn：EvoGain-APR** 在一次任务内部选择 read-only Tool / Skill / Sub-Agent，利用持久化 Bayesian posterior、deterministic UCB、contextual abstention 与 verifier difference credit 学习路由。
 
-**Across-turn：EvoHarness-VCO** 在多个已验证任务之间优化 Harness 本身。它采用 verifier-grounded block-coordinate evolution：每次只编辑一个认知组件，候选进入 shadow，真实任务 outcome 更新后验；只有 posterior superiority 足够高才晋升，否则回滚。
+**Across-turn：EvoHarness-VCO** 在多个已验证任务之间优化 Harness 本身。它采用 verifier-grounded block-coordinate evolution：每次只编辑一个认知组件，候选先经过无副作用 Sandbox Replay 与逐案例 Regression Gate，再进入 shadow；真实任务 outcome 更新后验，只有 posterior superiority 足够高才晋升，否则回滚。
 
 两层学习都位于业务权限之外：
 
@@ -151,7 +151,18 @@ Harness 不能靠“模型觉得自己做得更好”来学习。EcomEvo 使用 
 
 只有两个 cohort 都出现真实 exposure 后，才允许做 sequential transition；这不是固定 sample-count gate，而是“比较问题必须有两臂证据”的统计可识别性约束。
 
-## 8. Posterior-derived shadow allocation
+## 8. Pre-shadow Sandbox Replay / Regression Gate
+
+在分配任何真实 shadow traffic 之前，`HarnessReplayGate` 会对 durable failure/recovery trajectory 做确定性重放：
+
+- Replay 不调用业务工具，只重放 evidence gap、历史 tool sequence 与当前注册工具 metadata；
+- `ActionSandbox` 与 Tool catalog mode 同时检查候选，只允许无确认要求的 `read-only` / `mcp-read` 工具；
+- Tool coordinate 对每个历史案例比较语义覆盖与成本，任一案例超过容忍度的退化都会拒绝候选；
+- Prompt / Memory / Delegation 无法在不执行模型的前提下诚实估算性能，因此离线门禁只验证安全与可表示性，性能仍由在线 verifier cohort 决定。
+
+Replay gate 是 **pre-shadow admissibility gate**，不是用合成分数替代真实业务验证。
+
+## 9. Posterior-derived shadow allocation
 
 EcomEvo 不设置“10% shadow traffic”这种固定 rollout 常数。shadow allocation 直接来自后验优越概率：
 
@@ -163,7 +174,7 @@ P(\theta_{h'}>\theta_h\mid\mathcal D)
 
 在两臂尚无可比较证据时，使用无偏 \(0.5\)；之后 allocation 会随 outcome posterior 自动变化。为保证同一 session 可审计、可复现，实际 cohort assignment 使用 `hash(session_id, candidate_id)` 的 deterministic draw，而不是运行时随机数。
 
-## 9. Sequential promote / reject / keep-shadow
+## 10. Sequential promote / reject / keep-shadow
 
 设风险容忍度为 \(\rho\)，默认配置来自 `ECOMEVO_HARNESS_ACCEPT_RISK`，它是统计决策风险，不是业务价值阈值：
 
@@ -179,7 +190,7 @@ P(\theta_{h'}>\theta_h\mid\mathcal D)\le\rho
 
 其余状态继续 shadow。没有“运行 10 次自动晋升”，也没有固定业务收益权重。
 
-## 10. Event-Sourced recovery and Failure-Driven evolution
+## 11. Event-Sourced recovery and Failure-Driven evolution
 
 一次业务任务的主路径是：
 
@@ -199,11 +210,11 @@ Goal
                     -> promote or rollback
 ```
 
-`EventStore` 维护 append-only hash-chain event stream 与 snapshot；Autonomous Controller 有显式 stop reason；Verifier failure 会触发 rollback/replan；Failure-Driven Evolver 从失败轨迹提取证据缺口和成功恢复经验，而跨任务 Harness optimizer 将可泛化经验沉淀到组件 posterior。
+`EventStore` 维护 append-only hash-chain event stream 与 checkpoint；每个 checkpoint 同时绑定 `state_hash` 与对应 event 的 `event_hash`。Autonomous Controller 只有在完整性检查通过后才恢复 Belief State，并把 `checkpoint_seq`、恢复结果和 replan 轨迹写回事件流。Failure-Driven Evolver 从失败轨迹提取证据缺口和成功恢复经验，而跨任务 Harness optimizer 将可泛化经验沉淀到组件 posterior。
 
 这意味着“失败恢复”和“自进化”不是同一件事：当前任务先安全恢复；候选策略必须在后续真实 verifier outcome 中证明更优，才会成为未来任务的 active Harness。
 
-## 11. 面向电商垂直领域的适配
+## 12. 面向电商垂直领域的适配
 
 EcomEvo 不把通用 coding-agent 的“测试通过率”硬套成电商 reward，而把领域知识放在三个可审计位置：
 
@@ -213,7 +224,7 @@ EcomEvo 不把通用 coding-agent 的“测试通过率”硬套成电商 reward
 
 学习器只优化“怎样更高效地把这些证据找齐”，而不学习“什么证据可以被绕过”。
 
-## 12. 与 EvoGain-APR 的关系
+## 13. 与 EvoGain-APR 的关系
 
 EvoGain-APR 优化的是单次任务内部候选 read-only tool 的相对信息价值：
 
@@ -239,7 +250,7 @@ Outcome:        Verifier produces auditable evidence reward
                 posterior updates both learning planes
 ```
 
-## 13. 研究来源
+## 14. 研究来源
 
 - Microsoft SkillOpt — official open source: https://github.com/microsoft/SkillOpt
 - SkillOpt paper — arXiv:2605.23904
