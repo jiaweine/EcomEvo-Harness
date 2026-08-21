@@ -154,7 +154,7 @@ Harness Evolution 采用 block-coordinate 更新，一次只改变一个认知�
 |---|---|
 | 规则、资料、商家核对与风险信号形成独立证据卡，不把模型措辞当作证据。<br><br>![EcomEvo 证据面板真实截图](docs/images/product-evidence.png) | 对话、资料、判断、动作和审计轨迹保留在同一个耐久任务中。<br><br>![EcomEvo 工作台真实截图](docs/images/product-overview.png) |
 
-截图证据来自 [EcomEvo CI #267 Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32457711643)。当前 Runtime 改动由 [EcomEvo CI #268](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32500923467) 与 [CodeQL #10](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32500923273) 验证。
+当前截图由 [EcomEvo CI #271 Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32503526332) 在真实 Uvicorn + Chromium 环境采集。截图与同一提交的字体、布局、交互和响应式断言共同通过门禁。
 
 ---
 
