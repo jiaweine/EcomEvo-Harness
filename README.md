@@ -36,37 +36,25 @@ EcomEvo 不是把模型接入聊天框，而是把模型放入一个模型无关
 # Agent Architecture · Frozen Kernel × Evolvable Harness
 
 ```mermaid
-flowchart TB
-    GOAL[Commerce Goal] --> STATE[Goal · Belief · Task State]
-    STATE --> PLAN[Adaptive Planner]
+flowchart LR
+    STATE[Goal + Belief] --> PLAN[Adaptive Planner]
     PLAN --> HARNESS[Recursive Harness]
+    HARNESS --> EXEC[MCP + PTC]
+    EXEC --> VERIFY[Verifier]
+    VERIFY -->|verified| ACTION[Approval Gate]
+    VERIFY -->|recover| CHECKPOINT[Hash-Bound Checkpoint]
+    CHECKPOINT -->|restore + replan| PLAN
+    VERIFY -->|failure trace| EVOLUTION[Harness Evolution]
 
-    subgraph EVOLVE[Evolvable Harness]
-        PROMPT[Prompt]
-        TOOL[Tool Routing]
-        MEMORY[Memory]
-        DELEGATE[Delegation]
-    end
-
-    subgraph EXEC[Bounded Execution]
-        AGENT[Sub-Agent]
-        PTC[MCP · PTC]
-        CHECK[Verifier]
-    end
-
-    subgraph KERNEL[Frozen Safety Kernel]
-        REGISTRY[Registry]
-        SANDBOX[Sandbox]
-        RBAC[RBAC · Approval]
-        ACTION[Business Action]
-    end
-
-    HARNESS --> EVOLVE
-    EVOLVE --> EXEC
-    EXEC --> KERNEL
-    CHECK -->|replan · rollback| PLAN
-    CHECK -->|failure trace| EVOLVE
+    classDef state fill:#f7f3ee,stroke:#b7a99b,color:#2b2926
+    classDef cognition fill:#fff7ed,stroke:#d65d2f,color:#542614
+    classDef safety fill:#202733,stroke:#202733,color:#ffffff
+    class STATE state
+    class PLAN,HARNESS,EXEC,EVOLUTION cognition
+    class VERIFY,ACTION,CHECKPOINT safety
 ```
+
+主执行面从 Goal 与 Belief 出发，Verifier 决定通过或恢复。演进面只接收失败轨迹，不直接取得业务执行权。
 
 ## 01 · What Can Evolve
 
@@ -88,24 +76,24 @@ flowchart TB
 | BusinessAction | proposed、approved、simulated、executed、uncertain、failed 保持语义分离 |
 | Event Store | append-only hash chain、checkpoint 与 fork 构成任务事实源 |
 
-## 03 · Event-Sourced Execution
+## 03 · Runtime Loop
 
 ```mermaid
-sequenceDiagram
-    participant U as Operator
-    participant R as Runtime
-    participant P as Planner
-    participant A as Recursive Agent
-    participant V as Verifier
+flowchart LR
+    OBSERVE[Observe<br>Goal · Belief · Gap] --> DECIDE[Decide<br>Utility · Cost · Stop]
+    DECIDE --> ACT[Act<br>Skill · Tool · Sub-Agent]
+    ACT --> REVIEW[Review<br>Evidence · Constraint]
+    REVIEW --> OUTCOME{Verifier}
+    OUTCOME -->|pass| DONE[Persist Outcome]
+    OUTCOME -->|incomplete| RECOVER[Restore + Replan]
+    RECOVER --> OBSERVE
 
-    U->>R: Goal + Assets
-    R->>R: Append Goal and Belief events
-    R->>P: State + budget + legal actions
-    P->>A: Skill · Tool · Sub-Agent · Stop
-    A->>A: Bounded MCP and PTC execution
-    A->>V: Output + evidence + side effects
-    V-->>R: pass · replan · rollback
-    R-->>U: Verified result or approval request
+    classDef phase fill:#fffaf5,stroke:#d7c9bb,color:#2b2926
+    classDef verifier fill:#202733,stroke:#202733,color:#ffffff
+    classDef result fill:#eef7f1,stroke:#65a47e,color:#194c2f
+    class OBSERVE,DECIDE,ACT,REVIEW,RECOVER phase
+    class OUTCOME verifier
+    class DONE result
 ```
 
 PTC 只并行组合 Sandbox 允许的读工具。共享 semaphore 限制 Runtime fan-out，单次工具 deadline 从排队前开始并覆盖背压等待与实际执行。会改变商品、商家、订单或风险状态的动作不进入自主 PTC，而是形成 `BusinessAction` 等待 approver 确认。
@@ -114,16 +102,43 @@ PTC 只并行组合 Sandbox 允许的读工具。共享 semaphore 限制 Runtime
 
 ```mermaid
 flowchart TB
-    FAIL[Failure Trace] --> PATCH[Prompt · Tool · Memory · Delegation Patch]
+    FAIL[Verified Failure Trace] --> PATCH[One Typed Coordinate Patch]
     PATCH --> REPLAY[Sandbox Replay]
-    REPLAY --> REGRESS[Per-Case Regression Gate]
-    REGRESS --> SHADOW[Shadow Cohort]
-    SHADOW --> DECIDE{Sequential Decision}
-    DECIDE -->|promote| ACTIVE[Active Harness]
-    DECIDE -->|reject| ROLLBACK[Reject and Rollback]
+    REPLAY -->|admissible| SHADOW[Posterior Shadow Cohort]
+    REPLAY -->|unsafe or regressed| REJECT[Reject]
+    SHADOW --> DECIDE{Sequential Gate}
+    DECIDE -->|superior| ACTIVE[Promote]
+    DECIDE -->|inferior| ROLLBACK[Rollback]
+    DECIDE -->|insufficient evidence| SHADOW
+
+    classDef source fill:#f7f3ee,stroke:#b7a99b,color:#2b2926
+    classDef candidate fill:#fff7ed,stroke:#d65d2f,color:#542614
+    classDef gate fill:#202733,stroke:#202733,color:#ffffff
+    classDef pass fill:#eef7f1,stroke:#65a47e,color:#194c2f
+    classDef fail fill:#fff1ef,stroke:#c4564a,color:#6f211a
+    class FAIL source
+    class PATCH,SHADOW candidate
+    class REPLAY,DECIDE gate
+    class ACTIVE pass
+    class REJECT,ROLLBACK fail
 ```
 
-Harness Evolution 采用 block-coordinate 更新，一次只改变一个认知坐标。候选版本先对历史失败轨迹做无副作用回放，再逐案例比较基线，通过后才进入 shadow cohort。在线证据不足时继续观察，后验风险越高，shadow 流量越低；达到晋级或拒绝边界后才提交决策。
+Harness Evolution 采用 block-coordinate 更新，一次只改变一个认知坐标。Tool coordinate 在历史案例上执行逐案例语义覆盖与成本回归；Prompt、Memory、Delegation 的离线回放只验证安全、字段边界与可表示性，性能由真实 shadow verifier cohort 判断。在线证据不足时继续观察，达到晋级或拒绝边界后才提交决策。
+
+## 05 · Design Alignment
+
+| 设计链路 | 代码落点 | 当前状态 |
+|---|---|---|
+| 目标解析 → Belief State | `engine.py` · `autonomy.py` · `event_store.py` | Goal、Belief、Task 与轨迹进入 append-only event stream |
+| 自主规划 | `planner.py` · `adaptive_routing.py` | 合法动作空间内执行 Bayesian utility routing、成本约束与 abstention |
+| 递归子 Agent | `recursive.py` · `delegation.py` | 有界深度、预算与只读认知委派 |
+| 工具执行 | `mcp.py` · `resilient_executor.py` | MCP、PTC、共享并发与端到端 deadline |
+| 验证回滚 | `verifier.py` · `engine.py` · `event_store.py` | checkpoint 绑定 event hash 与 state hash，完整性通过后恢复 Belief |
+| Failure-Driven Evolver | `evolver.py` · `harness_optimizer.py` | 从失败轨迹生成单坐标 declarative patch |
+| Replay + Regression | `replay_gate.py` | Tool 逐案例性能回归；其余坐标离线安全回放、在线 verifier 性能门禁 |
+| Harness 晋级与回滚 | `harness_evolution.py` · `harness_optimizer.py` | deterministic cohort、posterior allocation 与 sequential promote / reject |
+
+这条链路与项目设计一致。安全内核不会被 optimizer 修改，候选 patch 也不是任意代码生成；它只能改变 Prompt、只读 Tool routing、Memory 与 Delegation 四个认知坐标。
 
 ---
 
@@ -139,7 +154,7 @@ Harness Evolution 采用 block-coordinate 更新，一次只改变一个认知�
 |---|---|
 | 规则、资料、商家核对与风险信号形成独立证据卡，不把模型措辞当作证据。<br><br>![EcomEvo 证据面板真实截图](docs/images/product-evidence.png) | 对话、资料、判断、动作和审计轨迹保留在同一个耐久任务中。<br><br>![EcomEvo 工作台真实截图](docs/images/product-overview.png) |
 
-截图证据来自 [EcomEvo CI #267 Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32457711643)。当前 Runtime 改动由 [EcomEvo CI #268](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32500923467) 与 [CodeQL #10](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32500923273) 验证。
+当前截图由 [EcomEvo CI #271 Browser E2E](https://github.com/jiaweine/EcomEvo-Harness/actions/runs/32503526332) 在真实 Uvicorn + Chromium 环境采集。截图与同一提交的字体、布局、交互和响应式断言共同通过门禁。
 
 ---
 
@@ -185,13 +200,13 @@ Verifier 触发 rollback 后，Runtime 只从完整性验证通过的 checkpoint
 
 ## 05 · Replay Before Shadow
 
-候选 Harness 必须先通过逐案例回放门禁，不能用总体均值掩盖单个关键用例退化。
+Tool coordinate 必须先通过逐案例回放门禁，不能用总体均值掩盖单个关键用例退化。
 
 $$
 \forall i,\; S_i(candidate)\ge S_i(baseline)-\epsilon_i
 $$
 
-通过回放后才进入 posterior shadow allocation；promotion 与 rejection 都需要跨越顺序决策边界。
+Prompt、Memory 与 Delegation 在离线阶段验证安全和结构边界，性能比较留给真实 verifier cohort。所有坐标都只有通过对应 replay gate 后才能进入 posterior shadow allocation；promotion 与 rejection 都需要跨越顺序决策边界。
 
 ---
 
@@ -216,7 +231,7 @@ $$
 |---|---|
 | 直接改写系统 Prompt | Prompt、Tool、Memory、Delegation 分坐标更新 |
 | 成功轨迹统一奖励 | Verifier difference credit 识别真实增量 |
-| 离线平均分通过即上线 | 逐案例 replay gate 后再进入 shadow |
+| 离线平均分通过即上线 | Tool 逐案例回归，其余坐标安全回放后再进入 shadow verifier cohort |
 | 在线全量替换 | posterior allocation 与 sequential promotion |
 | 失败后继续重试 | checkpoint integrity、rollback 与 evidence-driven replan |
 | 模型决定权限 | Frozen Sandbox、RBAC、Approval 与 BusinessAction |

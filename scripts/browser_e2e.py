@@ -83,6 +83,33 @@ def run() -> None:
             page.keyboard.press("Escape")
             expect(page.locator("#productTour")).to_be_hidden()
             expect(page.locator("body")).not_to_have_class(re.compile(r"\btour-open\b"))
+
+            # The landing surface is deliberately concise and uses one CJK-first
+            # sans-serif type system. Keep this as a product-density regression gate.
+            expect(page.locator("#welcomePanel h2")).to_have_text("给出目标，带回证据。")
+            design = page.evaluate(
+                """() => {
+                    const hero = document.querySelector('#welcomePanel h2');
+                    const lead = document.querySelector('#welcomePanel .welcome-copy > p');
+                    const cards = [...document.querySelectorAll('.quick-card')].filter(node => !node.hidden);
+                    const route = [...document.querySelectorAll('.agent-route .route-node')];
+                    const style = getComputedStyle(hero);
+                    return {
+                        fontFamily: style.fontFamily,
+                        fontSize: parseFloat(style.fontSize),
+                        leadLength: lead.textContent.trim().length,
+                        cardCount: cards.length,
+                        maxCardCopy: Math.max(...cards.map(node => node.textContent.trim().length)),
+                        routeCount: route.length,
+                    };
+                }"""
+            )
+            assert "sans-serif" in design["fontFamily"], design
+            assert design["fontSize"] <= 40, design
+            assert design["leadLength"] <= 55, design
+            assert design["cardCount"] == 4, design
+            assert design["maxCardCopy"] <= 32, design
+            assert design["routeCount"] == 5, design
             capture(page, "product-overview.png")
 
             page.locator("#providerBtn").click()
