@@ -209,6 +209,34 @@ def test_plugin_registry_holds_live_runtime_instances(tmp_path):
     assert rows['tool.ptc']['loaded'] is True
 
 
+def test_plugin_overrides_are_wired_into_the_runtime_graph(tmp_path):
+    from ecomevo.runtime.planner import AdaptivePlanner
+    from ecomevo.runtime.sandbox import ActionSandbox
+    from ecomevo.runtime.verifier import DecisionVerifier
+
+    planner = AdaptivePlanner()
+    sandbox = ActionSandbox()
+    verifier = DecisionVerifier()
+    memory = object()
+    engine = EcomEvoEngine(
+        tmp_path/'runtime.db',
+        plugin_overrides={
+            'planner.adaptive': planner,
+            'sandbox.action': sandbox,
+            'verifier.decision': verifier,
+            'memory.runtime': memory,
+        },
+    )
+
+    assert engine.plugins.get('planner.adaptive') is planner
+    assert engine.plugins.get('sandbox.action') is sandbox
+    assert engine.plugins.get('verifier.decision') is verifier
+    assert engine.plugins.get('memory.runtime') is memory
+    assert engine.autonomy.planner is planner
+    assert engine.autonomy.sandbox is sandbox
+    assert engine.autonomy.verifier is verifier
+
+
 def test_evidence_search_can_find_fact_beyond_display_text_window(tmp_path):
     content='x'*30000+'\n商品ID SKU-8899 宣传治愈问题'
     p=tmp_path/'long.txt';p.write_text(content,encoding='utf-8')

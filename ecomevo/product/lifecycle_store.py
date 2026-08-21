@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from fastapi import HTTPException
+
 from . import store as _store
 
 
@@ -40,7 +42,25 @@ def _add_asset(self, cid, *, name, mime, path, size, meta):
 
     aid = f'asset-{uuid.uuid4().hex[:12]}'
     now = time.time()
+    size = max(0, int(size or 0))
     with self._conn() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if cid:
+            exists = db.execute('SELECT 1 FROM conversations WHERE id=?', (cid,)).fetchone()
+            if not exists:
+                raise KeyError(cid)
+            quota = db.execute(
+                'SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes FROM assets WHERE conversation_id=?',
+                (cid,),
+            ).fetchone()
+            count = int(quota['count'] or 0)
+            used = int(quota['bytes'] or 0)
+            if count >= self.MAX_ASSETS_PER_CONVERSATION:
+                from fastapi import HTTPException
+                raise HTTPException(409, '单个任务最多保留 120 份资料，请新建任务或整理现有资料')
+            if used + size > self.MAX_ASSET_BYTES_PER_CONVERSATION:
+                from fastapi import HTTPException
+                raise HTTPException(413, '当前任务资料总量已达到上限')
         db.execute(
             '''INSERT INTO assets(
                    id,conversation_id,name,mime,path,size,meta,created_at,
@@ -82,6 +102,27 @@ def _has_active_turn(self, cid) -> bool:
     return bool(row)
 
 
+def _assert_no_active_work(db, cid, now: float) -> None:
+    if not cid:
+        return
+    lease = db.execute(
+        'SELECT 1 FROM turn_leases WHERE conversation_id=? AND expires_at>? LIMIT 1',
+        (cid, now),
+    ).fetchone()
+    if lease:
+        raise HTTPException(409, '任务正在处理，结果返回后再调整资料')
+    has_jobs = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='conversation_jobs'",
+    ).fetchone()
+    if has_jobs:
+        active_job = db.execute(
+            "SELECT 1 FROM conversation_jobs WHERE conversation_id=? AND status IN ('queued','running') LIMIT 1",
+            (cid,),
+        ).fetchone()
+        if active_job:
+            raise HTTPException(409, '任务正在处理，结果返回后再调整资料')
+
+
 def _set_asset_active(self, aid, active: bool, reason: str = ''):
     now = time.time()
     with self._conn() as db:
@@ -90,6 +131,7 @@ def _set_asset_active(self, aid, active: bool, reason: str = ''):
         if not row:
             raise KeyError(aid)
         cid = row['conversation_id']
+        _assert_no_active_work(db, cid, now)
         if active:
             db.execute(
                 "UPDATE assets SET active=1,excluded_at=NULL,excluded_reason='' WHERE id=?",
@@ -182,6 +224,7 @@ def _delete_asset_if_unreferenced(self, aid):
         asset = _decode_asset(row)
         cid = asset.get('conversation_id')
         if cid:
+            _assert_no_active_work(db, cid, time.time())
             payload_rows = _audit_payload_rows(db, cid)
             for payload_row in payload_rows:
                 try:

@@ -1,4 +1,4 @@
-name: CI
+name: EcomEvo CI
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  regression:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -21,15 +21,89 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install Python dependencies
-        run: pip install -e '.[dev]'
-      - name: Python tests
+      - name: System media dependency
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Python compile
+        run: python -m compileall -q ecomevo
+      - name: Tests
         run: pytest -q
-      - name: Frontend syntax checks
+      - name: Gold Set promotion gate
+        run: python scripts/eval_gate.py
+      - name: Frontend syntax
         run: |
-          node --check frontend/app.js
-          node --check frontend/intro.js
+          for file in frontend/*.js; do
+            node --check "$file"
+          done
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import re
+
+          frontend = Path('frontend')
+          html = (frontend / 'index.html').read_text(encoding='utf-8')
+          loader = (frontend / 'enhancements.js').read_text(encoding='utf-8')
+          HTMLParser().feed(html)
+          assert html.count('id="') == len({part.split('"', 1)[0] for part in html.split('id="')[1:]}), 'duplicate DOM id'
+          modules = re.findall(r"/assets/([A-Za-z0-9._-]+\.js)", loader)
+          assert modules, 'enhancement loader references no modules'
+          for module in modules:
+              assert (frontend / module).is_file(), f'missing loader module: {module}'
+          for css_path in ('frontend/visual.css', 'frontend/product-polish.css', 'frontend/intro.css', 'frontend/lifecycle.css'):
+              css = Path(css_path).read_text(encoding='utf-8')
+              assert css.count('{') == css.count('}'), f'unbalanced {css_path}'
+          print('frontend static checks ok')
+          PY
       - name: Product smoke
         run: python scripts/e2e_smoke.py
+
+  pressure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: python -m pip install -e .
+      - name: Current-head concurrency gate
+        run: python scripts/pressure_gate.py
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install app and browser harness
+        run: python -m pip install -e '.[e2e]'
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Browser interaction gate
+        env:
+          ECOMEVO_DATA: ${{ runner.temp }}/ecomevo-e2e
+          ECOMEVO_AUTH_MODE: local
+          ECOMEVO_LOCAL_ROLE: admin
+          ECOMEVO_E2E_ARTIFACT_DIR: outputs/e2e
+        run: |
+          set -euo pipefail
+          uvicorn ecomevo.api.app:app --host 127.0.0.1 --port 8765 > /tmp/ecomevo-e2e.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          if ! python scripts/browser_e2e.py; then
+            sed -n '1,240p' /tmp/ecomevo-e2e.log
+            exit 1
+          fi
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecomevo-browser-e2e
+          path: outputs/e2e
+          if-no-files-found: ignore

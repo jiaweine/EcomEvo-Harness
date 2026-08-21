@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=70"]
+requires = ["setuptools>=75", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ecomevo-harness"
 version = "1.0.0"
-description = "E-commerce autonomous decision runtime with event sourcing, adaptive planning, multimodal evidence, verification, rollback and controlled evolution."
+description = "Autonomous and self-evolving e-commerce agent runtime with dynamic task graphs, Bayesian skill evolution, multimodal evidence, deterministic authority and controlled business execution."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
@@ -21,7 +21,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx2>=2,<3"]
+e2e = ["playwright>=1.50,<2"]
 
 [project.scripts]
 ecomevo = "ecomevo.cli:main"

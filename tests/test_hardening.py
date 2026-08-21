@@ -121,6 +121,8 @@ def test_stale_approved_action_becomes_uncertain(tmp_path):
     recovered=store.recover_stale_actions(c['id'],older_than=300)
     row=store.get_action('a1')
     assert recovered==['a1'] and row['status']=='uncertain' and row['payload']['execution_outcome']=='unknown'
+    updates=[event for event in store.list_events(c['id']) if event['type']=='action.updated']
+    assert len(updates)==1 and updates[0]['payload']['status']=='uncertain'
 
 
 def test_mcp_transport_timeout_marks_action_uncertain(monkeypatch):

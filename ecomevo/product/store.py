@@ -2,10 +2,14 @@ from __future__ import annotations
 import json, sqlite3, time, uuid
 from pathlib import Path
 from typing import Any
+from fastapi import HTTPException
 from ecomevo.models import BusinessAction
 
 
 class ConversationStore:
+    MAX_ASSETS_PER_CONVERSATION=120
+    MAX_ASSET_BYTES_PER_CONVERSATION=2*1024*1024*1024
+
     def __init__(self, db_path: str | Path, asset_dir: str | Path):
         self.db_path=Path(db_path); self.asset_dir=Path(asset_dir)
         self.db_path.parent.mkdir(parents=True,exist_ok=True); self.asset_dir.mkdir(parents=True,exist_ok=True); self._init()
@@ -86,12 +90,21 @@ class ConversationStore:
         return bool(r)
 
     def add_asset(self,cid,*,name,mime,path,size,meta):
-        aid=f'asset-{uuid.uuid4().hex[:12]}';now=time.time()
+        aid=f'asset-{uuid.uuid4().hex[:12]}';now=time.time();size=max(0,int(size or 0))
         with self._conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if cid:
+                exists=c.execute('SELECT 1 FROM conversations WHERE id=?',(cid,)).fetchone()
+                if not exists:raise KeyError(cid)
+                quota=c.execute('SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes FROM assets WHERE conversation_id=?',(cid,)).fetchone()
+                count=int(quota['count'] or 0);used=int(quota['bytes'] or 0)
+                if count>=self.MAX_ASSETS_PER_CONVERSATION:
+                    raise HTTPException(409,'单个任务最多保留 120 份资料，请新建任务或整理现有资料')
+                if used+size>self.MAX_ASSET_BYTES_PER_CONVERSATION:
+                    raise HTTPException(413,'当前任务资料总量已达到上限')
             c.execute('INSERT INTO assets VALUES(?,?,?,?,?,?,?,?)',(aid,cid,name,mime,path,size,json.dumps(meta,ensure_ascii=False,default=str),now))
             if cid:c.execute('UPDATE conversations SET updated_at=? WHERE id=?',(now,cid))
         return self.get_asset(aid)
-
 
     def patch_asset_meta(self,aid,patch):
         """Persist server-side derived metadata without exposing it through the public API."""
@@ -126,7 +139,6 @@ class ConversationStore:
         for r in rows:d=dict(r);d['meta']=json.loads(d.pop('meta') or '{}');out.append(d)
         return out
 
-
     def claim_turn(self,cid,ttl=120.0):
         """Acquire a renewable cross-process lease so one task turn runs at a time."""
         now=time.time();token=f'lease-{uuid.uuid4().hex}'
@@ -148,7 +160,6 @@ class ConversationStore:
         with self._conn() as c:
             cur=c.execute('DELETE FROM turn_leases WHERE conversation_id=? AND token=?',(cid,token))
         return cur.rowcount==1
-
 
     def recover_interrupted_turn(self,cid):
         """Close a stale accepted turn after its processing lease has expired.
@@ -210,7 +221,14 @@ class ConversationStore:
                 payload=json.loads(r['payload'] or '{}')
                 payload.update({'execution_error':'执行进程中断，无法确认下游是否已完成；请先在业务系统核对结果，不要直接重复执行。','execution_outcome':'unknown'})
                 cur=c.execute("UPDATE actions SET status='uncertain',payload=?,updated_at=? WHERE id=? AND status='approved'",(json.dumps(payload,ensure_ascii=False),now,r['id']))
-                if cur.rowcount==1:recovered.append(r['id'])
+                if cur.rowcount==1:
+                    updated=c.execute('SELECT * FROM actions WHERE id=?',(r['id'],)).fetchone()
+                    action=self._decode_action(updated)
+                    c.execute(
+                        'INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)',
+                        (cid,'action.updated',json.dumps(action,ensure_ascii=False,default=str),now),
+                    )
+                    recovered.append(r['id'])
         return recovered
 
     def list_actions(self,cid,status=None,terminal_limit:int=100):
@@ -234,6 +252,25 @@ class ConversationStore:
         with self._conn() as c:c.execute('UPDATE actions SET status=?,payload=?,updated_at=? WHERE id=?',(status,json.dumps(payload,ensure_ascii=False),now,aid))
         return self.get_action(aid)
 
+    def update_action_with_event(self,aid,status,payload_patch=None):
+        """Persist an action outcome and its authoritative task event atomically."""
+        now=time.time()
+        with self._conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            current=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+            if not current:raise KeyError(aid)
+            payload=json.loads(current['payload'] or '{}');payload.update(payload_patch or {})
+            encoded=json.dumps(payload,ensure_ascii=False,default=str)
+            c.execute('UPDATE actions SET status=?,payload=?,updated_at=? WHERE id=?',(status,encoded,now,aid))
+            updated=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+            action=self._decode_action(updated)
+            cur=c.execute(
+                'INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)',
+                (action['conversation_id'],'action.updated',json.dumps(action,ensure_ascii=False,default=str),now),
+            )
+        event={'id':cur.lastrowid,'conversation_id':action['conversation_id'],'type':'action.updated','payload':action,'created_at':now}
+        return action,event
+
     def transition_action(self,aid,expected_status,status,payload_patch=None):
         """Atomic compare-and-set for side-effect decisions. Returns None when another request won the race."""
         now=time.time()
@@ -247,3 +284,27 @@ class ConversationStore:
                           (status,json.dumps(payload,ensure_ascii=False),now,aid,expected_status))
             if cur.rowcount != 1:return None
         return self.get_action(aid)
+
+    def transition_action_with_event(self,aid,expected_status,status,payload_patch=None):
+        """Compare-and-set an action and append its task event in the same transaction."""
+        now=time.time()
+        with self._conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            current=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+            if not current:raise KeyError(aid)
+            if current['status']!=expected_status:return None
+            payload=json.loads(current['payload'] or '{}');payload.update(payload_patch or {})
+            encoded=json.dumps(payload,ensure_ascii=False,default=str)
+            cur=c.execute(
+                'UPDATE actions SET status=?,payload=?,updated_at=? WHERE id=? AND status=?',
+                (status,encoded,now,aid,expected_status),
+            )
+            if cur.rowcount!=1:return None
+            updated=c.execute('SELECT * FROM actions WHERE id=?',(aid,)).fetchone()
+            action=self._decode_action(updated)
+            event_cur=c.execute(
+                'INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)',
+                (action['conversation_id'],'action.updated',json.dumps(action,ensure_ascii=False,default=str),now),
+            )
+        event={'id':event_cur.lastrowid,'conversation_id':action['conversation_id'],'type':'action.updated','payload':action,'created_at':now}
+        return action,event
