@@ -290,7 +290,7 @@ docker run --rm \
 
 | Gate | Command / Scope |
 |---|---|
-| Python environment | Python 3.11 + editable install |
+| Python environment | Python 3.11 最低版本完整回归 + Python 3.14 最新版本兼容回归 |
 | System media dependency | ffmpeg |
 | Python regression | `pytest -q`，245 项；每个 pytest 进程使用隔离的 durable data root |
 | Python compile | `python -m compileall -q ecomevo` |
