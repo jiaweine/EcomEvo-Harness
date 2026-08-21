@@ -73,6 +73,9 @@ def run() -> None:
             # A fresh browser gets the first-run tour. It must be styled as the
             # active modal, block nested command palettes, and release body state.
             expect(page.locator("#productTour")).to_be_visible()
+            # Reproduce the async boot race: conversation initialization may try to
+            # focus the composer after the modal opened. Focus containment must win.
+            page.locator("#messageInput").focus()
             expect(page.locator("#tourCloseBtn")).to_be_focused()
             capture(page, "product-tour.png")
             page.keyboard.press("Control+K")
