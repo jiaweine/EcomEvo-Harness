@@ -313,6 +313,42 @@ class ConversationStore(BaseConversationStore):
             )
         return cur.rowcount == 1
 
+    def add_job_event(
+        self,
+        job_id: str,
+        worker_id: str,
+        type_: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Append progress only while ``worker_id`` owns an unexpired running job."""
+        now = time.time()
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            job = c.execute(
+                "SELECT conversation_id FROM conversation_jobs "
+                "WHERE id=? AND status='running' AND worker_id=? "
+                "AND COALESCE(lease_until,0)>?",
+                (job_id, worker_id, now),
+            ).fetchone()
+            if not job:
+                return None
+            cur = c.execute(
+                "INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)",
+                (
+                    job["conversation_id"],
+                    type_,
+                    json.dumps(payload, ensure_ascii=False, default=str),
+                    now,
+                ),
+            )
+        return {
+            "id": cur.lastrowid,
+            "conversation_id": job["conversation_id"],
+            "type": type_,
+            "payload": payload,
+            "created_at": now,
+        }
+
     def finish_job_success(self, job_id: str, *, worker_id: str, session_id: str, actions, answer: str, result: dict[str, Any]):
         """Commit actions, assistant message, answer.ready and job success atomically."""
         now = time.time()
@@ -320,7 +356,13 @@ class ConversationStore(BaseConversationStore):
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             job = c.execute("SELECT * FROM conversation_jobs WHERE id=?", (job_id,)).fetchone()
-            if not job or job["status"] != "running" or str(job["worker_id"] or "") != worker_id:
+            if (
+                not job
+                or job["status"] != "running"
+                or str(job["worker_id"] or "") != worker_id
+                or job["lease_until"] is None
+                or float(job["lease_until"]) <= now
+            ):
                 return None
             for action in actions:
                 c.execute(
@@ -370,7 +412,13 @@ class ConversationStore(BaseConversationStore):
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             job = c.execute("SELECT * FROM conversation_jobs WHERE id=?", (job_id,)).fetchone()
-            if not job or job["status"] != "running" or str(job["worker_id"] or "") != worker_id:
+            if (
+                not job
+                or job["status"] != "running"
+                or str(job["worker_id"] or "") != worker_id
+                or job["lease_until"] is None
+                or float(job["lease_until"]) <= now
+            ):
                 return None
             payload = {"message": message, "detail": detail, "job_id": job_id}
             cur = c.execute(

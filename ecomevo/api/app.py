@@ -14,14 +14,28 @@ from . import application as _application
 from .upload_security import validate_raster as _validate_raster
 
 
-async def _compat_emit(cid: str, event_type: str, payload: dict):
+async def _compat_emit(
+    cid: str,
+    event_type: str,
+    payload: dict,
+    job_id: str | None = None,
+    worker_id: str | None = None,
+):
     """Append durably, then replace stale process-local wake data with the full event.
 
     WebSocket delivery still treats SQLite ``task_events`` as authoritative and drains
     by event id, so the queue payload is only a low-latency compatibility/wake hint.
     """
-    event = _application.store.add_event(cid, event_type, payload)
-    for queue in list(_application.queues.get(cid, [])):
+    if job_id is not None or worker_id is not None:
+        if not job_id or not worker_id:
+            return None
+        event = _application.store.add_job_event(job_id, worker_id, event_type, payload)
+    else:
+        event = _application.store.add_event(cid, event_type, payload)
+    if not event:
+        return None
+    event_cid = str(event["conversation_id"])
+    for queue in list(_application.queues.get(event_cid, [])):
         try:
             queue.put_nowait(event)
         except asyncio.QueueFull:

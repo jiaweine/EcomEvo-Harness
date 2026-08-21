@@ -197,17 +197,38 @@ class AdaptiveSkillLibrary:
         }
 
     def _adapt_policy(self, domain: str, *, success: bool, skill_used: bool):
-        current=self.policy(domain);promotion=float(current['promotion_threshold']);retirement=float(current['retirement_threshold']);exploration=float(current['exploration'])
-        if skill_used and not success:
-            promotion=min(.98,promotion+.008);exploration=min(.90,exploration+.04);retirement=min(.55,retirement+.005)
-        elif skill_used and success:
-            promotion=max(.90,promotion-.003);exploration=max(.25,exploration-.02);retirement=max(.40,retirement-.002)
-        elif not skill_used and not success:
-            exploration=min(.90,exploration+.025)
-        now=time.time()
-        with self._lock,self._conn() as c:
-            c.execute('BEGIN IMMEDIATE')
-            c.execute('UPDATE evolution_policy SET promotion_threshold=?,retirement_threshold=?,exploration=?,updates=updates+1,updated_at=? WHERE domain=?',(promotion,retirement,exploration,now,domain))
+        # Read, derive and write under one SQLite write transaction. The in-process
+        # RLock is not shared by other Runtime/worker instances using the same DB.
+        with self._lock, self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            now = time.time()
+            c.execute(
+                "INSERT OR IGNORE INTO evolution_policy VALUES(?,?,?,?,?,?)",
+                (domain, 0.92, 0.45, 0.60, 0, now),
+            )
+            current = c.execute(
+                "SELECT promotion_threshold,retirement_threshold,exploration "
+                "FROM evolution_policy WHERE domain=?",
+                (domain,),
+            ).fetchone()
+            promotion = float(current["promotion_threshold"])
+            retirement = float(current["retirement_threshold"])
+            exploration = float(current["exploration"])
+            if skill_used and not success:
+                promotion = min(0.98, promotion + 0.008)
+                exploration = min(0.90, exploration + 0.04)
+                retirement = min(0.55, retirement + 0.005)
+            elif skill_used and success:
+                promotion = max(0.90, promotion - 0.003)
+                exploration = max(0.25, exploration - 0.02)
+                retirement = max(0.40, retirement - 0.002)
+            elif not skill_used and not success:
+                exploration = min(0.90, exploration + 0.025)
+            c.execute(
+                "UPDATE evolution_policy SET promotion_threshold=?,retirement_threshold=?,"
+                "exploration=?,updates=updates+1,updated_at=? WHERE domain=?",
+                (promotion, retirement, exploration, now, domain),
+            )
 
     def note_run(self,domain:str,*,success:bool,skill_used:bool=False):
         self._adapt_policy(domain,success=success,skill_used=skill_used)

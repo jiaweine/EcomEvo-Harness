@@ -37,7 +37,7 @@ EcomEvo 已经形成可回归的产品闭环：多模态任务、动态查证/�
 
 ### Durable Execution
 
-消息、accepted event 与 durable job 原子落盘；worker 使用 cross-process lease；输入和 asset SHA snapshot 固化；崩溃后可 reclaim；assistant/action/terminal event 原子提交。`BackgroundTasks` 只保留低延迟触发角色，不再是任务存在性的唯一载体。
+消息、accepted event 与 durable job 原子落盘；worker 使用 cross-process lease；输入和 asset SHA snapshot 固化；崩溃后可 reclaim；progress 按 job owner fencing；ownership handoff 或续租失败会取消旧 analyzer；assistant/action/terminal event 原子提交。`BackgroundTasks` 只保留低延迟触发角色，不再是任务存在性的唯一载体。
 
 ### Tenant / Identity / Approval Chain
 
@@ -57,7 +57,7 @@ EcomEvo 已经形成可回归的产品闭环：多模态任务、动态查证/�
 当前 CI 已拆为三条独立 job：
 
 1. regression + Gold Set + adversarial gate；
-2. current-head 1 / 8 / 32 / 64 / 120 / 240 pressure；
+2. current-head 1 / 8 / 32 / 64 / 120 / 240 pressure，以及 PTC deadline / adaptive-policy contention 探针；
 3. real Chromium E2E，包括双标签页与窄屏交互。
 
 ---

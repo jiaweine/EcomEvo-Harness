@@ -123,6 +123,8 @@ Evolution patch 使用 semantic fingerprint 做并发去重。
 - domain evolution policy；
 - quality-diversity niche。
 
+domain evolution policy 的读取、派生与更新位于同一个 `BEGIN IMMEDIATE` 事务；不同 Engine / worker 实例不能用旧快照覆盖彼此的策略增量。
+
 ### Routing Store
 
 `AdaptiveRoutingStore` 在同一 SQLite 数据库新增：
@@ -494,7 +496,7 @@ WebSocket 断开后按指数退避重连，并刷新任务状态。
 
 同一 conversation 同时只允许一个处理 lease。
 
-进程异常后过期 lease 会进入恢复逻辑，避免 UI 永久卡在 processing。
+进程异常后过期 lease 会进入恢复逻辑，避免 UI 永久卡在 processing。Durable worker 的 progress append 同时校验当前 job owner 与未过期 lease；续租失败或 ownership handoff 会取消旧 analyzer，旧 worker 不写 terminal、不释放新 owner 正在使用的 lease token。
 
 ### Learner failure
 
