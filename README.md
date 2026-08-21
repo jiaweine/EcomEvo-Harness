@@ -2,6 +2,9 @@
 
 # EcomEvo
 
+[![EcomEvo CI](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml/badge.svg)](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/codeql.yml/badge.svg)](https://github.com/jiaweine/EcomEvo-Harness/actions/workflows/codeql.yml)
+
 ### Evidence-Driven Commerce Decision Workbench
 
 **不是把模型接进聊天框，而是把电商业务目标、资料、证据、判断和动作组织成一条可复核、可确认、可恢复的持续任务。**
@@ -264,6 +267,8 @@ docker run --rm \
   ecomevo
 ```
 
+生产镜像固定以 UID/GID `10001:10001` 非 root 运行，只安装 Runtime 依赖并通过 `/healthz` 提供不泄露 Provider、MCP 或任务统计的最小存活探针；CI 还会用只读根文件系统和独立数据 `tmpfs` 启动镜像。
+
 ### 04 · Provider Capability
 
 复制 `.env.example` 后按实际环境配置 Provider。没有配置外部模型时，产品仍可使用本地演示能力完成文本与结构化资料流程。
@@ -287,26 +292,31 @@ docker run --rm \
 |---|---|
 | Python environment | Python 3.11 + editable install |
 | System media dependency | ffmpeg |
-| Python regression | `pytest -q`，243 项；每个 pytest 进程使用隔离的 durable data root |
+| Python regression | `pytest -q`，245 项；每个 pytest 进程使用隔离的 durable data root |
 | Python compile | `python -m compileall -q ecomevo` |
 | Frontend syntax | 对 `frontend/*.js` 全量执行 `node --check` |
 | Product smoke | `python scripts/e2e_smoke.py`，使用临时 durable root，不读写操作者默认数据 |
 | Gold Set | `python scripts/eval_gate.py`，fresh + persisted replay |
 | Concurrency | `python scripts/pressure_gate.py`，1 / 8 / 32 / 64 / 120 / 240 Runtime；另含 64-call PTC deadline 与 8-worker adaptive-policy contention 探针 |
 | Browser E2E | 真实 Uvicorn + Chromium，桌面、移动、WebSocket、任务恢复与截图尺寸硬校验 |
-| Packaging | setuptools 显式限制 Python package discovery |
+| Dependency security | Pillow 安全版本下限、`pip-audit` 漏洞门禁与 Bandit medium/high gate |
+| Packaging | 构建 wheel，在干净环境安装并启动 `/healthz`、首页与静态资源 |
+| Container | 非 root 镜像、只读根文件系统、可写数据挂载与 health probe |
+| Code scanning | CodeQL 对 Python 与 JavaScript 执行 PR、main 与每周扫描 |
 
 自适应路由、反事实 credit、Harness cohort posterior、耐久 job ownership handoff、资料生命周期、动作状态真实性、租户/RBAC、MCP 不确定结果、PTC 背压总期限与任务租约并发边界都进入回归覆盖。
 
 本地完整门禁：
 
 ```bash
-python -m pip install -e '.[dev,e2e]'
+python -m pip install -e '.[dev,e2e,security]'
 python -m compileall -q ecomevo
 pytest -q
 python scripts/eval_gate.py
 python scripts/e2e_smoke.py
 python scripts/pressure_gate.py
+pip-audit --strict --progress-spinner off .
+bandit -q -r ecomevo -ll
 ```
 
 ---
@@ -343,10 +353,14 @@ EcomEvo 的产品原则保持简单：**认知过程可以自动推进，真实�
 | **[DESIGN](docs/DESIGN.md)** | UI、响应式、中文排版与产品交互原则 |
 | **[DEPLOYMENT](docs/DEPLOYMENT.md)** | 部署说明与环境要求 |
 | **[VERIFICATION REPORT](docs/VERIFICATION_REPORT.md)** | 已有验证记录 |
+| **[CONTRIBUTING](CONTRIBUTING.md)** | 开发门禁、PR 证据与架构不变量 |
+| **[SECURITY](SECURITY.md)** | 私密漏洞报告、支持范围与安全边界 |
 
 ---
 
 # Roadmap
+
+仓库发布治理仍有四项需要 owner 在 GitHub 设置或法律选择后完成：选择 MIT / Apache-2.0 等许可证、为 `main` 配置 required-check ruleset、启用 private vulnerability reporting，以及从当前 `1.0.0` 元数据创建首个签名 tag / GitHub Release。历史已合并分支也应在确认无保留需求后清理。
 
 当前产品方向按主分支价值排序：
 

@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a reproducible product, runtime, API, or deployment defect.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private endpoints, customer evidence, or undisclosed security vulnerabilities.
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version
+      placeholder: main commit SHA or release
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Runtime / planning
+        - Durable jobs / event sourcing
+        - Evidence / file handling
+        - MCP / business actions
+        - Identity / RBAC
+        - API / WebSocket
+        - Web workbench
+        - Packaging / deployment / CI
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest deterministic sequence and sanitized inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized logs or evidence
+      description: Include relevant status codes, event types, and stack traces after removing sensitive data.

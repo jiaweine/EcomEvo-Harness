@@ -60,7 +60,8 @@ class ConversationStore:
         if scene is not None:sets.append('scene=?');params.append(scene)
         params.append(cid)
         with self._conn() as c:
-            cur=c.execute(f"UPDATE conversations SET {','.join(sets)} WHERE id=?",params)
+            # ``sets`` contains only the two fixed column assignments above; values remain bound.
+            cur=c.execute(f"UPDATE conversations SET {','.join(sets)} WHERE id=?",params)  # nosec
             if cur.rowcount!=1:raise KeyError(cid)
         return self.get_conversation(cid)
 

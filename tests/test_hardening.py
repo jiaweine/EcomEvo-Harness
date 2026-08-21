@@ -7,6 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from PIL import __version__ as pillow_version
 
 import importlib
 appmod=importlib.import_module('ecomevo.api.app')
@@ -34,6 +35,21 @@ def test_security_headers_include_browser_hardening():
     assert "object-src 'none'" in csp and "frame-ancestors 'none'" in csp
     assert r.headers['permissions-policy']=='camera=(), microphone=(), geolocation=(), payment=()'
     assert r.headers['cross-origin-resource-policy']=='same-origin'
+
+
+def test_public_liveness_is_minimal_while_detailed_health_stays_protected(monkeypatch):
+    monkeypatch.setenv("ECOMEVO_AUTH_MODE", "hmac")
+    monkeypatch.setenv("ECOMEVO_AUTH_HMAC_SECRET", "liveness-test-secret-0123456789abcdef")
+    with TestClient(app) as client:
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+        assert client.get("/api/health").status_code == 401
+
+
+def test_pillow_security_floor_is_installed():
+    version = tuple(int(part) for part in pillow_version.split(".")[:3])
+    assert version >= (12, 3, 0)
 
 
 def test_corrupt_image_is_rejected():
