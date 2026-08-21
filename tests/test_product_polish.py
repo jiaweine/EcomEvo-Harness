@@ -55,6 +55,12 @@ def test_product_tour_remains_accessible():
     assert 'focusables()' in INTRO_JS
 
 
+def test_product_tour_contains_programmatic_focus_during_async_boot():
+    assert "document.addEventListener('focusin'" in INTRO_JS
+    assert 'tour.contains(event.target)' in INTRO_JS
+    assert 'focus({preventScroll:true})' in INTRO_JS
+
+
 def test_command_search_loads_more_recent_tasks():
     assert "/api/conversations?limit=100" in INTRO_JS
     assert 'setupExtendedCommandSearch' in INTRO_JS

@@ -5,7 +5,7 @@
 截至 2026-08-21，本修复分支已在本地当前工作树完成以下验证：
 
 - `python -m compileall -q ecomevo`；
-- 完整 `pytest -q`，242 项；
+- 完整 `pytest -q`，243 项；
 - 9 个业务 Gold Set × fresh / persisted replay 两阶段 promotion gate；
 - 所有 `frontend/*.js` 的 `node --check`；
 - 产品 API smoke；
@@ -136,6 +136,7 @@ Gold Set promotion gate 每次 CI 对同一业务集跑两遍：
 仓库的 browser-e2e job 使用真实 Playwright Chromium 启动 Uvicorn 与独立 `ECOMEVO_DATA`，设计为验证：
 
 - 首屏与输入框可用；
+- 首访导览在异步任务初始化抢焦点时仍保持 modal focus containment；
 - provider 品牌不出现在客户表面；
 - 空任务切业务场景不制造垃圾任务；
 - durable message 发送后能收到 assistant result；

@@ -287,7 +287,7 @@ docker run --rm \
 |---|---|
 | Python environment | Python 3.11 + editable install |
 | System media dependency | ffmpeg |
-| Python regression | `pytest -q`，242 项；每个 pytest 进程使用隔离的 durable data root |
+| Python regression | `pytest -q`，243 项；每个 pytest 进程使用隔离的 durable data root |
 | Python compile | `python -m compileall -q ecomevo` |
 | Frontend syntax | 对 `frontend/*.js` 全量执行 `node --check` |
 | Product smoke | `python scripts/e2e_smoke.py`，使用临时 durable root，不读写操作者默认数据 |
