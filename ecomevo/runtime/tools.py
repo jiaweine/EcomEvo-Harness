@@ -242,7 +242,12 @@ class MCPReadTool(BaseTool):
 class ToolRegistry:
     def __init__(self,mcp=None):
         tools=[MediaSummarizeTool(),EvidenceSearchTool(),PolicyLookupTool(),CatalogInspectTool(),MerchantInspectTool(),OrderInspectTool(),RiskScanTool()]
-        self.tools={t.key:t for t in tools};self.remote_specs=[]
+        self.tools={t.key:t for t in tools};self._local_keys=set(self.tools);self.remote_specs=[];self.mcp=None
+        self.set_mcp(mcp)
+
+    def set_mcp(self,mcp=None):
+        for key in [key for key in self.tools if key not in self._local_keys]:self.tools.pop(key,None)
+        self.remote_specs=[];self.mcp=mcp
         if mcp is not None and hasattr(mcp,'read_tool_specs'):
             for spec in mcp.read_tool_specs():
                 key=str(spec.get('key') or '')

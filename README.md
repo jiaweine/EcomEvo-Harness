@@ -69,12 +69,27 @@ flowchart LR
 
 | Frozen component | Invariant |
 |---|---|
-| Registry | 插件类型、实例和允许能力明确注册 |
+| Registry | 插件槽位与能力契约固定；实现可在任务之间原子替换 |
 | Sandbox | 工具副作用与执行边界不可被候选 patch 绕过 |
 | Verifier | 证据、约束、输出与副作用独立校验 |
 | RBAC / Approval | 高影响动作始终需要具备权限的人确认 |
 | BusinessAction | proposed、approved、simulated、executed、uncertain、failed 保持语义分离 |
 | Event Store | append-only hash chain、checkpoint 与 fork 构成任务事实源 |
+
+<details>
+<summary><b>Runtime Plugin Contract</b></summary>
+
+| Layer | Guarantee |
+|---|---|
+| Contract | 每个插件槽位声明必需方法与属性，加载前校验 API 版本与能力 |
+| Rebind | Planner、Tool、PTC、Skill、Sandbox、Verifier 等替换后同步进入真实依赖图 |
+| Lifecycle | `plugin_start` 与 `plugin_stop` 失败时回滚实例、版本和依赖绑定 |
+| Concurrency | 有任务运行时拒绝替换，保证单条事件轨迹只对应一代插件图 |
+| Discovery | `ecomevo.plugins` entry point 仅发现元数据，第三方代码必须显式加载 |
+
+开发与打包规范见 [Plugin Runtime](docs/PLUGIN_RUNTIME.md)。
+
+</details>
 
 ## 03 · Runtime Loop
 
@@ -250,7 +265,7 @@ EcomEvo 的核心方法来自仓库内可运行实现，而不是只在 README �
 
 | Concern | Primary implementation |
 |---|---|
-| Plugin Runtime | `ecomevo/runtime/plugins.py` |
+| Plugin Runtime | `ecomevo/runtime/plugins.py` · [contract and packaging](docs/PLUGIN_RUNTIME.md) |
 | Event Store and checkpoint | `ecomevo/runtime/event_store.py` |
 | Adaptive Planner | `ecomevo/runtime/planner.py` |
 | Recursive Harness | `ecomevo/runtime/recursive.py` |
@@ -303,7 +318,7 @@ stateDiagram-v2
 
 | Capability | Status | Boundary |
 |---|---|---|
-| Plugin Runtime | READY | Model / Planner / Tool / Skill / Memory / Agent / Sandbox / Verifier 可注入 |
+| Plugin Runtime | READY | 契约校验、生命周期、任务间热替换、依赖重绑定与显式 entry-point 加载 |
 | Event-Sourced Runtime | READY | Goal / Belief / Task 事件、hash chain、checkpoint 与 fork |
 | Adaptive Planner | READY | Bayesian routing、成本收益、abstention 与反事实 credit |
 | Recursive Agent + PTC | READY | 有界递归与有界并行只读工具组合 |

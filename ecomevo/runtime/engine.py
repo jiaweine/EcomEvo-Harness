@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -14,7 +15,13 @@ from .harness_context import bind_harness_profile, reset_harness_profile
 from .harness_evolution import HarnessEvolutionOptimizer
 from .memory import RuntimeMemory
 from .planner import AdaptivePlanner
-from .plugins import PluginRegistry
+from .plugins import (
+    PluginContract,
+    PluginContractError,
+    PluginError,
+    PluginLifecycleError,
+    PluginRegistry,
+)
 from .recursive import RecursiveCoordinator
 from .resilient_executor import ResilientPTCExecutor
 from .sandbox import ActionSandbox
@@ -35,6 +42,9 @@ class EcomEvoEngine:
         plugin_overrides: dict[str, Any] | None = None,
     ):
         overrides = dict(plugin_overrides or {})
+        self._plugin_lock = threading.RLock()
+        self._active_runs = 0
+        self._injected_plugin_keys = set(overrides)
 
         def component(key: str, factory):
             return overrides[key] if key in overrides else factory()
@@ -59,7 +69,7 @@ class EcomEvoEngine:
                 self.verifier, self.recursive, self.skills,
             ),
         )
-        self.plugins=PluginRegistry();self._register_plugins()
+        self.plugins=PluginRegistry(on_change=self._on_plugin_change);self._register_plugins()
         for patch_row in reversed(self.events.list_patches(300)):
             self.planner.apply_evolution_patch(patch_row)
             try:self.evolver.ingest(EvolutionPatch(**patch_row))
@@ -71,20 +81,116 @@ class EcomEvoEngine:
             self.memory.add({'session_id':row.get('session_id'),'domain':payload.get('domain'),'goal':str((row.get('meta') or {}).get('goal') or ''),'score':payload.get('verifier_score',0),'risks':belief.get('risks') or []})
 
     def _register_plugins(self):
-        self.plugins.register('event.store','state','事件存储','Append-only hash chain、checkpoint、fork 与 runtime patch',instance=self.events)
-        self.plugins.register('model.gateway','model','认知引擎服务层','云端 / 企业兼容 / 开源权重 / 自托管',instance=self.model_gateway)
-        self.plugins.register('planner.adaptive','planner','自适应规划器','Goal / Belief State 与证据缺口驱动的候选计划',instance=self.planner)
-        self.plugins.register('agent.autonomy','agent','自主任务控制器','动态任务图、Adaptive Posterior Routing、反事实 credit、重规划与只读 specialist 委派',instance=self.autonomy)
-        self.plugins.register('agent.recursive','agent','递归专项复核器','有界深度的证据、规则、风险与交叉核对 specialist',instance=self.recursive)
-        self.plugins.register('tool.registry','tool','工具注册表','本地只读工具与 MCP read tool 的统一可替换目录',instance=self.tools)
-        self.plugins.register('tool.ptc','tool','并行工具执行器','有界并发、超时隔离与组合并发的只读工具调用',instance=self.ptc)
-        self.plugins.register('memory.runtime','memory','任务记忆','保存同类任务的已验证结果',instance=self.memory)
-        self.plugins.register('memory.skills','memory','自进化技能库','持久化技能、后验可信度、质量多样性 niche 与晋升/退役',instance=self.skills)
-        self.plugins.register('evolver.harness','skill','Harness 坐标优化器','Prompt / Tool / Memory / Delegation 单坐标 shadow 进化、Verifier 后验验证与可回滚晋升',instance=self.harness)
-        self.plugins.register('sandbox.action','sandbox','操作安全区','阻止未确认的高影响动作',instance=self.sandbox)
-        self.plugins.register('verifier.decision','verifier','结果复核器','检查证据、约束与副作用',instance=self.verifier)
-        self.plugins.register('evolver.failure','skill','失败轨迹候选生成器','失败诊断、成功轨迹蒸馏与认知策略候选生成',instance=self.evolver)
-        self.plugins.register('mcp.remote','tool','企业工具连接器','接入企业内部工具与数据服务',instance=self.mcp)
+        contracts = {
+            'event.store': PluginContract(methods=(
+                'append','create_session','save_checkpoint','restore_checkpoint','list_patches',
+                'recent_completed','save_patch_if_novel','verify_chain',
+            )),
+            'model.gateway': PluginContract(methods=('current_provider',)),
+            'planner.adaptive': PluginContract(methods=('parse_goal','initial_belief','plan','apply_evolution_patch')),
+            'agent.autonomy': PluginContract(methods=('run','rebind')),
+            'agent.recursive': PluginContract(methods=('run',)),
+            'tool.registry': PluginContract(methods=('planned_calls','describe','set_mcp'),attributes=('tools',)),
+            'tool.ptc': PluginContract(methods=('execute',)),
+            'memory.runtime': PluginContract(methods=('relevant','add')),
+            'memory.skills': PluginContract(methods=('relevant','policy')),
+            'evolver.harness': PluginContract(methods=('profile','record_outcome','propose','snapshot')),
+            'sandbox.action': PluginContract(methods=('validate_tool',)),
+            'verifier.decision': PluginContract(methods=('verify',)),
+            'evolver.failure': PluginContract(methods=('evolve','ingest','distill_success')),
+            'mcp.remote': PluginContract(methods=('read_tool_specs','call_tool')),
+        }
+
+        def register(key, kind, name, description, instance, *, required=True):
+            source = 'injected' if key in self._injected_plugin_keys else 'builtin'
+            if key in {'model.gateway','mcp.remote'} and instance is not None and key not in self._injected_plugin_keys:
+                source = 'configured'
+            self.plugins.register(
+                key, kind, name, description, instance=instance, required=required,
+                source=source, contract=contracts[key],
+            )
+
+        register('event.store','state','事件存储','Append-only hash chain、checkpoint、fork 与 runtime patch',self.events)
+        register('model.gateway','model','认知引擎服务层','云端 / 企业兼容 / 开源权重 / 自托管',self.model_gateway,required=False)
+        register('planner.adaptive','planner','自适应规划器','Goal / Belief State 与证据缺口驱动的候选计划',self.planner)
+        register('agent.autonomy','agent','自主任务控制器','动态任务图、Adaptive Posterior Routing、反事实 credit、重规划与只读 specialist 委派',self.autonomy)
+        register('agent.recursive','agent','递归专项复核器','有界深度的证据、规则、风险与交叉核对 specialist',self.recursive)
+        register('tool.registry','tool','工具注册表','本地只读工具与 MCP read tool 的统一可替换目录',self.tools)
+        register('tool.ptc','tool','并行工具执行器','有界并发、超时隔离与组合并发的只读工具调用',self.ptc)
+        register('memory.runtime','memory','任务记忆','保存同类任务的已验证结果',self.memory)
+        register('memory.skills','memory','自进化技能库','持久化技能、后验可信度、质量多样性 niche 与晋升/退役',self.skills)
+        register('evolver.harness','skill','Harness 坐标优化器','Prompt / Tool / Memory / Delegation 单坐标 shadow 进化、Verifier 后验验证与可回滚晋升',self.harness)
+        register('sandbox.action','sandbox','操作安全区','阻止未确认的高影响动作',self.sandbox)
+        register('verifier.decision','verifier','结果复核器','检查证据、约束与副作用',self.verifier)
+        register('evolver.failure','skill','失败轨迹候选生成器','失败诊断、成功轨迹蒸馏与认知策略候选生成',self.evolver)
+        register('mcp.remote','tool','企业工具连接器','接入企业内部工具与数据服务',self.mcp,required=False)
+        for row in self.plugins.describe():
+            self.plugins.validate(row['key'],self.plugins.get(row['key']))
+
+    def _rebind_autonomy(self, **updates: Any) -> None:
+        rebind = getattr(self.autonomy, 'rebind', None)
+        if not callable(rebind):
+            raise PluginContractError(
+                'the active agent.autonomy plugin does not support dependency rebinding'
+            )
+        rebind(**updates)
+
+    def _bind_plugin(self, key: str, instance: Any) -> None:
+        if key == 'event.store': self.events = instance
+        elif key == 'model.gateway': self.model_gateway = instance
+        elif key == 'planner.adaptive':
+            self.planner = instance;self._rebind_autonomy(planner=instance)
+        elif key == 'agent.autonomy': self.autonomy = instance
+        elif key == 'agent.recursive':
+            self.recursive = instance;self._rebind_autonomy(reviewer=instance)
+        elif key == 'tool.registry':
+            self.tools = instance
+            if hasattr(self.ptc,'registry'):self.ptc.registry=instance
+            self._rebind_autonomy(registry=instance)
+        elif key == 'tool.ptc':
+            self.ptc = instance;self._rebind_autonomy(executor=instance)
+        elif key == 'memory.runtime': self.memory = instance
+        elif key == 'memory.skills':
+            self.skills = instance
+            if hasattr(self.evolver,'skills'):self.evolver.skills=instance
+            self._rebind_autonomy(skills=instance)
+        elif key == 'evolver.harness': self.harness = instance
+        elif key == 'sandbox.action':
+            self.sandbox = instance
+            if hasattr(self.ptc,'sandbox'):self.ptc.sandbox=instance
+            replay_gate=getattr(self.harness,'replay_gate',None)
+            if replay_gate is not None and hasattr(replay_gate,'sandbox'):replay_gate.sandbox=instance
+            self._rebind_autonomy(sandbox=instance)
+        elif key == 'verifier.decision':
+            self.verifier = instance;self._rebind_autonomy(verifier=instance)
+        elif key == 'evolver.failure': self.evolver = instance
+        elif key == 'mcp.remote':
+            self.mcp = instance
+            self.tools.set_mcp(instance)
+        else: raise PluginError(f'unknown runtime plugin slot: {key}')
+
+    def _on_plugin_change(self, key: str, instance: Any, previous: Any, event: str) -> None:
+        with self._plugin_lock:
+            if self._active_runs:
+                raise PluginLifecycleError(
+                    f'cannot change plugin {key} while {self._active_runs} task(s) are active'
+                )
+            try:self._bind_plugin(key,instance)
+            except Exception:
+                self._bind_plugin(key,previous)
+                raise
+
+    def replace_plugin(self, key: str, instance: Any, *, version: str | None = None) -> None:
+        """Validate, activate and atomically rebind one runtime plugin slot."""
+        self.plugins.replace(key,instance,version=version)
+
+    def discover_plugins(self) -> list[dict[str,str]]:
+        """Discover installed plugin packages without importing third-party code."""
+        return self.plugins.discover_entry_points()
+
+    def load_plugin(self, name: str) -> dict[str,Any]:
+        """Explicitly load and rebind one ``ecomevo.plugins`` entry point."""
+        return self.plugins.load_entry_point(name)
 
     async def _emit(self,sid:str,t:str,p:dict[str,Any],sink:EventSink|None):
         ev=self.events.append(sid,t,p)
@@ -92,6 +198,13 @@ class EcomEvoEngine:
         return ev
 
     async def run(self,text:str,assets:list[dict[str,Any]],sink:EventSink|None=None,domain_hint:str|None=None,context_text:str|None=None,reasoner=None)->RuntimeSummary:
+        with self._plugin_lock:self._active_runs+=1
+        try:
+            return await self._run_once(text,assets,sink=sink,domain_hint=domain_hint,context_text=context_text,reasoner=reasoner)
+        finally:
+            with self._plugin_lock:self._active_runs=max(0,self._active_runs-1)
+
+    async def _run_once(self,text:str,assets:list[dict[str,Any]],sink:EventSink|None=None,domain_hint:str|None=None,context_text:str|None=None,reasoner=None)->RuntimeSummary:
         started=time.perf_counter()
         if reasoner is None and self.model_gateway is not None and hasattr(self.model_gateway,'current_provider'):
             try:reasoner=self.model_gateway.current_provider()
