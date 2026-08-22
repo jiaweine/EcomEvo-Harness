@@ -234,7 +234,10 @@ def test_plugin_overrides_are_wired_into_the_runtime_graph(tmp_path):
     planner = AdaptivePlanner()
     sandbox = ActionSandbox()
     verifier = DecisionVerifier()
-    memory = object()
+    class Memory:
+        def relevant(self,*args,**kwargs):return []
+        def add(self,*args,**kwargs):return None
+    memory = Memory()
     engine = EcomEvoEngine(
         tmp_path/'runtime.db',
         plugin_overrides={
@@ -253,6 +256,114 @@ def test_plugin_overrides_are_wired_into_the_runtime_graph(tmp_path):
     assert engine.autonomy.sandbox is sandbox
     assert engine.autonomy.verifier is verifier
     assert engine.harness.replay_gate.sandbox is sandbox
+
+
+def test_live_plugin_replacement_rebinds_the_complete_dependency_graph(tmp_path):
+    from ecomevo.runtime.planner import AdaptivePlanner
+    from ecomevo.runtime.sandbox import ActionSandbox
+
+    class LifecyclePlanner(AdaptivePlanner):
+        def __init__(self):
+            super().__init__();self.started=0;self.stopped=0
+        def plugin_start(self, context):self.started+=1
+        def plugin_stop(self, context):self.stopped+=1
+
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    old_planner=engine.planner;planner=LifecyclePlanner();sandbox=ActionSandbox()
+    engine.replace_plugin('planner.adaptive',planner,version='2.1')
+    engine.replace_plugin('sandbox.action',sandbox,version='2.0')
+
+    assert planner.started==1 and planner.stopped==0
+    assert engine.planner is planner
+    assert engine.plugins.get('planner.adaptive') is planner
+    assert engine.autonomy.planner is planner
+    assert engine.autonomy.policy.planner is planner
+    assert engine.sandbox is sandbox
+    assert engine.ptc.sandbox is sandbox
+    assert engine.autonomy.sandbox is sandbox
+    assert engine.autonomy.policy.sandbox is sandbox
+    assert engine.harness.replay_gate.sandbox is sandbox
+    row=next(x for x in engine.plugins.describe() if x['key']=='planner.adaptive')
+    assert row['version']=='2.1' and row['source']=='runtime' and row['generation']==2
+    assert row['contract_valid'] is True and row['contract_missing']==[]
+    assert old_planner is not engine.planner
+
+
+def test_plugin_contract_and_active_run_guard_roll_back_atomically(tmp_path):
+    from ecomevo.runtime.planner import AdaptivePlanner
+    from ecomevo.runtime.plugins import PluginContractError, PluginLifecycleError
+
+    class LifecyclePlanner(AdaptivePlanner):
+        def __init__(self):
+            super().__init__();self.started=0;self.stopped=0
+        def plugin_start(self, context):self.started+=1
+        def plugin_stop(self, context):self.stopped+=1
+
+    engine=EcomEvoEngine(tmp_path/'runtime.db');original=engine.planner
+    with pytest.raises(PluginContractError):
+        engine.replace_plugin('planner.adaptive',object())
+    assert engine.planner is original and engine.plugins.get('planner.adaptive') is original
+
+    candidate=LifecyclePlanner();engine._active_runs=1
+    try:
+        with pytest.raises(PluginLifecycleError):
+            engine.replace_plugin('planner.adaptive',candidate)
+    finally:engine._active_runs=0
+    assert candidate.started==1 and candidate.stopped==1
+    assert engine.planner is original and engine.plugins.get('planner.adaptive') is original
+    with pytest.raises(PluginContractError):
+        engine.plugins.set_enabled('verifier.decision',False)
+
+
+def test_optional_plugin_can_be_disabled_and_reenabled(tmp_path):
+    class Gateway:
+        def current_provider(self):return None
+
+    engine=EcomEvoEngine(tmp_path/'runtime.db');gateway=Gateway()
+    engine.replace_plugin('model.gateway',gateway)
+    assert engine.model_gateway is gateway
+    engine.plugins.set_enabled('model.gateway',False)
+    assert engine.model_gateway is None and engine.plugins.get('model.gateway') is None
+    engine.plugins.set_enabled('model.gateway',True)
+    assert engine.model_gateway is gateway and engine.plugins.get('model.gateway') is gateway
+
+
+def test_disabling_mcp_removes_remote_tools_and_reenable_restores_them(tmp_path):
+    class MCP:
+        def read_tool_specs(self):
+            return [{'key':'mcp.catalog','domain':'product_governance','server':'catalog','tool':'read'}]
+        async def call_tool(self,server,tool,args):return {}
+
+    engine=EcomEvoEngine(tmp_path/'runtime.db',mcp=MCP())
+    assert 'mcp.catalog' in engine.tools.tools
+    engine.plugins.set_enabled('mcp.remote',False)
+    assert engine.mcp is None and 'mcp.catalog' not in engine.tools.tools
+    engine.plugins.set_enabled('mcp.remote',True)
+    assert engine.mcp is not None and 'mcp.catalog' in engine.tools.tools
+
+
+def test_entry_point_discovery_is_metadata_only_and_loading_is_explicit(tmp_path,monkeypatch):
+    from ecomevo.runtime.planner import AdaptivePlanner
+    from ecomevo.runtime import plugins as plugin_module
+
+    planner=AdaptivePlanner();loads=[]
+    class Bundle:
+        manifest={'key':'planner.adaptive','api_version':'1','version':'3.0'}
+        def create(self):return planner
+    class Point:
+        name='company_planner';value='company.plugin:Bundle';group='ecomevo.plugins';dist=None
+        def load(self):loads.append(self.name);return Bundle
+    class Points(list):
+        def select(self,**filters):
+            return Points([p for p in self if all(getattr(p,key)==value for key,value in filters.items())])
+    monkeypatch.setattr(plugin_module.metadata,'entry_points',lambda:Points([Point()]))
+
+    engine=EcomEvoEngine(tmp_path/'runtime.db')
+    assert engine.discover_plugins()[0]['name']=='company_planner'
+    assert loads==[]
+    row=engine.load_plugin('company_planner')
+    assert loads==['company_planner'] and engine.planner is planner
+    assert row['version']=='3.0' and row['source']=='entry-point:company_planner'
 
 
 def test_evidence_search_can_find_fact_beyond_display_text_window(tmp_path):

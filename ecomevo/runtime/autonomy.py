@@ -93,6 +93,38 @@ class AutonomousController:
         self.policy = DecisionPolicy(planner, registry, sandbox, skills, max_calls=self.max_calls, max_delegations=self.max_delegations)
         self.delegator = CognitiveDelegator(reviewer, self.policy)
 
+    def rebind(
+        self,
+        *,
+        planner=None,
+        registry=None,
+        executor=None,
+        sandbox=None,
+        verifier=None,
+        reviewer=None,
+        skills=None,
+    ) -> None:
+        """Rebind live plugin dependencies without discarding learned policy state."""
+
+        updates = {
+            "planner": planner,
+            "registry": registry,
+            "executor": executor,
+            "sandbox": sandbox,
+            "verifier": verifier,
+            "reviewer": reviewer,
+            "skills": skills,
+        }
+        for name, instance in updates.items():
+            if instance is not None:
+                setattr(self, name, instance)
+        self.policy.planner = self.planner
+        self.policy.registry = self.registry
+        self.policy.sandbox = self.sandbox
+        self.policy.skills = self.skills
+        self.delegator.reviewer = self.reviewer
+        self.delegator.policy = self.policy
+
     @staticmethod
     def _fingerprint(v: VerificationResult, results: list[ToolResult]):
         payload = {"missing": sorted(v.missing_evidence), "ok_tools": sorted({x.tool for x in results if x.ok}),
