@@ -123,6 +123,19 @@ def run() -> None:
                 assert title.startswith("认知引擎") or title.startswith("本地受控"), title
             page.locator("#providerModal .modal-close").click()
 
+            # The runtime plugin registry is a real, read-only control plane rather than
+            # a README-only claim. Every loaded instance must surface contract health.
+            page.locator("#settingsBtn").click()
+            expect(page.locator("#runtimeModal")).to_be_visible()
+            expect(page.locator("#runtimePluginGrid .runtime-plugin")).to_have_count(14, timeout=10_000)
+            expect(page.locator("#runtimeSummary")).to_contain_text("契约全部通过")
+            assert page.locator("#runtimePluginGrid .runtime-plugin-state.blocked").count() == 0
+            assert page.locator("#runtimeLanes .runtime-lane").count() == 4
+            capture(page, "product-plugins.png")
+            page.locator("#runtimeCloseBtn").click()
+            expect(page.locator("#runtimeModal")).to_be_hidden()
+            expect(page.locator("#settingsBtn")).to_be_focused()
+
             # Empty-task scene changes should reuse the current task rather than creating junk.
             page.locator('.scene[data-scene="merchant_review"]').click()
             expect(page.locator("#sceneEyebrow")).to_have_text("商家审核")

@@ -87,6 +87,10 @@ flowchart LR
 | Concurrency | 有任务运行时拒绝替换，保证单条事件轨迹只对应一代插件图 |
 | Discovery | `ecomevo.plugins` entry point 仅发现元数据，第三方代码必须显式加载 |
 
+![EcomEvo Plugin Control Plane 真实浏览器截图](docs/images/product-plugins.png)
+
+<sub>只读 Plugin Control Plane 直接读取 `/api/runtime` 中的真实实例、来源、代次与契约状态。</sub>
+
 开发与打包规范见 [Plugin Runtime](docs/PLUGIN_RUNTIME.md)。
 
 </details>

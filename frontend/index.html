@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/assets/intro.css" />
   <link rel="stylesheet" href="/assets/visual.css" />
   <link rel="stylesheet" href="/assets/product-polish.css" data-ecomevo-polish="1" />
+  <link rel="stylesheet" href="/assets/plugin-control.css" />
 </head>
 <body>
 <div class="app-shell">
@@ -53,7 +54,7 @@
     </div>
     <div class="left-footer">
       <div class="privacy-mini"><span aria-hidden="true"></span><p><b>认知自治</b><small>真实动作始终受控</small></p></div>
-      <button id="settingsBtn">认知引擎状态</button>
+      <button id="settingsBtn">Runtime 插件</button>
     </div>
   </aside>
 
@@ -179,6 +180,33 @@
     <div id="providerGrid" class="provider-grid"></div>
     <div class="modal-foot"><span>选择外部服务时，当前任务内容会按配置发送到对应服务；本地受控模式不会自动出站。</span></div>
   </div>
+</div>
+
+<div class="runtime-backdrop" id="runtimeModal" hidden role="dialog" aria-modal="true" aria-labelledby="runtimeModalTitle" aria-describedby="runtimeModalDescription">
+  <section class="runtime-modal">
+    <header class="runtime-modal-head">
+      <div>
+        <small>PLUGIN CONTROL PLANE</small>
+        <h3 id="runtimeModalTitle">运行时插件图</h3>
+        <p id="runtimeModalDescription">查看真实实例、能力契约与安全边界。控制面只读，插件仅能在任务之间更换。</p>
+      </div>
+      <button class="runtime-close" id="runtimeCloseBtn" aria-label="关闭插件控制面">×</button>
+    </header>
+    <div class="runtime-modal-scroll">
+      <div class="runtime-summary" id="runtimeSummary" aria-live="polite">
+        <div class="runtime-summary-loading"><i></i><span>正在读取运行时状态</span></div>
+      </div>
+      <section class="runtime-topology" aria-labelledby="runtimeTopologyTitle">
+        <div class="runtime-section-title"><div><small>LIVE DEPENDENCY GRAPH</small><h4 id="runtimeTopologyTitle">执行图分层</h4></div><span>单任务 · 单代次</span></div>
+        <div class="runtime-lanes" id="runtimeLanes"></div>
+      </section>
+      <section class="runtime-catalog" aria-labelledby="runtimeCatalogTitle">
+        <div class="runtime-section-title"><div><small>REGISTERED INSTANCES</small><h4 id="runtimeCatalogTitle">插件目录</h4></div><div class="runtime-filters" id="runtimeFilters" aria-label="筛选插件层级"></div></div>
+        <div class="runtime-plugin-grid" id="runtimePluginGrid"></div>
+      </section>
+    </div>
+    <footer class="runtime-modal-foot"><span><i></i>认知组件可替换</span><b>安全内核只能由部署管理员变更</b></footer>
+  </section>
 </div>
 
 <div class="command-backdrop" id="commandModal" hidden role="dialog" aria-modal="true" aria-labelledby="commandTitle">

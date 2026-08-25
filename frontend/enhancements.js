@@ -6,6 +6,7 @@
     '/assets/privacy-sanitize.js',
     '/assets/drawer-a11y.js',
     '/assets/enhancements-core.js',
+    '/assets/plugin-control.js',
     '/assets/realtime-reconcile.js',
   ];
 
