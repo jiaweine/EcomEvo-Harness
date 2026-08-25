@@ -5,17 +5,19 @@ APP = (ROOT / "frontend/app.js").read_text(encoding="utf-8")
 LOADER = (ROOT / "frontend/enhancements.js").read_text(encoding="utf-8")
 CORE = (ROOT / "frontend/enhancements-core.js").read_text(encoding="utf-8")
 REALTIME = (ROOT / "frontend/realtime-reconcile.js").read_text(encoding="utf-8")
+PLUGIN_CONTROL = (ROOT / "frontend/plugin-control.js").read_text(encoding="utf-8")
 SAFETY = (ROOT / "frontend/safety-guards.js").read_text(encoding="utf-8")
 HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend/product-polish.css").read_text(encoding="utf-8")
+PLUGIN_CSS = (ROOT / "frontend/plugin-control.css").read_text(encoding="utf-8")
 
 
 def test_enhancement_loader_runs_safety_before_upload_bookkeeping_and_realtime():
     assert "/assets/enhancements-core.js" in LOADER
     assert "/assets/realtime-reconcile.js" in LOADER
     assert "/assets/safety-guards.js" in LOADER
-    assert LOADER.index("/assets/safety-guards.js") < LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/realtime-reconcile.js")
-    for name in ("enhancements-core.js", "realtime-reconcile.js", "safety-guards.js"):
+    assert LOADER.index("/assets/safety-guards.js") < LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/plugin-control.js") < LOADER.index("/assets/realtime-reconcile.js")
+    for name in ("enhancements-core.js", "plugin-control.js", "realtime-reconcile.js", "safety-guards.js"):
         assert (ROOT / "frontend" / name).is_file()
     assert 'document.readyState === \'loading\'' in LOADER
 
@@ -24,6 +26,26 @@ def test_runtime_pulse_mounts_into_existing_progress_panel():
     assert 'id="panel-progress"' in HTML
     assert "document.getElementById('panel-progress')" in CORE
     assert "document.getElementById('panel-trace')" not in CORE
+
+
+def test_plugin_control_plane_is_read_only_live_runtime_observability():
+    assert 'id="runtimeModal"' in HTML and 'aria-modal="true"' in HTML
+    assert 'id="runtimePluginGrid"' in HTML and 'id="runtimeLanes"' in HTML
+    assert "fetch('/api/runtime'" in PLUGIN_CONTROL
+    for field in ('contract_valid', 'contract_missing', 'generation', 'api_version', 'source'):
+        assert field in PLUGIN_CONTROL
+    assert 'plugin_start' not in PLUGIN_CONTROL and 'replace_plugin' not in PLUGIN_CONTROL
+    assert '控制面只读' in HTML and '部署管理员' in HTML
+
+
+def test_plugin_control_plane_escapes_api_content_and_has_modal_focus_contract():
+    assert "const esc = value =>" in PLUGIN_CONTROL
+    assert 'esc(plugin.name || plugin.key)' in PLUGIN_CONTROL
+    assert 'modal.onkeydown = trapFocus' in PLUGIN_CONTROL
+    assert "event.key === 'Escape'" in PLUGIN_CONTROL
+    assert 'returnFocus = document.activeElement' in PLUGIN_CONTROL
+    assert 'target.focus()' in PLUGIN_CONTROL
+    assert '@media(max-width:760px)' in PLUGIN_CSS
 
 
 def test_provider_metadata_is_generic_before_primary_app_renders_it():
