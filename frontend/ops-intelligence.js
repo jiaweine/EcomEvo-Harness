@@ -75,8 +75,8 @@
 
   function renderOverview(conversations = [], runtime = null) {
     const copy = document.querySelector('.welcome-copy');
-    const kicker = copy?.querySelector('.welcome-kicker');
-    if (!copy || !kicker) return;
+    const anchor = copy?.querySelector('.quick-grid');
+    if (!copy) return;
 
     const existing = copy.querySelector('.ops-overview');
     if (existing) existing.remove();
@@ -121,7 +121,8 @@
       overview.appendChild(recent);
     }
 
-    kicker.before(overview);
+    if (anchor) anchor.before(overview);
+    else copy.appendChild(overview);
   }
 
   async function refreshOverview() {

@@ -57,6 +57,22 @@ def test_mobile_brand_remains_identifiable():
     assert '商业决策工作台' in HTML
 
 
+def test_customer_ui_self_hosts_deterministic_cjk_font():
+    polish=(ROOT/'frontend/product-polish.css').read_text(encoding='utf-8')
+    font_css=ROOT/'frontend/fonts/noto-sans-sc/index.css'
+    font_files=ROOT/'frontend/fonts/noto-sans-sc/files'
+    assert 'href="/assets/fonts/noto-sans-sc/index.css"' in HTML
+    assert '"Noto Sans SC Variable"' in polish
+    assert font_css.is_file()
+    assert any(font_files.glob('*.woff2'))
+
+
+def test_cloud_studio_preview_runs_the_complete_same_origin_service():
+    preview=(ROOT/'.vscode/preview.yml').read_text(encoding='utf-8')
+    assert 'port: 8000' in preview and 'mainPort: true' in preview
+    assert 'ecomevo.api.app:app' in preview and '--host 0.0.0.0' in preview
+
+
 def test_upload_captures_original_conversation_to_avoid_cross_task_race():
     assert 'const targetId=state.conversation?.id' in JS
     assert 'state.conversation?.id===targetId' in JS

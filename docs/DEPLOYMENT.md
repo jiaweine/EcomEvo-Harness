@@ -11,3 +11,12 @@
 - 正式环境建议由企业反向代理/SSO 保护整个工作区服务。
 - 多 worker 可用：EventStore 序号写入、动作确认和同任务处理租约均使用 SQLite 跨进程事务。
 - SQLite 适合单工作区/中等并发；高吞吐多租户 SaaS 建议把产品状态、事件流和任务队列迁到集中式数据库/队列。
+
+## Tencent Cloud Studio
+
+仓库已提供 `.vscode/preview.yml`。在 Cloud Studio 从 GitHub 导入本仓库后，点击启动即可安装 Python 包、运行完整 FastAPI 服务，并把 `8000` 作为主预览端口。
+
+- 启动命令绑定 `0.0.0.0:8000`，前端与 API 同源；
+- Cloud Studio 的发布操作会生成可分享的云沙箱地址；
+- 正式业务环境仍应配置持久卷、企业身份、Provider/MCP 密钥与反向代理；
+- 不要把任何密钥写入 `.vscode/preview.yml` 或仓库。
