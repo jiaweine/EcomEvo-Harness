@@ -143,7 +143,11 @@
     const trigger = $('settingsBtn');
     const modal = $('runtimeModal');
     if (!trigger || !modal) return;
-    trigger.onclick = openRuntime;
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openRuntime();
+    }, true);
     $('runtimeCloseBtn').onclick = closeRuntime;
     modal.onclick = event => { if (event.target === modal) closeRuntime(); };
     modal.onkeydown = trapFocus;
