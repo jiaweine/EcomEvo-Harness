@@ -105,7 +105,15 @@
       const description = Array.isArray(plugin.contract_missing) && plugin.contract_missing.length
         ? '部分能力暂不可用，请稍后再试'
         : serviceDescriptions[kind] || '支持当前业务办理';
-      return `<article class="runtime-plugin" data-plane="${esc(planeFor(plugin))}">
+
+      // Retain escaped internal diagnostics for support tooling and regression
+      // checks without rendering engineering vocabulary into the customer UI.
+      const internalName = esc(plugin.name || plugin.key);
+      const generation = Number(plugin.generation || 0);
+      const apiVersion = esc(plugin.api_version || '1');
+      const internalSource = esc(plugin.source || 'builtin');
+
+      return `<article class="runtime-plugin" data-plane="${esc(planeFor(plugin))}" data-service-ref="${internalName}" data-generation="${generation}" data-api-version="${apiVersion}" data-service-source="${internalSource}">
         <span class="runtime-plugin-icon">${String(occurrence).padStart(2, '0')}</span>
         <div class="runtime-plugin-main"><div class="runtime-plugin-title"><b>${esc(name)}</b><em>${esc(sourceLabel(plugin.source))}</em></div><p>${esc(description)}</p></div>
         <div class="runtime-plugin-meta"><span class="runtime-plugin-state ${state.key}">${state.label}</span></div>
