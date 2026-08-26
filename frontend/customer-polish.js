@@ -148,14 +148,33 @@
 
   function polishProgressLanguage() {
     $$('#progressList .progress-item').forEach(item => {
-      replaceText(item, [
+      const replacements = [
         [/业务上下文/g, '任务信息'],
         [/处理约束/g, '处理要求'],
         [/证据/g, '资料'],
         [/查证/g, '核对'],
         [/交叉复核/g, '交叉核对'],
-      ]);
+      ];
+      if (item.classList.contains('done')) {
+        replacements.push(
+          [/正在建立本次任务信息/g, '已建立本次任务信息'],
+          [/正在确认业务场景、目标和处理要求/g, '已确认业务场景、目标和处理要求'],
+          [/正在从规则、资料、风险与业务事实四个方向交叉确认/g, '已完成规则、资料、风险与业务事实的交叉确认'],
+          [/正在确认结论是否有足够资料支撑/g, '已核对当前结论的资料支撑情况'],
+        );
+      }
+      replaceText(item, replacements);
     });
+  }
+
+  function polishTraceMeta() {
+    const meta = $('.trace-ledger-meta');
+    if (!meta) return;
+    const raw = meta.textContent.trim();
+    const match = raw.match(/(\d+)\s*\/\s*(\d+)\s*(?:steps|项)(?:\s*·.*)?$/u);
+    if (!match) return;
+    const total = Number(match[2] || 0);
+    setText(meta, total > 0 ? `已记录 ${total} 项处理记录` : '暂无处理记录');
   }
 
   function polishStatusCard() {
@@ -193,6 +212,7 @@
     polishEvidence();
     polishServiceModal();
     polishProgressLanguage();
+    polishTraceMeta();
     polishStatusCard();
     polishStatusRing();
     polishAssistantLanguage();
