@@ -1,0 +1,68 @@
+/* Final customer-facing cleanup: keep engineering telemetry in the DOM/data layer,
+   but remove it from the default service experience. */
+
+.top-left{
+  background:var(--customer-canvas)!important;
+  border-right:1px solid var(--customer-line)!important;
+}
+.top-left .brand-copy b{color:var(--customer-ink)!important}
+.top-left .brand-copy small{color:var(--customer-muted)!important}
+
+.runtime-pulse{
+  background:#fff!important;
+  border:1px solid var(--customer-line-soft)!important;
+  border-radius:10px!important;
+  box-shadow:none!important;
+}
+.runtime-pulse-head{
+  border-bottom:1px solid var(--customer-line-soft)!important;
+}
+.runtime-pulse-head b{color:var(--customer-ink)!important}
+.runtime-pulse-head small{color:var(--customer-muted)!important}
+.runtime-pulse-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+}
+.runtime-pulse-grid>div{
+  background:#fff!important;
+  border-color:var(--customer-line-soft)!important;
+}
+.runtime-pulse-grid>div[hidden]{display:none!important}
+.runtime-pulse-grid small{color:var(--customer-muted)!important}
+.runtime-pulse-grid strong{color:var(--customer-ink)!important}
+.runtime-pulse-foot{
+  min-height:0!important;
+  padding-top:8px!important;
+  color:var(--customer-muted)!important;
+}
+.runtime-pulse-foot>span[hidden]{display:none!important}
+
+.runtime-health-grid{
+  grid-template-columns:1.2fr repeat(2,minmax(0,1fr))!important;
+}
+.runtime-health-grid>div[hidden]{display:none!important}
+.runtime-health-grid>div:first-child,
+.runtime-lane.safety{
+  background:#f4f7ff!important;
+  color:var(--customer-ink)!important;
+  border-color:#dce6fb!important;
+}
+.runtime-health-grid>div:first-child small,
+.runtime-health-grid>div:first-child span,
+.runtime-lane.safety p,
+.runtime-lane.safety .runtime-lane-count{
+  color:var(--customer-muted)!important;
+}
+.runtime-health-grid>div:first-child strong,
+.runtime-lane.safety>b{color:var(--customer-ink)!important}
+.runtime-lane.safety .runtime-lane-index{
+  background:var(--customer-accent)!important;
+  color:#fff!important;
+}
+
+.evidence-meta-item[hidden]{display:none!important}
+.evidence-provenance-line{gap:4px!important}
+
+@media(max-width:820px){
+  .runtime-pulse-grid{grid-template-columns:1fr 1fr!important}
+  .runtime-health-grid{grid-template-columns:1fr!important}
+}
