@@ -4,15 +4,29 @@
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
 
-  const text = (selector, value) => {
-    const node = $(selector);
+  function setNodeText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
-  };
+  }
 
-  const attr = (selector, name, value) => {
+  function text(selector, value) {
+    setNodeText($(selector), value);
+  }
+
+  function attr(selector, name, value) {
     const node = $(selector);
     if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
-  };
+  }
+
+  function label(selector, value) {
+    const node = $(selector);
+    if (!node) return;
+    const textNode = [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE && child.nodeValue.trim());
+    if (textNode) {
+      if (textNode.nodeValue.trim() !== value) textNode.nodeValue = textNode.nodeValue.replace(textNode.nodeValue.trim(), value);
+      return;
+    }
+    node.insertBefore(document.createTextNode(value), node.firstChild);
+  }
 
   function installTheme() {
     if (document.querySelector('link[data-ecomevo-customer-theme]')) return;
@@ -33,7 +47,7 @@
   }
 
   function applyPageCopy() {
-    document.title = 'EcomEvo 业务服务助手';
+    if (document.title !== 'EcomEvo 业务服务助手') document.title = 'EcomEvo 业务服务助手';
     attr('meta[name="description"]', 'content', 'EcomEvo 业务服务助手：提交资料、查看处理进度、补充信息，并在重要操作前由你确认。');
     attr('meta[name="theme-color"]', 'content', '#f5f1ec');
 
@@ -52,7 +66,6 @@
     text('#welcomePanel .welcome-copy > p', '把情况和相关资料告诉我，我会帮你核对重点、提示缺少的信息，并给出下一步建议。');
     text('.input-types > span', '可上传');
 
-    const route = $$('.agent-route .route-node');
     const routeCopy = [
       ['说明问题', '告诉我们你想处理什么'],
       ['核对资料', '整理与问题相关的信息'],
@@ -60,15 +73,13 @@
       ['给出建议', '把重点和下一步说清楚'],
       ['确认操作', '重要变更由你决定是否继续'],
     ];
-    route.forEach((node, index) => {
+    $$('.agent-route .route-node').forEach((node, index) => {
       const copy = routeCopy[index];
       if (!copy) return;
-      const strong = node.querySelector('strong');
-      const small = node.querySelector('small');
+      setNodeText(node.querySelector('strong'), copy[0]);
+      setNodeText(node.querySelector('small'), copy[1]);
       const em = node.querySelector('em');
-      if (strong) strong.textContent = copy[0];
-      if (small) small.textContent = copy[1];
-      if (em) em.hidden = true;
+      if (em && !em.hidden) em.hidden = true;
     });
     text('.agent-map-head b', '办理流程');
     text('.agent-map-head span', '清晰可追踪');
@@ -83,14 +94,13 @@
     text('.right-title b', '处理详情');
     text('.right-title small', '进度 · 资料 · 待确认');
     attr('#rightbar', 'aria-label', '处理详情');
-    text('#tab-progress', '进度');
-    text('#tab-evidence', '相关资料');
-    text('#tab-actions', '待确认');
-    text('#tab-assets', '已上传');
+    label('#tab-progress', '进度');
+    label('#tab-evidence', '相关资料');
+    label('#tab-actions', '待确认');
+    label('#tab-assets', '已上传');
 
     text('#panel-progress .status-top small', '当前进度');
-    const ring = $('.status-ring em');
-    if (ring) ring.textContent = '进度';
+    text('.status-ring em', '进度');
     text('.follow-title b', '继续补充');
     text('.follow-title small', '你可以接着说明');
 
@@ -120,43 +130,41 @@
     text('#productTour .tour-kicker small', '更简单地处理电商业务问题');
     text('#productTourTitle', '把问题和资料交给我，重要操作由你确认。');
     text('#productTourDescription', '同一个任务里可以持续补充资料和追问，处理进度随时可看。');
-    const tourSteps = $$('.tour-flow section');
+
     const tourCopy = [
       ['说明问题', '告诉我们你遇到的情况和希望得到的结果。'],
       ['上传资料', '加入图片、文档、表格或相关记录。'],
       ['查看并确认', '先看处理建议，重要操作再由你决定。'],
     ];
-    tourSteps.forEach((node, index) => {
+    $$('.tour-flow section').forEach((node, index) => {
       const copy = tourCopy[index];
       if (!copy) return;
-      const b = node.querySelector('b');
-      const p = node.querySelector('p');
-      if (b) b.textContent = copy[0];
-      if (p) p.textContent = copy[1];
+      setNodeText(node.querySelector('b'), copy[0]);
+      setNodeText(node.querySelector('p'), copy[1]);
     });
+
     const tourSections = $$('.tour-grid > section .tour-section-title');
     if (tourSections[0]) {
-      const small = tourSections[0].querySelector('small');
-      const b = tourSections[0].querySelector('b');
-      if (small) small.textContent = '常用场景';
-      if (b) b.textContent = '5 类电商业务问题';
+      setNodeText(tourSections[0].querySelector('small'), '常用场景');
+      setNodeText(tourSections[0].querySelector('b'), '5 类电商业务问题');
     }
     if (tourSections[1]) {
-      const small = tourSections[1].querySelector('small');
-      const b = tourSections[1].querySelector('b');
-      if (small) small.textContent = '使用说明';
-      if (b) b.textContent = '信息可自动核对，重要操作由你决定';
+      setNodeText(tourSections[1].querySelector('small'), '使用说明');
+      setNodeText(tourSections[1].querySelector('b'), '信息可自动核对，重要操作由你决定');
     }
-    const boundaries = $$('.tour-boundaries li');
+
     const boundaryCopy = [
       '处理结果会尽量说明参考了哪些资料。',
       '图片、音频和文档的处理能力以当前可用服务为准。',
       '涉及重要业务变更时，不会在你不知情的情况下执行。',
     ];
-    boundaries.forEach((node, index) => { if (boundaryCopy[index]) node.textContent = boundaryCopy[index]; });
+    $$('.tour-boundaries li').forEach((node, index) => {
+      if (boundaryCopy[index]) setNodeText(node, boundaryCopy[index]);
+    });
     text('.tour-status > span', '使用提示');
     const tourStatus = $('.tour-status p');
-    if (tourStatus) tourStatus.innerHTML = '<b>放心使用：</b>系统会自动完成信息核对和整理；涉及重要业务变更时，会先请你确认。';
+    const statusHtml = '<b>放心使用：</b>系统会自动完成信息核对和整理；涉及重要业务变更时，会先请你确认。';
+    if (tourStatus && tourStatus.innerHTML !== statusHtml) tourStatus.innerHTML = statusHtml;
     text('#tourSkipBtn', '进入首页');
     text('#tourStartBtn', '用示例开始');
   }
@@ -180,38 +188,40 @@
       ['继续一个耐久任务', '继续上次处理'],
       ['真实运行数据', '实时更新'],
     ]);
-
     replacements.forEach((to, from) => replaceExact(document.body, from, to));
 
     const overview = $('.ops-overview');
     if (overview) {
-      overview.setAttribute('aria-label', '当前服务概况');
+      if (overview.getAttribute('aria-label') !== '当前服务概况') overview.setAttribute('aria-label', '当前服务概况');
       text('.ops-overview-head small', '当前服务概况');
       text('.ops-overview-head b', '处理服务');
-      const metricLabels = $$('.ops-metric > small');
       const labels = ['服务状态', '可用功能', '最近任务', '重要操作'];
-      metricLabels.forEach((node, index) => { if (labels[index]) node.textContent = labels[index]; });
-      const metricDetails = $$('.ops-metric > span');
-      if (metricDetails[1]) metricDetails[1].textContent = '当前可用于处理任务的功能';
-      if (metricDetails[3]) metricDetails[3].textContent = '重要变更会先请你确认';
+      $$('.ops-metric > small').forEach((node, index) => { if (labels[index]) setNodeText(node, labels[index]); });
+      const details = $$('.ops-metric > span');
+      if (details[1]) setNodeText(details[1], '当前可用于处理任务的功能');
+      if (details[3]) setNodeText(details[3], '重要变更会先请你确认');
     }
 
     $$('.evidence-summary-stat small').forEach(node => {
       const map = { TOTAL: '全部', ORIGINAL: '你提供的', DERIVED: '系统整理的' };
-      if (map[node.textContent.trim()]) node.textContent = map[node.textContent.trim()];
+      if (map[node.textContent.trim()]) setNodeText(node, map[node.textContent.trim()]);
     });
     $$('.evidence-meta-item').forEach(node => {
       const map = { SOURCE: '来源', PROVENANCE: '类型', TRACE: '编号' };
-      if (map[node.dataset.label]) node.dataset.label = map[node.dataset.label];
+      if (map[node.dataset.label] && node.dataset.label !== map[node.dataset.label]) node.dataset.label = map[node.dataset.label];
     });
     $$('.action-authority-row .evidence-audit-cell small').forEach(node => {
       const map = { STATUS: '状态', AUTHORITY: '确认', IMPACT: '影响' };
-      if (map[node.textContent.trim()]) node.textContent = map[node.textContent.trim()];
+      if (map[node.textContent.trim()]) setNodeText(node, map[node.textContent.trim()]);
     });
+
     text('.trace-ledger-title small', '办理情况');
     text('.trace-ledger-title b', '办理进度');
     const traceMeta = $('.trace-ledger-meta');
-    if (traceMeta) traceMeta.textContent = traceMeta.textContent.replace(/steps/g, '项');
+    if (traceMeta) {
+      const next = traceMeta.textContent.replace(/steps/g, '项');
+      if (next !== traceMeta.textContent) traceMeta.textContent = next;
+    }
 
     const laneCopy = {
       state: ['任务信息', '保存当前任务和已提交的内容'],
@@ -223,38 +233,34 @@
       const key = ['state', 'cognition', 'execution', 'safety'].find(name => node.classList.contains(name));
       const copy = laneCopy[key];
       if (!copy) return;
-      const b = node.querySelector(':scope > b');
-      const p = node.querySelector(':scope > p');
+      setNodeText(node.querySelector(':scope > b'), copy[0]);
+      setNodeText(node.querySelector(':scope > p'), copy[1]);
       const count = node.querySelector('.runtime-lane-count');
-      if (b) b.textContent = copy[0];
-      if (p) p.textContent = copy[1];
-      if (count) count.textContent = count.textContent.replace('LIVE', '项可用');
+      if (count) {
+        const next = count.textContent.replace('LIVE', '项可用');
+        if (next !== count.textContent) count.textContent = next;
+      }
     });
 
-    $$('.runtime-health-grid > div small').forEach((node, index) => {
-      const labels = ['服务状态', '可用功能', '检查结果', '备用功能'];
-      if (labels[index]) node.textContent = labels[index];
-    });
+    const summaryLabels = ['服务状态', '可用功能', '检查结果', '备用功能'];
+    $$('.runtime-health-grid > div small').forEach((node, index) => { if (summaryLabels[index]) setNodeText(node, summaryLabels[index]); });
     const summarySpans = $$('.runtime-health-grid > div span');
-    if (summarySpans[0]) summarySpans[0].textContent = '当前可用服务已经准备好';
-    if (summarySpans[1]) summarySpans[1].textContent = '当前可用于处理任务';
-    if (summarySpans[2]) summarySpans[2].textContent = '基础检查已完成';
-    if (summarySpans[3]) summarySpans[3].textContent = '需要时可启用';
+    if (summarySpans[0]) setNodeText(summarySpans[0], '当前可用服务已经准备好');
+    if (summarySpans[1]) setNodeText(summarySpans[1], '当前可用于处理任务');
+    if (summarySpans[2]) setNodeText(summarySpans[2], '基础检查已完成');
+    if (summarySpans[3]) setNodeText(summarySpans[3], '需要时可启用');
 
-    $$('.runtime-filter').forEach(node => {
-      const key = node.dataset.runtimeFilter;
-      const labels = { all: '全部', state: '任务信息', cognition: '智能处理', execution: '资料连接', safety: '安全保护' };
-      if (labels[key]) node.textContent = labels[key];
-    });
+    const filterLabels = { all: '全部', state: '任务信息', cognition: '智能处理', execution: '资料连接', safety: '安全保护' };
+    $$('.runtime-filter').forEach(node => { if (filterLabels[node.dataset.runtimeFilter]) setNodeText(node, filterLabels[node.dataset.runtimeFilter]); });
 
     const taskState = $('#taskState');
-    if (taskState?.textContent === '等待目标') taskState.textContent = '等待开始';
+    if (taskState?.textContent === '等待目标') setNodeText(taskState, '等待开始');
     const taskDetail = $('#taskDetail');
-    if (taskDetail?.textContent.includes('交代目标')) taskDetail.textContent = '描述问题或先上传资料，我会帮你继续处理。';
+    if (taskDetail?.textContent.includes('交代目标')) setNodeText(taskDetail, '描述问题或先上传资料，我会帮你继续处理。');
     const workStep = $('#workStep');
-    if (workStep?.textContent === '正在自主处理') workStep.textContent = '正在处理';
+    if (workStep?.textContent === '正在自主处理') setNodeText(workStep, '正在处理');
     const workDetail = $('#workDetail');
-    if (workDetail?.textContent.includes('任务状态') || workDetail?.textContent.includes('证据路径')) workDetail.textContent = '正在核对你提供的信息和相关资料';
+    if (workDetail?.textContent.includes('任务状态') || workDetail?.textContent.includes('证据路径')) setNodeText(workDetail, '正在核对你提供的信息和相关资料');
   }
 
   function applyAll() {
