@@ -1,0 +1,144 @@
+/* EcomEvo Carbon Operations Theme
+   Reference direction: IBM Carbon principles adapted to EcomEvo.
+   Keep this file as a visual override layer; product behavior stays in existing modules. */
+
+:root{
+  --nav:#161616;
+  --nav-2:#262626;
+  --nav-3:#393939;
+  --ink:#161616;
+  --ink-2:#393939;
+  --muted:#525252;
+  --muted-2:#6f6f6f;
+  --canvas:#f4f4f4;
+  --paper:#fff;
+  --paper-warm:#fff;
+  --soft:#f4f4f4;
+  --soft-blue:#edf5ff;
+  --line:#e0e0e0;
+  --line-strong:#c6c6c6;
+  --accent:#0f62fe;
+  --accent-2:#0043ce;
+  --accent-soft:#edf5ff;
+  --success:#198038;
+  --success-soft:#defbe6;
+  --warning:#b28600;
+  --warning-soft:#fff8e1;
+  --danger:#da1e28;
+  --danger-soft:#fff1f1;
+  --shadow:none;
+  --shadow-small:0 1px 2px rgba(0,0,0,.08);
+  --radius:6px;
+}
+
+body{background:var(--canvas);color:var(--ink)}
+
+/* Structural chrome */
+.topbar{background:#fff;border-bottom-color:var(--line);box-shadow:none}
+.top-left,.leftbar{background:var(--nav)}
+.leftbar{border-right-color:#393939}
+.left-footer{background:#161616;border-top-color:#393939}
+.brand-mark{border-radius:4px;background:var(--accent);box-shadow:none}
+.brand-copy small,.scene small,.conv-item small,.privacy-mini small{color:#a8a8a8}
+
+/* Flatten the navigation into an operations rail. */
+.new-task{border-radius:4px;background:var(--accent);box-shadow:none}
+.new-task:hover{background:#0050e6}
+.scene{border-radius:2px}
+.scene:hover{background:#262626}
+.scene.active{background:#262626}
+.scene.active::before{background:var(--accent);width:3px}
+.scene-icon{border-radius:2px;border-color:#525252;background:#262626}
+.scene.active .scene-icon{background:#393939;border-color:#6f6f6f;color:#fff}
+.conv-item{border-radius:2px}
+.conv-item:hover,.conv-item.active{background:#262626}
+.conv-item.active{border-left-color:var(--accent)}
+
+/* Utility controls */
+.command-trigger,.provider-control,.icon-btn,.mobile-icon,.avatar{border-radius:4px;box-shadow:none}
+.command-trigger{background:#f4f4f4;border-color:var(--line-strong)}
+.command-trigger:hover{background:#fff;border-color:#8d8d8d;box-shadow:none}
+kbd{border-radius:2px;box-shadow:none;background:#fff}
+.top-action{border-radius:2px}
+.top-action:hover{background:#f4f4f4}
+
+/* Workspace: use dividers and alignment instead of card elevation. */
+.workspace,.task-head,.chat-scroll{background:#fff}
+.task-head{border-bottom-color:var(--line);box-shadow:none}
+.task-head h1{color:#161616}
+.task-chip{border-left-color:var(--line)}
+.provider-control,.icon-btn{background:#fff;border-color:var(--line-strong)}
+.icon-btn:hover{background:#f4f4f4;border-color:#8d8d8d}
+
+/* Empty-state starters behave like flat Carbon tiles. */
+.quick-grid{border-color:var(--line);background:#fff}
+.quick-card{border-color:var(--line);border-radius:0;box-shadow:none;background:#fff}
+.quick-card:hover{background:#edf5ff;box-shadow:inset 3px 0 0 var(--accent)}
+.quick-card:nth-child(1){background:#f4f4f4}
+.quick-card:nth-child(1):hover{background:#edf5ff}
+
+/* Runtime path and grouped operational surfaces. */
+.agent-map,.status-card,.follow-card,.work-card,.action-card,.provider-card,.runtime-plugin-card,.runtime-summary,.runtime-topology,.runtime-catalog{box-shadow:none!important}
+.agent-map{border-radius:6px;border:1px solid var(--line);background:#fafafa}
+.route-node{border-radius:4px;border-color:var(--line);box-shadow:none}
+.route-node.active{border-color:var(--accent);background:#edf5ff}
+.route-node.active>span{background:var(--accent);color:#fff}
+
+/* Composer = task command surface, not floating chat glass. */
+.composer-zone{background:#fff}
+.composer{border-radius:6px;border:1px solid var(--line-strong);box-shadow:none;background:#fff}
+.composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px rgba(15,98,254,.14)}
+.attach{border-radius:4px}
+.attach:hover{background:#f4f4f4}
+.send-btn{border-radius:4px;background:var(--accent);box-shadow:none}
+.send-btn:hover{background:#0050e6}
+.send-btn:active{background:#0043ce}
+
+/* Right control plane */
+.rightbar{background:#fff;border-left-color:var(--line)}
+.right-head{background:#fff;border-bottom-color:var(--line)}
+.right-tabs{gap:0;border-bottom:1px solid var(--line)}
+.right-tab{border-radius:0;background:#fff;border-bottom:2px solid transparent}
+.right-tab:hover{background:#f4f4f4}
+.right-tab.active{background:#fff;color:#161616;border-bottom-color:var(--accent)}
+.status-card,.follow-card{border-radius:4px;border:1px solid var(--line);background:#fff}
+.status-line{background:#e0e0e0}
+.status-line i,.work-progress i{background:var(--accent)}
+.suggestions button{border-radius:4px;border-color:var(--line);background:#fff}
+.suggestions button:hover{background:#edf5ff;border-color:#a6c8ff}
+
+/* Evidence / assets / actions should be traceable, not decorative. */
+.evidence-item,.asset-item,.action-card,.progress-item{border-radius:4px;box-shadow:none}
+.evidence-item,.asset-item,.action-card{border:1px solid var(--line);background:#fff}
+.progress-item{border-bottom:1px solid var(--line)}
+.progress-item.current{background:#edf5ff}
+.action-card{border-left:3px solid var(--line-strong)}
+.action-card.pending,.action-card.attention{border-left-color:var(--warning)}
+.action-card.approved,.action-card.complete{border-left-color:var(--success)}
+.action-card.rejected,.action-card.error{border-left-color:var(--danger)}
+
+/* Modals and temporary floating layers may keep elevation. */
+.modal,.command-modal,.runtime-modal,.tour-modal{border-radius:6px!important;border:1px solid var(--line-strong);box-shadow:0 16px 40px rgba(0,0,0,.18)!important}
+.modal-backdrop,.command-backdrop,.runtime-backdrop,.tour-backdrop{backdrop-filter:none!important}
+.modal-close,.runtime-close,.tour-close,.right-close{border-radius:2px}
+
+/* Semantic focus */
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+::selection{background:#d0e2ff;color:#001141}
+
+/* Reduce decorative softness from legacy polish. */
+.answer-correction button{border-radius:4px;box-shadow:none}
+.runtime-live{box-shadow:none}
+.work-progress::after{opacity:.45}
+
+@media(max-width:1360px){
+  .agent-map{border-radius:6px}
+}
+
+@media(max-width:820px){
+  .leftbar,.rightbar{box-shadow:0 12px 32px rgba(0,0,0,.18)}
+}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important}
+}
