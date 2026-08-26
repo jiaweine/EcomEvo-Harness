@@ -1,5 +1,8 @@
 /* EcomEvo Operations Intelligence — auditability and live workspace context. */
 
+/* Keep the welcome surface operational rather than marketing-scale. */
+.welcome h2{font-size:clamp(32px,2.6vw,40px)!important;line-height:1.1!important;letter-spacing:-.035em!important}
+
 .ops-overview{
   margin:26px 0 24px;
   border-top:1px solid var(--line);
@@ -130,6 +133,7 @@
 }
 
 @media(max-width:820px){
+  .welcome h2{font-size:34px!important}
   .ops-overview{margin:22px 0 20px}
   .ops-overview-head{padding:9px 11px}
   .ops-metric{min-height:82px;padding:11px}
@@ -138,6 +142,7 @@
 }
 
 @media(max-width:520px){
+  .welcome h2{font-size:30px!important}
   .ops-metrics{grid-template-columns:1fr}
   .ops-live-label{display:none}
 }
