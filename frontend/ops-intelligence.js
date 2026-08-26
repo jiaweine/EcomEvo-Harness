@@ -149,26 +149,90 @@
     return cell;
   }
 
+  function evidenceMeta(label, value, cls = '') {
+    const item = el('span', `evidence-meta-item ${cls}`.trim());
+    item.dataset.label = label;
+    item.append(el('b', '', value));
+    return item;
+  }
+
+  function summaryStat(label, value, tone = '') {
+    const item = el('span', `evidence-summary-stat ${tone}`.trim());
+    item.append(el('small', '', label), el('b', '', value));
+    return item;
+  }
+
   function decorateEvidence() {
     const list = byId('evidenceList');
     if (!list) return;
     list.querySelectorAll('.evidence-card').forEach(card => {
-      if (card.dataset.auditEnhanced === '1') return;
-      card.dataset.auditEnhanced = '1';
+      if (card.dataset.auditEnhanced === '2') return;
+      card.dataset.auditEnhanced = '2';
+      card.querySelector('.evidence-audit-row')?.remove();
+      card.querySelector('.evidence-provenance-line')?.remove();
+
       const source = card.querySelector('.evidence-top em')?.textContent?.trim() || '核对结果';
       const traceId = traceIdFromCard(card);
       const original = source.includes('业务资料');
       card.classList.toggle('evidence-original', original);
       card.classList.toggle('evidence-derived', !original);
 
-      const audit = el('div', 'evidence-audit-row');
-      audit.append(
-        auditCell('SOURCE', source, original ? 'original' : 'derived'),
-        auditCell('PROVENANCE', original ? '原始资料' : '运行派生', original ? 'original' : 'derived'),
-        auditCell('TRACE', traceId ? `…${traceId.slice(-8)}` : (original ? '已关联资料' : '当前结论')),
+      const meta = el('div', 'evidence-provenance-line');
+      meta.append(
+        evidenceMeta('SOURCE', source, original ? 'original' : 'derived'),
+        evidenceMeta('PROVENANCE', original ? '原始资料' : '运行派生', original ? 'original' : 'derived'),
+        evidenceMeta('TRACE', traceId ? `…${traceId.slice(-8)}` : (original ? '已关联资料' : '当前结论')),
       );
-      card.appendChild(audit);
+      card.appendChild(meta);
     });
+  }
+
+  function decorateEvidenceSummary() {
+    const panel = byId('panel-evidence');
+    const list = byId('evidenceList');
+    const copy = panel?.querySelector('.panel-copy');
+    if (!panel || !list || !copy) return;
+
+    const cards = [...list.querySelectorAll('.evidence-card')];
+    let summary = panel.querySelector('.evidence-summary');
+    if (!cards.length) {
+      summary?.remove();
+      return;
+    }
+
+    const original = cards.filter(card => card.classList.contains('evidence-original')).length;
+    const derived = cards.length - original;
+    const signature = `${cards.length}|${original}|${derived}`;
+    if (summary?.dataset.signature === signature) return;
+    if (!summary) {
+      summary = el('div', 'evidence-summary');
+      copy.after(summary);
+    }
+    summary.dataset.signature = signature;
+    summary.replaceChildren(
+      summaryStat('TOTAL', cards.length),
+      summaryStat('ORIGINAL', original, 'original'),
+      summaryStat('DERIVED', derived, 'derived'),
+    );
+  }
+
+  function setTabCount(tabId, count) {
+    const tab = byId(tabId);
+    if (!tab) return;
+    let badge = tab.querySelector('.ops-tab-count');
+    if (!badge) {
+      badge = el('i', 'ops-tab-count');
+      badge.setAttribute('aria-hidden', 'true');
+      tab.appendChild(badge);
+    }
+    const next = String(Math.max(0, Number(count || 0)));
+    if (badge.textContent !== next) badge.textContent = next;
+    badge.hidden = Number(count || 0) === 0;
+  }
+
+  function updateTabCounts() {
+    setTabCount('tab-evidence', byId('evidenceList')?.querySelectorAll('.evidence-card').length || 0);
+    setTabCount('tab-assets', byId('assetList')?.querySelectorAll('.asset-card').length || 0);
   }
 
   function decorateActions() {
@@ -223,8 +287,10 @@
     if (!rightbar) return;
     const run = () => {
       decorateEvidence();
+      decorateEvidenceSummary();
       decorateActions();
       decorateProgress();
+      updateTabCounts();
     };
     run();
     let queued = false;
