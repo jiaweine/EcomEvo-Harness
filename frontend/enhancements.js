@@ -1,6 +1,12 @@
 (() => {
   'use strict';
 
+  const theme = document.createElement('link');
+  theme.rel = 'stylesheet';
+  theme.href = '/assets/carbon-theme.css';
+  theme.dataset.ecomevoTheme = 'carbon-operations';
+  document.head.appendChild(theme);
+
   const modules = [
     '/assets/safety-guards.js',
     '/assets/privacy-sanitize.js',
