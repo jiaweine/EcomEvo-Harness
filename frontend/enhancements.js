@@ -1,6 +1,10 @@
 (() => {
   'use strict';
 
+  document.documentElement.dataset.ecomevoTheme = 'carbon-operations';
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) themeColor.setAttribute('content', '#161616');
+
   const theme = document.createElement('link');
   theme.rel = 'stylesheet';
   theme.href = '/assets/carbon-theme.css';
