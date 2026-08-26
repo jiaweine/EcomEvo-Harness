@@ -95,7 +95,7 @@
     metrics.append(
       metric('RUNTIME', snapshot.status, snapshot.blocked ? `${snapshot.blocked} 个实例需检查` : `${snapshot.healthy}/${snapshot.active || 0} 契约有效`, snapshot.statusClass),
       metric('ACTIVE PLUGINS', snapshot.active, '当前进入执行图的实例'),
-      metric('RECENT TASKS', rows.length, rows.length ? '最近可恢复任务' : '暂无历史任务'),
+      metric('RECENT', rows.length, rows.length ? '首页展示的可恢复任务' : '暂无历史任务'),
       metric('AUTHORITY', '人工确认', '真实业务动作不会静默执行', 'authority'),
     );
 
@@ -207,6 +207,9 @@
     const count = list.querySelectorAll('.progress-item').length;
     const done = list.querySelectorAll('.progress-item.done').length;
     const sync = byId('taskConnection')?.textContent?.trim() || '同步状态未知';
+    const signature = `${done}/${count || 0}|${sync}`;
+    if (trace.dataset.signature === signature) return;
+    trace.dataset.signature = signature;
     trace.replaceChildren(
       el('div', 'trace-ledger-title'),
       el('span', 'trace-ledger-meta', `${done}/${count || 0} steps · ${sync}`),
