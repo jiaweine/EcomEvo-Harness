@@ -62,7 +62,37 @@
 .evidence-meta-item[hidden]{display:none!important}
 .evidence-provenance-line{gap:4px!important}
 
+.status-ring.customer-status-chip{
+  width:auto!important;
+  min-width:76px!important;
+  height:auto!important;
+  min-height:38px!important;
+  padding:8px 12px!important;
+  border:1px solid #dce6fb!important;
+  border-radius:9px!important;
+  background:#f5f8ff!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  flex:none!important;
+}
+.status-ring.customer-status-chip em,
+.status-ring.customer-status-chip small{display:none!important}
+.status-ring.customer-status-chip span{
+  position:static!important;
+  transform:none!important;
+  width:auto!important;
+  height:auto!important;
+  margin:0!important;
+  font-size:13px!important;
+  line-height:1.2!important;
+  font-weight:700!important;
+  color:var(--customer-accent)!important;
+  white-space:nowrap!important;
+}
+
 @media(max-width:820px){
   .runtime-pulse-grid{grid-template-columns:1fr 1fr!important}
   .runtime-health-grid{grid-template-columns:1fr!important}
+  .status-ring.customer-status-chip{min-width:72px!important;padding:8px 10px!important}
 }
