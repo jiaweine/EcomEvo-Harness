@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#2b2926" />
   <meta name="description" content="EcomEvo 商业决策工作台：面向真实电商业务的自主核对、自适应查证、多模态证据与受控执行。" />
   <title>EcomEvo 商业决策工作台</title>
+  <link rel="stylesheet" href="/assets/fonts/noto-sans-sc/index.css" />
   <link rel="stylesheet" href="/assets/app.css" />
   <link rel="stylesheet" href="/assets/intro.css" />
   <link rel="stylesheet" href="/assets/visual.css" />
@@ -82,28 +83,26 @@
       <section class="welcome" id="welcomePanel">
         <div class="welcome-layout">
           <div class="welcome-copy">
-            <div class="welcome-badge"><span></span>Commerce Decision Runtime</div>
             <h2>给出目标，带回证据。</h2>
-            <p>上传资料，EcomEvo 会自主规划、查证和复核。证据不足时停止，真实业务动作等待确认。</p>
-            <div class="welcome-kicker">选择一个任务开始</div>
+            <p>资料进入，Runtime 自主查证；缺证停下，动作待你确认。</p>
             <div class="quick-grid">
-              <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><span class="quick-index">01</span><div><b>核对商品</b><small>识别缺证据与高风险项</small></div><em>商品</em></button>
-              <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><span class="quick-index">02</span><div><b>审核商家</b><small>核对主体、授权与风险</small></div><em>商家</em></button>
-              <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><span class="quick-index">03</span><div><b>处理售后</b><small>还原订单与履约时间线</small></div><em>售后</em></button>
-              <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><span class="quick-index">04</span><div><b>核查风险</b><small>区分强证据与弱线索</small></div><em>风险</em></button>
+              <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><div><b>核对商品</b><small>标题、素材与资质</small></div><em>商品</em></button>
+              <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><div><b>审核商家</b><small>主体、授权与风险</small></div><em>商家</em></button>
+              <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><div><b>处理售后</b><small>订单、履约与举证</small></div><em>售后</em></button>
+              <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><div><b>核查风险</b><small>强证据与弱线索</small></div><em>风险</em></button>
             </div>
-            <div class="input-types" aria-label="支持的多模态输入"><span>支持</span><b>图片</b><b>视频</b><b>音频</b><b>文档</b><b>表格</b><b>日志</b></div>
+            <div class="input-types" aria-label="支持的多模态输入"><span>输入</span><b>图片</b><b>视频</b><b>音频</b><b>文档</b><b>表格</b><b>日志</b></div>
           </div>
           <aside class="ag&#101;nt-map" aria-hidden="true">
-            <div class="ag&#101;nt-map-head"><b>Runtime Path</b><span>持续留痕</span></div>
+            <div class="ag&#101;nt-map-head"><b>决策路径</b><span>Event Sourced</span></div>
             <div class="ag&#101;nt-route">
-              <div class="route-node active"><span>01</span><div><strong>Goal + Evidence</strong><small>目标与当前事实</small></div><em>STATE</em></div>
-              <div class="route-node"><span>02</span><div><strong>Adaptive Plan</strong><small>收益、成本与停止</small></div><em>PLAN</em></div>
-              <div class="route-node"><span>03</span><div><strong>Parallel Review</strong><small>委派与并行查证</small></div><em>ACT</em></div>
-              <div class="route-node"><span>04</span><div><strong>Evidence Gate</strong><small>证据、约束与副作用</small></div><em>CHECK</em></div>
-              <div class="route-node"><span>05</span><div><strong>Recover + Evolve</strong><small>恢复、重规划与门禁</small></div><em>LEARN</em></div>
+              <div class="route-node active"><span>01</span><div><strong>目标与证据</strong><small>Goal → Current State</small></div><em>STATE</em></div>
+              <div class="route-node step-plan"><span>02</span><div><strong>自适应规划</strong><small>收益 × 成本 × 停止</small></div><em>PLAN</em></div>
+              <div class="route-node parallel"><span>03</span><div><strong>并行查证</strong><small>拆分 × 工具 × 复核</small></div><em>ACT</em></div>
+              <div class="route-node gate"><span>04</span><div><strong>验证门禁</strong><small>证据 × 约束 × 副作用</small></div><em>GATE</em></div>
+              <div class="route-node evolver"><span>05</span><div><strong>恢复演进</strong><small>恢复 × 重规划 × 回归</small></div><em>EVOLVE</em></div>
             </div>
-            <div class="ag&#101;nt-map-foot"><span>认知策略可改进</span><b>真实权限保持冻结</b></div>
+            <div class="ag&#101;nt-map-foot"><span>Plugin Runtime</span><b>权限内核冻结</b></div>
           </aside>
         </div>
       </section>

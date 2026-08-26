@@ -44,16 +44,15 @@ EcomEvo 是一个给高频运营、审核、客服与风控人员长期使用的
 
 ## Typography
 
-EcomEvo 不依赖公网字体 CDN。字体策略首先保证中文、英文、数字和业务长文本在 macOS、Windows 与 Linux/CJK 环境中稳定，而不是追求某个“流行字体名字”。
+EcomEvo 不依赖公网字体 CDN。产品随包提供 Noto Sans SC Variable 的 Unicode 分片字体，并保留系统 CJK fallback，保证中文、英文、数字和业务长文本在 macOS、Windows、Linux 与云端容器中得到一致排版。
 
 实际 UI 栈：
 
 ```css
-font-family: system-ui, -apple-system, BlinkMacSystemFont,
-  "Segoe UI Variable Text", "Segoe UI",
-  "PingFang SC", "Hiragino Sans GB",
-  "Microsoft YaHei UI", "Noto Sans CJK SC",
-  "Source Han Sans SC", sans-serif;
+font-family: "Noto Sans SC Variable", "Noto Sans SC",
+  "Source Han Sans SC", "PingFang SC",
+  "Microsoft YaHei UI", ui-sans-serif, system-ui,
+  -apple-system, "Segoe UI", sans-serif;
 ```
 
 排版角色：
