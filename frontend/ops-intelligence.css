@@ -21,7 +21,7 @@
   background:#f4f4f4;
 }
 .ops-overview-head>div{display:grid;gap:1px}
-.ops-overview-head small,.ops-recent-head small,.evidence-audit-cell small,.action-authority-row small,.trace-ledger-title small{
+.ops-overview-head small,.ops-recent-head small,.evidence-audit-cell small,.trace-ledger-title small,.evidence-summary-stat small{
   font-family:var(--font-mono);
   font-size:9px;
   line-height:1.3;
@@ -89,6 +89,25 @@
 .ops-recent-copy small{margin-top:3px;font-size:10px;color:#6f6f6f}
 .ops-recent-open{font-size:10px;color:var(--accent)}
 
+/* Live counts live inside the existing instrument tabs instead of adding another toolbar. */
+.ops-tab-count{
+  min-width:16px;
+  height:16px;
+  margin-left:5px;
+  padding:0 4px;
+  display:inline-grid;
+  place-items:center;
+  border:1px solid var(--line);
+  border-radius:2px;
+  background:#f4f4f4;
+  font-family:var(--font-mono);
+  font-size:8px;
+  font-style:normal;
+  line-height:1;
+  color:#6f6f6f;
+}
+.right-tab.active .ops-tab-count{border-color:#a6c8ff;background:#edf5ff;color:#0043ce}
+
 .trace-ledger-head{
   min-height:42px;
   margin-top:14px;
@@ -103,12 +122,78 @@
 .trace-ledger-title b{font-size:12px;font-weight:600;color:#161616}
 .trace-ledger-meta{font-family:var(--font-mono);font-size:9px;color:#6f6f6f}
 
-.evidence-audit-row,.action-authority-row{
+/* Evidence starts with a compact ledger summary, then each item carries one provenance line. */
+.evidence-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  border-bottom:1px solid var(--line);
+  background:#f4f4f4;
+}
+.evidence-summary-stat{
+  min-width:0;
+  padding:9px 8px 8px;
+  border-right:1px solid var(--line);
+  box-shadow:inset 0 2px 0 transparent;
+}
+.evidence-summary-stat:last-child{border-right:0}
+.evidence-summary-stat b{display:block;margin-top:3px;font-family:var(--font-mono);font-size:12px;font-weight:600;color:#161616}
+.evidence-summary-stat.original{box-shadow:inset 0 2px 0 var(--success)}
+.evidence-summary-stat.derived{box-shadow:inset 0 2px 0 var(--accent)}
+
+.evidence-provenance-line{
+  margin-top:9px;
+  padding-top:8px;
+  display:flex;
+  align-items:center;
+  gap:0;
+  min-width:0;
+  border-top:1px solid var(--line);
+  color:#6f6f6f;
+}
+.evidence-meta-item{
+  position:relative;
+  min-width:0;
+  max-width:42%;
+  padding:0 8px;
+  display:flex;
+  align-items:center;
+  gap:5px;
+  font-size:9px;
+  color:#6f6f6f;
+}
+.evidence-meta-item:first-child{padding-left:0}
+.evidence-meta-item:not(:first-child)::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:2px;
+  bottom:2px;
+  width:1px;
+  background:var(--line);
+}
+.evidence-meta-item::after{
+  content:attr(data-label);
+  order:-1;
+  flex:0 0 auto;
+  font-family:var(--font-mono);
+  font-size:7px;
+  letter-spacing:.06em;
+  color:#8d8d8d;
+}
+.evidence-meta-item b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;font-weight:500;color:#525252}
+.evidence-meta-item.original b{color:#198038}
+.evidence-meta-item.derived b{color:#0043ce}
+.evidence-original{box-shadow:inset 2px 0 0 var(--success)!important}
+.evidence-derived{box-shadow:inset 2px 0 0 var(--accent)!important}
+
+/* Authority remains deliberately explicit because actions are fewer and higher-risk. */
+.action-authority-row{
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
   margin-top:12px;
   border-top:1px solid var(--line);
   border-left:1px solid var(--line);
+  margin-bottom:12px;
 }
 .evidence-audit-cell{
   min-width:0;
@@ -118,13 +203,8 @@
   background:#f4f4f4;
 }
 .evidence-audit-cell b{display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;font-weight:600;color:#393939}
-.evidence-audit-cell.original{box-shadow:inset 2px 0 0 var(--success)}
-.evidence-audit-cell.derived{box-shadow:inset 2px 0 0 var(--accent)}
 .evidence-audit-cell.authority{box-shadow:inset 2px 0 0 var(--accent)}
 .evidence-audit-cell.impact{box-shadow:inset 2px 0 0 var(--warning)}
-.evidence-original{box-shadow:inset 2px 0 0 var(--success)!important}
-.evidence-derived{box-shadow:inset 2px 0 0 var(--accent)!important}
-.action-authority-row{margin-bottom:12px}
 
 @media(max-width:1360px){
   .ops-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -138,11 +218,15 @@
   .ops-overview-head{padding:9px 11px}
   .ops-metric{min-height:82px;padding:11px}
   .ops-metric strong{font-size:16px}
-  .evidence-audit-row,.action-authority-row{grid-template-columns:1fr}
+  .evidence-provenance-line{flex-wrap:wrap;row-gap:6px}
+  .evidence-meta-item{max-width:100%;flex:1 1 auto}
+  .action-authority-row{grid-template-columns:1fr}
 }
 
 @media(max-width:520px){
   .welcome h2{font-size:30px!important}
   .ops-metrics{grid-template-columns:1fr}
   .ops-live-label{display:none}
+  .evidence-summary-stat{padding-inline:6px}
+  .evidence-meta-item::after{display:none}
 }
