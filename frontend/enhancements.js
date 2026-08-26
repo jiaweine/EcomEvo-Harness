@@ -1,14 +1,16 @@
 (() => {
   'use strict';
 
-  document.documentElement.dataset.ecomevoTheme = 'carbon-operations';
+  document.documentElement.dataset.ecomevoTheme = 'customer-service';
   const themeColor = document.querySelector('meta[name="theme-color"]');
-  if (themeColor) themeColor.setAttribute('content', '#161616');
+  if (themeColor) themeColor.setAttribute('content', '#f5f1ec');
 
+  // Keep the proven Carbon layer as structural fallback; customer-copy.js adds
+  // the final customer-facing theme after all existing enhancement modules.
   const theme = document.createElement('link');
   theme.rel = 'stylesheet';
   theme.href = '/assets/carbon-theme.css';
-  theme.dataset.ecomevoTheme = 'carbon-operations';
+  theme.dataset.ecomevoThemeBase = 'carbon-operations';
   document.head.appendChild(theme);
 
   const modules = [
@@ -18,6 +20,7 @@
     '/assets/enhancements-core.js',
     '/assets/ops-intelligence.js',
     '/assets/plugin-control.js',
+    '/assets/customer-copy.js',
     '/assets/realtime-reconcile.js',
   ];
 
@@ -38,8 +41,9 @@
   }
 
   if (document.readyState === 'loading') {
-    // Parser-blocking loader: safety/privacy/a11y hooks install before the main module can render,
-    // then core telemetry/fetch guards, operations intelligence and cross-tab reconciliation layer on top.
+    // Safety/privacy/a11y hooks install first. Customer copy is deliberately a
+    // presentation-only layer loaded after operational UI modules, so backend
+    // contracts and runtime behavior remain unchanged.
     document.write(modules.map(src => `<script src="${src}"><\/script>`).join(''));
   } else {
     fallbackLoad();
