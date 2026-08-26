@@ -62,6 +62,24 @@
 .evidence-meta-item[hidden]{display:none!important}
 .evidence-provenance-line{gap:4px!important}
 
+/* Informational counts are neutral. Red remains reserved for genuine attention states. */
+.right-tab .ops-tab-count{
+  min-width:18px!important;
+  height:18px!important;
+  margin-left:5px!important;
+  padding:0 5px!important;
+  border:1px solid var(--customer-line)!important;
+  border-radius:999px!important;
+  background:#f3f1ee!important;
+  color:var(--customer-muted)!important;
+  box-shadow:none!important;
+}
+.right-tab.active .ops-tab-count{
+  border-color:#cbd9f4!important;
+  background:#eef4ff!important;
+  color:var(--customer-accent)!important;
+}
+
 .status-ring.customer-status-chip{
   width:auto!important;
   min-width:76px!important;
