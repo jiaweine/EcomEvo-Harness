@@ -21,6 +21,7 @@
     '/assets/ops-intelligence.js',
     '/assets/plugin-control.js',
     '/assets/customer-copy.js',
+    '/assets/customer-dynamic-copy.js',
     '/assets/realtime-reconcile.js',
   ];
 
