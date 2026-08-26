@@ -47,14 +47,14 @@ def test_customer_surface_avoids_internal_runtime_jargon():
 
 
 def test_data_disclosure_is_accurate_for_external_providers():
-    assert '选择外部服务时，当前任务内容会按配置发送到对应服务' in HTML
+    assert '如果选择需要联网的处理方式，相关内容会按当前设置用于本次办理' in HTML
     assert '业务数据留在服务端' not in HTML
 
 
 def test_mobile_brand_remains_identifiable():
     assert '.brand-copy small{display:none}' in CSS
     assert '.brand-copy b{font-size:15px}' in CSS
-    assert '商业决策工作台' in HTML
+    assert '业务服务助手' in HTML
 
 
 def test_customer_ui_self_hosts_deterministic_cjk_font():
