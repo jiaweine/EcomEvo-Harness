@@ -17,6 +17,18 @@
     if (node && node.textContent !== value) node.textContent = value;
   }
 
+  function replaceText(root, replacements) {
+    if (!root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const before = node.nodeValue || '';
+      let after = before;
+      replacements.forEach(([from, to]) => { after = after.replace(from, to); });
+      if (after !== before) node.nodeValue = after;
+    }
+  }
+
   function friendlyEvidenceState(value = '') {
     const text = String(value).trim();
     if (text === '本轮查证中') return '正在核对';
@@ -36,6 +48,8 @@
       ['没有更高价值的下一步', '当前没有更多需要处理的内容'],
       ['补证没有改变状态', '等待补充资料'],
       ['本轮处理中', '正在处理'],
+      ['等待本轮结果', '等待开始'],
+      ['等待任务', '等待开始'],
     ]);
     if (map.has(text)) return map.get(text);
     return text
@@ -93,6 +107,14 @@
 
   function polishEvidence() {
     $$('.evidence-card').forEach(card => {
+      if (card.classList.contains('evidence-derived')) {
+        replaceText(card, [
+          [/核对结果/g, '系统整理'],
+          [/附件证据检索/g, '附件资料查找'],
+          [/证据片段/g, '资料片段'],
+        ]);
+      }
+
       const source = card.querySelector('.evidence-top em');
       if (source?.textContent.trim() === '核对结果') setText(source, '系统整理');
       if (source?.textContent.trim() === '业务资料') setText(source, '你提供的');
@@ -117,17 +139,19 @@
 
   function polishProgressLanguage() {
     $$('#progressList .progress-item').forEach(item => {
-      const nodes = [...item.querySelectorAll('b,small,p,span')];
-      nodes.forEach(node => {
-        const before = node.textContent;
-        const after = before
-          .replace(/业务上下文/g, '任务信息')
-          .replace(/处理约束/g, '处理要求')
-          .replace(/证据/g, '资料')
-          .replace(/查证/g, '核对');
-        if (after !== before) setText(node, after);
-      });
+      replaceText(item, [
+        [/业务上下文/g, '任务信息'],
+        [/处理约束/g, '处理要求'],
+        [/证据/g, '资料'],
+        [/查证/g, '核对'],
+        [/交叉复核/g, '交叉核对'],
+      ]);
     });
+  }
+
+  function polishStatusCard() {
+    const state = $('#taskState');
+    if (state) setText(state, friendlyStop(state.textContent));
   }
 
   function apply() {
@@ -136,6 +160,7 @@
     polishEvidence();
     polishServiceModal();
     polishProgressLanguage();
+    polishStatusCard();
   }
 
   function boot() {
