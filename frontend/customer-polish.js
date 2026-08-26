@@ -59,6 +59,15 @@
       .replace(/控制器/g, '系统');
   }
 
+  function customerStageLabel(value = '') {
+    const text = friendlyStop(value);
+    if (/补充资料|缺少|还缺|待补/u.test(text)) return '待补资料';
+    if (/完成|没有更多/u.test(text)) return '本轮完成';
+    if (/正在|处理中|核对中|整理中/u.test(text)) return '处理中';
+    if (/暂停/u.test(text)) return '已暂停';
+    return '待开始';
+  }
+
   function polishRuntimePulse() {
     const host = $('#runtimePulse');
     if (!host) return;
@@ -154,6 +163,30 @@
     if (state) setText(state, friendlyStop(state.textContent));
   }
 
+  function polishStatusRing() {
+    const ring = $('.status-ring');
+    if (!ring) return;
+    const state = $('#taskState')?.textContent || '';
+    const label = customerStageLabel(state);
+    const prefix = ring.querySelector('em');
+    const value = $('#statusPercent');
+    const suffix = ring.querySelector('small');
+    if (prefix) prefix.hidden = true;
+    if (suffix) suffix.hidden = true;
+    if (value) setText(value, label);
+    ring.classList.add('customer-status-chip');
+    ring.setAttribute('aria-label', label);
+  }
+
+  function polishAssistantLanguage() {
+    $$('.msg.assistant .msg-content').forEach(message => {
+      replaceText(message, [
+        [/现有资料的完整度约为\s*\d+(?:\.\d+)?%/gu, '现有资料仍不完整'],
+        [/当前资料的完整度约为\s*\d+(?:\.\d+)?%/gu, '当前资料仍不完整'],
+      ]);
+    });
+  }
+
   function apply() {
     polishRuntimePulse();
     polishOverview();
@@ -161,6 +194,8 @@
     polishServiceModal();
     polishProgressLanguage();
     polishStatusCard();
+    polishStatusRing();
+    polishAssistantLanguage();
   }
 
   function boot() {
