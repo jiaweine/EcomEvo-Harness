@@ -19,6 +19,28 @@
     { key: 'execution', index: '03', title: '外部连接', copy: '连接业务资料和已配置服务' },
     { key: 'safety', index: '04', title: '安全保护', copy: '保护重要操作并核对处理结果' },
   ];
+  const serviceNames = {
+    state: '办理状态服务',
+    model: '信息处理服务',
+    planner: '处理流程服务',
+    agent: '业务协助服务',
+    memory: '历史信息服务',
+    skill: '业务能力服务',
+    tool: '外部信息服务',
+    sandbox: '安全保护服务',
+    verifier: '结果核对服务',
+  };
+  const serviceDescriptions = {
+    state: '保存本次办理的进度和重要记录',
+    model: '理解提交内容并整理关键信息',
+    planner: '根据当前情况安排后续处理步骤',
+    agent: '协助完成当前业务处理',
+    memory: '保留本次办理中已经确认的信息',
+    skill: '提供当前业务需要的处理能力',
+    tool: '读取已连接的业务资料和服务',
+    sandbox: '限制高风险操作并保护业务状态',
+    verifier: '在给出结果前再次核对关键信息',
+  };
   let returnFocus = null;
   let plugins = [];
   let currentFilter = 'all';
@@ -71,13 +93,21 @@
 
   function renderPlugins() {
     const visible = currentFilter === 'all' ? plugins : plugins.filter(plugin => planeFor(plugin) === currentFilter);
+    const seen = new Map();
     $('runtimePluginGrid').innerHTML = visible.length ? visible.map(plugin => {
       const state = pluginState(plugin);
-      const kind = String(plugin.kind || 'plugin').toUpperCase().slice(0, 2);
-      const missing = Array.isArray(plugin.contract_missing) && plugin.contract_missing.length ? '部分能力暂不可用' : plugin.description || plugin.key;
+      const kind = String(plugin.kind || 'service');
+      const baseName = serviceNames[kind] || '服务功能';
+      const occurrence = (seen.get(baseName) || 0) + 1;
+      seen.set(baseName, occurrence);
+      const totalOfKind = visible.filter(item => String(item.kind || 'service') === kind).length;
+      const name = totalOfKind > 1 ? `${baseName} ${occurrence}` : baseName;
+      const description = Array.isArray(plugin.contract_missing) && plugin.contract_missing.length
+        ? '部分能力暂不可用，请稍后再试'
+        : serviceDescriptions[kind] || '支持当前业务办理';
       return `<article class="runtime-plugin" data-plane="${esc(planeFor(plugin))}">
-        <span class="runtime-plugin-icon">${esc(kind)}</span>
-        <div class="runtime-plugin-main"><div class="runtime-plugin-title"><b>${esc(plugin.name || '服务功能')}</b><em>${esc(sourceLabel(plugin.source))}</em></div><p title="${esc(missing)}">${esc(missing)}</p></div>
+        <span class="runtime-plugin-icon">${String(occurrence).padStart(2, '0')}</span>
+        <div class="runtime-plugin-main"><div class="runtime-plugin-title"><b>${esc(name)}</b><em>${esc(sourceLabel(plugin.source))}</em></div><p>${esc(description)}</p></div>
         <div class="runtime-plugin-meta"><span class="runtime-plugin-state ${state.key}">${state.label}</span></div>
       </article>`;
     }).join('') : '<div class="runtime-empty">当前分类没有已启用功能。</div>';
