@@ -1,6 +1,6 @@
 /* EcomEvo Carbon Operations Theme
-   Reference direction: IBM Carbon principles adapted to EcomEvo.
-   Keep this file as a visual override layer; product behavior stays in existing modules. */
+   Reference direction: IBM Carbon + restrained Linear-like precision.
+   This is a visual override layer only. Product behavior remains in existing modules. */
 
 :root{
   --nav:#161616;
@@ -11,8 +11,8 @@
   --muted:#525252;
   --muted-2:#6f6f6f;
   --canvas:#f4f4f4;
-  --paper:#fff;
-  --paper-warm:#fff;
+  --paper:#ffffff;
+  --paper-warm:#ffffff;
   --soft:#f4f4f4;
   --soft-blue:#edf5ff;
   --line:#e0e0e0;
@@ -29,114 +29,564 @@
   --shadow:none;
   --shadow-small:0 1px 2px rgba(0,0,0,.08);
   --radius:6px;
+  --topbar:60px;
+  --left:240px;
+  --right:336px;
 }
 
+html{background:var(--canvas)}
 body{background:var(--canvas);color:var(--ink)}
 
-/* Structural chrome */
-.topbar{background:#fff;border-bottom-color:var(--line);box-shadow:none}
-.top-left,.leftbar{background:var(--nav)}
-.leftbar{border-right-color:#393939}
-.left-footer{background:#161616;border-top-color:#393939}
-.brand-mark{border-radius:4px;background:var(--accent);box-shadow:none}
-.brand-copy small,.scene small,.conv-item small,.privacy-mini small{color:#a8a8a8}
+/* ---------------------------------------------------------
+   1. Global chrome
+   --------------------------------------------------------- */
+.topbar{
+  background:#fff!important;
+  border-bottom:1px solid var(--line)!important;
+  box-shadow:none!important;
+  backdrop-filter:none!important;
+  gap:18px;
+}
+.top-left,.leftbar{background:var(--nav)!important}
+.leftbar{border-right:1px solid #393939!important;box-shadow:none!important}
+.left-top{background:transparent!important;backdrop-filter:none!important}
+.left-footer{background:#161616!important;border-top:1px solid #393939!important}
+.workspace{background:#fff!important;box-shadow:none!important}
+.chat-scroll{background:#fff!important;background-image:none!important}
+.task-head{background:#fff!important;border-bottom:1px solid var(--line)!important;box-shadow:none!important;backdrop-filter:none!important}
+.rightbar{background:#fff!important;border-left:1px solid var(--line)!important;box-shadow:none!important}
+.right-head{background:#fff!important;border-bottom:1px solid var(--line)!important;backdrop-filter:none!important}
 
-/* Flatten the navigation into an operations rail. */
-.new-task{border-radius:4px;background:var(--accent);box-shadow:none}
-.new-task:hover{background:#0050e6}
-.scene{border-radius:2px}
-.scene:hover{background:#262626}
-.scene.active{background:#262626}
-.scene.active::before{background:var(--accent);width:3px}
-.scene-icon{border-radius:2px;border-color:#525252;background:#262626}
-.scene.active .scene-icon{background:#393939;border-color:#6f6f6f;color:#fff}
-.conv-item{border-radius:2px}
-.conv-item:hover,.conv-item.active{background:#262626}
-.conv-item.active{border-left-color:var(--accent)}
+.brand-mark{
+  border-radius:4px!important;
+  background:var(--accent)!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.brand-copy b{letter-spacing:-.018em!important}
+.brand-copy small,.scene small,.conv-item small,.privacy-mini small{color:#a8a8a8!important}
 
-/* Utility controls */
-.command-trigger,.provider-control,.icon-btn,.mobile-icon,.avatar{border-radius:4px;box-shadow:none}
-.command-trigger{background:#f4f4f4;border-color:var(--line-strong)}
-.command-trigger:hover{background:#fff;border-color:#8d8d8d;box-shadow:none}
-kbd{border-radius:2px;box-shadow:none;background:#fff}
-.top-action{border-radius:2px}
-.top-action:hover{background:#f4f4f4}
+/* ---------------------------------------------------------
+   2. Left operations rail
+   --------------------------------------------------------- */
+.new-task{
+  min-height:40px!important;
+  border-radius:4px!important;
+  background:var(--accent)!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.new-task:hover{background:#0050e6!important;transform:none!important}
+.nav-title{font-size:10px!important;letter-spacing:.08em!important;color:#8d8d8d!important}
+.scene{
+  min-height:52px!important;
+  border:0!important;
+  border-radius:2px!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.scene:hover{background:#262626!important;transform:none!important}
+.scene.active{background:#262626!important;box-shadow:none!important}
+.scene::before{display:block!important;left:-10px!important;top:8px!important;bottom:8px!important;width:3px!important;background:transparent!important}
+.scene.active::before{background:var(--accent)!important}
+.scene-icon{
+  width:30px!important;height:30px!important;
+  border:1px solid #525252!important;
+  border-radius:2px!important;
+  background:#262626!important;
+  color:#c6c6c6!important;
+}
+.scene.active .scene-icon{background:#393939!important;border-color:#6f6f6f!important;color:#fff!important}
+.conv-item{border-radius:2px!important;box-shadow:none!important;transform:none!important}
+.conv-item:hover,.conv-item.active{background:#262626!important;transform:none!important}
+.conv-item.active{border-left:2px solid var(--accent)!important}
+.privacy-mini{border:0!important;border-radius:0!important;background:transparent!important;padding:0!important}
 
-/* Workspace: use dividers and alignment instead of card elevation. */
-.workspace,.task-head,.chat-scroll{background:#fff}
-.task-head{border-bottom-color:var(--line);box-shadow:none}
-.task-head h1{color:#161616}
-.task-chip{border-left-color:var(--line)}
-.provider-control,.icon-btn{background:#fff;border-color:var(--line-strong)}
-.icon-btn:hover{background:#f4f4f4;border-color:#8d8d8d}
+/* ---------------------------------------------------------
+   3. Top utilities and task identity
+   --------------------------------------------------------- */
+.command-trigger,.provider-control,.icon-btn,.mobile-icon,.avatar{
+  border-radius:4px!important;
+  box-shadow:none!important;
+}
+.command-trigger{background:#f4f4f4!important;border-color:var(--line-strong)!important;transform:none!important}
+.command-trigger:hover{background:#fff!important;border-color:#8d8d8d!important;box-shadow:none!important;transform:none!important}
+kbd{border-radius:2px!important;box-shadow:none!important;background:#fff!important}
+.top-action{border-radius:2px!important;transform:none!important}
+.top-action:hover{background:#f4f4f4!important;transform:none!important}
+.provider-control,.icon-btn{background:#fff!important;border-color:var(--line-strong)!important}
+.provider-control:hover,.icon-btn:hover{background:#f4f4f4!important;border-color:#8d8d8d!important;box-shadow:none!important}
 
-/* Empty-state starters behave like flat Carbon tiles. */
-.quick-grid{border-color:var(--line);background:#fff}
-.quick-card{border-color:var(--line);border-radius:0;box-shadow:none;background:#fff}
-.quick-card:hover{background:#edf5ff;box-shadow:inset 3px 0 0 var(--accent)}
-.quick-card:nth-child(1){background:#f4f4f4}
-.quick-card:nth-child(1):hover{background:#edf5ff}
+.task-head{padding-top:22px!important;padding-bottom:18px!important}
+.task-head h1{color:#161616!important;font-weight:600!important;letter-spacing:-.024em!important}
+.task-head p{color:#525252!important}
+.task-chips{gap:0!important}
+.task-chip{
+  min-height:22px!important;
+  padding:0 12px!important;
+  border:0!important;
+  border-left:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:transparent!important;
+}
+.task-chip:first-child{border-left:0!important;padding-left:0!important}
+.task-chip::before{display:none!important}
 
-/* Runtime path and grouped operational surfaces. */
-.agent-map,.status-card,.follow-card,.work-card,.action-card,.provider-card,.runtime-plugin-card,.runtime-summary,.runtime-topology,.runtime-catalog{box-shadow:none!important}
-.agent-map{border-radius:6px;border:1px solid var(--line);background:#fafafa}
-.route-node{border-radius:4px;border-color:var(--line);box-shadow:none}
-.route-node.active{border-color:var(--accent);background:#edf5ff}
-.route-node.active>span{background:var(--accent);color:#fff}
+/* ---------------------------------------------------------
+   4. Welcome / first-run workspace
+   --------------------------------------------------------- */
+.welcome{
+  width:min(100%,980px)!important;
+  max-width:980px!important;
+  padding:46px 0 54px!important;
+}
+.welcome-layout{
+  grid-template-columns:minmax(0,1.2fr) minmax(280px,.72fr)!important;
+  gap:34px!important;
+}
+.welcome-badge{
+  width:auto!important;
+  border:0!important;
+  border-radius:0!important;
+  padding:0!important;
+  background:transparent!important;
+  color:#525252!important;
+  font-size:11px!important;
+  letter-spacing:.06em!important;
+}
+.welcome-badge span{width:8px!important;height:8px!important;box-shadow:none!important;background:var(--accent)!important}
+.welcome h2{
+  max-width:680px!important;
+  margin:14px 0 12px!important;
+  font-size:clamp(36px,3.2vw,48px)!important;
+  line-height:1.08!important;
+  letter-spacing:-.038em!important;
+  font-weight:600!important;
+  color:#161616!important;
+}
+.welcome-copy>p{max-width:650px!important;font-size:15px!important;line-height:1.72!important;color:#525252!important}
+.welcome-kicker{
+  margin-top:28px!important;
+  font-size:11px!important;
+  letter-spacing:.05em!important;
+  color:#6f6f6f!important;
+}
+.welcome-kicker::before{width:28px!important;background:var(--accent)!important}
 
-/* Composer = task command surface, not floating chat glass. */
-.composer-zone{background:#fff}
-.composer{border-radius:6px;border:1px solid var(--line-strong);box-shadow:none;background:#fff}
-.composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px rgba(15,98,254,.14)}
-.attach{border-radius:4px}
-.attach:hover{background:#f4f4f4}
-.send-btn{border-radius:4px;background:var(--accent);box-shadow:none}
-.send-btn:hover{background:#0050e6}
-.send-btn:active{background:#0043ce}
+.quick-grid{
+  margin-top:16px!important;
+  display:grid!important;
+  grid-template-columns:1fr 1fr!important;
+  grid-template-rows:auto!important;
+  gap:0!important;
+  border-top:1px solid var(--line)!important;
+  border-left:1px solid var(--line)!important;
+  background:#fff!important;
+}
+.quick-card,.quick-card:nth-child(1),.quick-card:nth-child(4){
+  grid-column:auto!important;
+  grid-row:auto!important;
+  min-height:112px!important;
+  padding:17px 18px!important;
+  border:0!important;
+  border-right:1px solid var(--line)!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.quick-card:hover,.quick-card:nth-child(1):hover{
+  background:var(--accent-soft)!important;
+  box-shadow:inset 3px 0 0 var(--accent)!important;
+  transform:none!important;
+}
+.quick-card:nth-child(1){background:#f4f4f4!important}
+.quick-card b,.quick-card:nth-child(1) b{font-size:15px!important;font-weight:600!important;color:#161616!important}
+.quick-card small{font-size:12px!important;line-height:1.52!important;color:#6f6f6f!important}
+.quick-card em{
+  padding:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  color:#6f6f6f!important;
+  font-size:11px!important;
+}
+.input-types b{border-radius:2px!important;background:#f4f4f4!important;border-color:var(--line)!important}
 
-/* Right control plane */
-.rightbar{background:#fff;border-left-color:var(--line)}
-.right-head{background:#fff;border-bottom-color:var(--line)}
-.right-tabs{gap:0;border-bottom:1px solid var(--line)}
-.right-tab{border-radius:0;background:#fff;border-bottom:2px solid transparent}
-.right-tab:hover{background:#f4f4f4}
-.right-tab.active{background:#fff;color:#161616;border-bottom-color:var(--accent)}
-.status-card,.follow-card{border-radius:4px;border:1px solid var(--line);background:#fff}
-.status-line{background:#e0e0e0}
-.status-line i,.work-progress i{background:var(--accent)}
-.suggestions button{border-radius:4px;border-color:var(--line);background:#fff}
-.suggestions button:hover{background:#edf5ff;border-color:#a6c8ff}
+/* Runtime path is a compact execution diagram, not a decorative card. */
+.agent-map{
+  min-height:420px!important;
+  padding:20px!important;
+  border:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#161616!important;
+  color:#fff!important;
+  box-shadow:none!important;
+}
+.agent-map::before{display:none!important}
+.agent-map-head{padding-bottom:12px!important;border-bottom:1px solid #393939!important}
+.agent-map-head b{font-size:12px!important;font-weight:600!important;color:#fff!important}
+.agent-map-head span{font-size:10px!important;color:#a8a8a8!important}
+.agent-route{gap:0!important;margin-top:8px!important}
+.route-node{
+  min-height:64px!important;
+  border:0!important;
+  border-bottom:1px solid #393939!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.route-node>span{
+  width:24px!important;height:24px!important;
+  border:1px solid #525252!important;
+  border-radius:2px!important;
+  background:#262626!important;
+  color:#c6c6c6!important;
+}
+.route-node strong{font-size:12px!important;color:#f4f4f4!important}
+.route-node small{font-size:10.5px!important;color:#a8a8a8!important}
+.route-node em{font-size:9px!important;color:#8d8d8d!important}
+.route-node.active{background:#262626!important;border-color:#393939!important;box-shadow:inset 3px 0 0 var(--accent)!important}
+.route-node.active>span{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important}
+.agent-map-foot{
+  left:20px!important;right:20px!important;bottom:18px!important;
+  border-top:1px solid #393939!important;
+  color:#a8a8a8!important;
+}
+.agent-map-foot b{color:#f4f4f4!important;font-weight:500!important}
 
-/* Evidence / assets / actions should be traceable, not decorative. */
-.evidence-item,.asset-item,.action-card,.progress-item{border-radius:4px;box-shadow:none}
-.evidence-item,.asset-item,.action-card{border:1px solid var(--line);background:#fff}
-.progress-item{border-bottom:1px solid var(--line)}
-.progress-item.current{background:#edf5ff}
-.action-card{border-left:3px solid var(--line-strong)}
-.action-card.pending,.action-card.attention{border-left-color:var(--warning)}
-.action-card.approved,.action-card.complete{border-left-color:var(--success)}
-.action-card.rejected,.action-card.error{border-left-color:var(--danger)}
+/* ---------------------------------------------------------
+   5. Conversation and task composer
+   --------------------------------------------------------- */
+.msg.assistant .msg-body,.msg.user .msg-body{border-radius:0!important}
+.msg.user .msg-content{
+  border-radius:4px!important;
+  border-color:var(--line)!important;
+  background:#f4f4f4!important;
+  box-shadow:none!important;
+}
+.assistant-logo{border-radius:2px!important;background:#161616!important}
+.msg-asset,.asset-card,.evidence-card{border-radius:4px!important;box-shadow:none!important}
+.answer-action,.answer-correction button{border-radius:4px!important;box-shadow:none!important}
 
-/* Modals and temporary floating layers may keep elevation. */
-.modal,.command-modal,.runtime-modal,.tour-modal{border-radius:6px!important;border:1px solid var(--line-strong);box-shadow:0 16px 40px rgba(0,0,0,.18)!important}
-.modal-backdrop,.command-backdrop,.runtime-backdrop,.tour-backdrop{backdrop-filter:none!important}
-.modal-close,.runtime-close,.tour-close,.right-close{border-radius:2px}
+.work-card{
+  border:1px solid #a6c8ff!important;
+  border-radius:4px!important;
+  background:#edf5ff!important;
+  box-shadow:none!important;
+}
+.work-progress{border-radius:0!important;background:var(--line)!important}
 
-/* Semantic focus */
-button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.composer-zone{
+  background:#fff!important;
+  background-image:none!important;
+  border-top:1px solid var(--line)!important;
+}
+.composer{
+  border-radius:4px!important;
+  border:1px solid var(--line-strong)!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.composer:focus-within{
+  border-color:var(--accent)!important;
+  box-shadow:0 0 0 2px rgba(15,98,254,.14)!important;
+  transform:none!important;
+}
+.composer-head{background:#f4f4f4!important}
+.attach{border-radius:2px!important;transform:none!important}
+.attach:hover{background:#e8e8e8!important;border-color:#c6c6c6!important;color:#161616!important;transform:none!important}
+.send-btn{
+  border-radius:2px!important;
+  background:var(--accent)!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.send-btn:hover{background:#0050e6!important;transform:none!important}
+.send-btn:active{background:#0043ce!important}
+.pending-asset{border-radius:4px!important;box-shadow:none!important}
+
+/* ---------------------------------------------------------
+   6. Evidence & Authority control plane
+   --------------------------------------------------------- */
+.right-title{padding:16px 16px 10px!important}
+.right-title b{font-size:15px!important;font-weight:600!important;color:#161616!important}
+.right-title small{font-size:10px!important;letter-spacing:.06em!important;color:#6f6f6f!important}
+.right-tabs{
+  gap:0!important;
+  padding:0 12px!important;
+  border:0!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#fff!important;
+}
+.right-tab{
+  height:38px!important;
+  border:0!important;
+  border-bottom:2px solid transparent!important;
+  border-radius:0!important;
+  background:#fff!important;
+  box-shadow:none!important;
+  color:#525252!important;
+}
+.right-tab:hover{background:#f4f4f4!important;color:#161616!important}
+.right-tab.active{background:#fff!important;color:#161616!important;border-bottom-color:var(--accent)!important;box-shadow:none!important}
+
+.right-scroll{padding:16px!important}
+.status-card{
+  padding:0 0 16px!important;
+  border:0!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.status-ring{
+  min-width:52px!important;
+  padding:7px 8px!important;
+  border:1px solid var(--line-strong)!important;
+  border-radius:2px!important;
+  background:#fff!important;
+  box-shadow:none!important;
+}
+.status-line{height:3px!important;border-radius:0!important;background:#e0e0e0!important}
+.status-line i,.work-progress i{background:var(--accent)!important}
+.progress-item{
+  padding:10px 0!important;
+  border:0!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#fff!important;
+}
+.progress-item.current{background:#edf5ff!important;box-shadow:0 0 0 8px #edf5ff!important}
+.progress-item>span{border-radius:2px!important}
+.follow-card{
+  margin-top:16px!important;
+  padding-top:14px!important;
+  border:0!important;
+  border-top:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+.suggestions button{border-radius:2px!important;background:#fff!important;border-color:var(--line)!important;transform:none!important}
+.suggestions button:hover{background:#edf5ff!important;border-color:#a6c8ff!important;transform:none!important}
+.panel-copy{padding-bottom:13px!important;border-bottom:1px solid var(--line)!important}
+.panel-copy b{font-size:15px!important;font-weight:600!important;color:#161616!important}
+.panel-copy p{font-size:12px!important;line-height:1.55!important;color:#6f6f6f!important}
+
+.evidence-list,.action-list,.asset-list{gap:0!important;margin-top:0!important}
+.evidence-card,.asset-card,.action-card{
+  margin:0!important;
+  border:0!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#fff!important;
+  box-shadow:none!important;
+}
+.evidence-card{padding:14px 0!important}
+.evidence-media{border-radius:2px!important}
+.evidence-icon,.asset-icon{border-radius:2px!important}
+.action-card{padding:15px 0 15px 13px!important;border-left:3px solid var(--line-strong)!important}
+.action-card:has(.action-status.proposed),.action-card.pending,.action-card.attention{background:#fff!important;border-left-color:var(--warning)!important}
+.action-card:has(.action-status.executed),.action-card.approved,.action-card.complete{background:#fff!important;border-left-color:var(--success)!important}
+.action-card.rejected,.action-card.error{border-left-color:var(--danger)!important}
+.action-status{border-radius:2px!important}
+.action-buttons button{border-radius:2px!important;box-shadow:none!important}
+.action-buttons .approve{background:var(--accent)!important}
+.action-buttons .approve:hover{background:#0050e6!important}
+.action-buttons .reject{background:#fff!important;border-color:var(--line-strong)!important}
+.execution-caveat,.asset-policy-note{
+  border-radius:2px!important;
+  border-color:var(--line)!important;
+  background:#f4f4f4!important;
+  box-shadow:none!important;
+}
+.asset-policy-note button{border-radius:2px!important}
+
+/* ---------------------------------------------------------
+   7. Runtime plugin control plane
+   --------------------------------------------------------- */
+.runtime-backdrop{background:rgba(22,22,22,.66)!important;backdrop-filter:none!important}
+.runtime-modal{
+  width:min(1080px,96vw)!important;
+  border:1px solid #525252!important;
+  border-radius:4px!important;
+  background:#161616!important;
+  color:#f4f4f4!important;
+  box-shadow:0 20px 60px rgba(0,0,0,.34)!important;
+}
+.runtime-modal-head{padding:22px 24px 18px!important;border-bottom:1px solid #393939!important}
+.runtime-modal-head h3{font-size:22px!important;font-weight:600!important;letter-spacing:-.018em!important}
+.runtime-modal-head p{font-size:12px!important;color:#a8a8a8!important}
+.runtime-modal-head small,.runtime-section-title small{font-size:9px!important;color:#8d8d8d!important;letter-spacing:.1em!important}
+.runtime-close{
+  width:36px!important;height:36px!important;
+  border:1px solid #525252!important;
+  border-radius:2px!important;
+  background:#161616!important;
+  color:#c6c6c6!important;
+}
+.runtime-close:hover{background:#262626!important;color:#fff!important}
+.runtime-modal-scroll{padding:20px 24px 24px!important}
+.runtime-summary-loading{border-radius:2px!important;border-color:#525252!important;color:#a8a8a8!important}
+.runtime-summary-loading i{box-shadow:none!important}
+.runtime-health-grid{
+  grid-template-columns:1.4fr repeat(3,minmax(0,1fr))!important;
+  border:1px solid #393939!important;
+  border-radius:0!important;
+  background:#161616!important;
+}
+.runtime-health-grid>div{padding:15px 16px!important;border-left:1px solid #393939!important;background:#161616!important}
+.runtime-health-grid>div:first-child{border-left:0!important;background:#262626!important}
+.runtime-health-grid small{font-size:10px!important;color:#8d8d8d!important}
+.runtime-health-grid strong{font-size:20px!important;color:#fff!important}
+.runtime-health-grid>div:first-child strong{font-size:15px!important}
+.runtime-health-grid span{font-size:10px!important;color:#a8a8a8!important}
+.runtime-section-title h4{font-size:14px!important;color:#f4f4f4!important}
+.runtime-section-title>span{color:#8d8d8d!important}
+.runtime-lanes{gap:0!important;border-top:1px solid #393939!important;border-left:1px solid #393939!important}
+.runtime-lane{
+  min-height:116px!important;
+  padding:14px!important;
+  border:0!important;
+  border-right:1px solid #393939!important;
+  border-bottom:1px solid #393939!important;
+  border-radius:0!important;
+  background:#161616!important;
+}
+.runtime-lane:not(:last-child)::after{display:none!important}
+.runtime-lane.safety{background:#1c1a15!important;border-color:#393939!important}
+.runtime-lane-index{
+  width:24px!important;height:24px!important;
+  border:1px solid #525252!important;
+  border-radius:2px!important;
+  background:#262626!important;
+  color:#a6c8ff!important;
+}
+.runtime-lane-count{color:#8d8d8d!important}
+.runtime-lane b{font-size:12px!important;color:#f4f4f4!important}
+.runtime-lane p{font-size:10px!important;color:#a8a8a8!important}
+.runtime-filter{
+  min-height:28px!important;
+  border:1px solid #525252!important;
+  border-radius:2px!important;
+  background:#161616!important;
+  color:#a8a8a8!important;
+}
+.runtime-filter:hover,.runtime-filter.active{background:#262626!important;border-color:#0f62fe!important;color:#fff!important}
+.runtime-plugin-grid{gap:0!important;border-top:1px solid #393939!important;border-left:1px solid #393939!important}
+.runtime-plugin{
+  padding:12px!important;
+  border:0!important;
+  border-right:1px solid #393939!important;
+  border-bottom:1px solid #393939!important;
+  border-radius:0!important;
+  background:#161616!important;
+}
+.runtime-plugin:hover{background:#1f1f1f!important}
+.runtime-plugin-icon{
+  border:1px solid #525252!important;
+  border-radius:2px!important;
+  background:#262626!important;
+  color:#a6c8ff!important;
+}
+.runtime-plugin-title b{color:#f4f4f4!important}
+.runtime-plugin-title em{border-radius:2px!important;background:#262626!important;color:#a8a8a8!important}
+.runtime-plugin-main p{color:#8d8d8d!important}
+.runtime-plugin-meta small{color:#6f6f6f!important}
+.runtime-empty{border-radius:2px!important;border-color:#525252!important;color:#a8a8a8!important}
+.runtime-modal-foot{border-top:1px solid #393939!important;color:#8d8d8d!important}
+.runtime-modal-foot b{color:#c6c6c6!important}
+
+/* ---------------------------------------------------------
+   8. Product tour and floating layers
+   --------------------------------------------------------- */
+.modal,.command-modal,.tour-modal{
+  border-radius:4px!important;
+  border:1px solid var(--line-strong)!important;
+  background:#fff!important;
+  background-image:none!important;
+  box-shadow:0 16px 40px rgba(0,0,0,.18)!important;
+}
+.modal-backdrop,.command-backdrop,.tour-backdrop{backdrop-filter:none!important}
+.tour-modal{padding:36px 38px 30px!important}
+.tour-kicker>span{border-radius:4px!important;background:#161616!important;box-shadow:none!important}
+.tour-flow{gap:0!important;border-top:1px solid var(--line)!important;border-left:1px solid var(--line)!important}
+.tour-flow section{
+  border:0!important;
+  border-right:1px solid var(--line)!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#fff!important;
+  box-shadow:none!important;
+}
+.tour-flow section>span{border-radius:2px!important;background:#161616!important}
+.tour-grid{gap:0!important;border-top:1px solid var(--line)!important;border-left:1px solid var(--line)!important}
+.tour-grid>section{
+  border:0!important;
+  border-right:1px solid var(--line)!important;
+  border-bottom:1px solid var(--line)!important;
+  border-radius:0!important;
+  background:#f4f4f4!important;
+}
+.tour-scenes span,.tour-scenes i,.tour-status,.tour-status>span,.tour-actions button{border-radius:2px!important;box-shadow:none!important}
+.modal-close,.runtime-close,.tour-close,.right-close{border-radius:2px!important}
+.command-result{border-radius:2px!important}
+.command-result.active,.command-result:hover{background:#edf5ff!important}
+.provider-card{border-radius:2px!important;box-shadow:none!important}
+.provider-logo,.provider-status{border-radius:2px!important}
+.toast{border-radius:2px!important;box-shadow:0 8px 24px rgba(0,0,0,.22)!important}
+.drop-mask>div{border-radius:4px!important}
+
+/* ---------------------------------------------------------
+   9. Focus / accessibility / responsive
+   --------------------------------------------------------- */
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{
+  outline:2px solid var(--accent)!important;
+  outline-offset:2px!important;
+}
 ::selection{background:#d0e2ff;color:#001141}
 
-/* Reduce decorative softness from legacy polish. */
-.answer-correction button{border-radius:4px;box-shadow:none}
-.runtime-live{box-shadow:none}
-.work-progress::after{opacity:.45}
-
 @media(max-width:1360px){
-  .agent-map{border-radius:6px}
+  :root{--left:232px;--right:324px}
+  .welcome-layout{grid-template-columns:1fr!important}
+  .agent-map{
+    display:block!important;
+    min-height:auto!important;
+    margin-top:24px!important;
+  }
+  .agent-route{
+    display:grid!important;
+    grid-template-columns:repeat(5,minmax(160px,1fr))!important;
+    overflow-x:auto!important;
+    border-top:1px solid #393939!important;
+    border-left:1px solid #393939!important;
+  }
+  .route-node{
+    border:0!important;
+    border-right:1px solid #393939!important;
+    border-bottom:1px solid #393939!important;
+  }
+  .agent-map-foot{position:relative!important;left:auto!important;right:auto!important;bottom:auto!important;margin-top:14px!important}
 }
 
 @media(max-width:820px){
-  .leftbar,.rightbar{box-shadow:0 12px 32px rgba(0,0,0,.18)}
+  .leftbar,.rightbar{box-shadow:0 12px 32px rgba(0,0,0,.22)!important}
+  .top-left{background:#fff!important;color:#161616!important}
+  .brand-copy small{color:#6f6f6f!important}
+  .quick-grid{grid-template-columns:1fr!important}
+  .welcome h2{font-size:34px!important}
+  .composer{border-radius:4px!important;box-shadow:none!important}
+  .runtime-modal{width:100%!important;height:100dvh!important;max-height:none!important;border:0!important;border-radius:0!important}
+}
+
+@media(max-width:620px){
+  .runtime-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .runtime-plugin-grid{grid-template-columns:1fr!important}
 }
 
 @media(prefers-reduced-motion:reduce){
