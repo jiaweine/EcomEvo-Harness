@@ -52,8 +52,6 @@ def run() -> None:
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        # Logical viewport stays deterministic for interaction assertions while DPR=2
-        # produces 3840x2400 desktop captures suitable for README/source inspection.
         context = browser.new_context(
             viewport=DESKTOP_VIEWPORT,
             device_scale_factor=DEVICE_SCALE_FACTOR,
@@ -69,12 +67,12 @@ def run() -> None:
             expect(page.locator("#conversationTitle")).to_be_visible()
             expect(page.locator("#messageInput")).to_be_visible()
             expect(page.locator("#sceneEyebrow")).to_have_text("商品治理")
+            expect(page.locator("html")).to_have_attribute("data-ecomevo-theme", "customer-service")
 
-            # A fresh browser gets the first-run tour. It must be styled as the
-            # active modal, block nested command palettes, and release body state.
+            # A fresh browser gets the first-run tour. It must be customer-readable,
+            # block nested command palettes, and release body state when closed.
             expect(page.locator("#productTour")).to_be_visible()
-            # Reproduce the async boot race: conversation initialization may try to
-            # focus the composer after the modal opened. Focus containment must win.
+            expect(page.locator("#productTourTitle")).to_have_text("把问题和资料交给我，重要操作由你确认。")
             page.locator("#messageInput").focus()
             expect(page.locator("#tourCloseBtn")).to_be_focused()
             capture(page, "product-tour.png")
@@ -84,13 +82,17 @@ def run() -> None:
             expect(page.locator("#productTour")).to_be_hidden()
             expect(page.locator("body")).not_to_have_class(re.compile(r"\btour-open\b"))
 
-            # The landing surface is deliberately concise and uses one CJK-first
-            # sans-serif type system. Keep this as a product-density regression gate.
-            expect(page.locator("#welcomePanel h2")).to_have_text("给出目标，带回证据。")
+            # Customer landing surface: warm service language, CJK-first type, four
+            # business shortcuts, and no developer-console terminology.
+            expect(page.locator("#welcomePanel h2")).to_have_text("今天想处理什么问题？")
+            expect(page.locator("#welcomePanel .welcome-copy > p")).to_contain_text("下一步建议")
+            expect(page.locator(".agent-map-head")).to_contain_text("办理流程")
+            expect(page.locator(".agent-map")).not_to_contain_text("Event Sourced")
+            expect(page.locator(".right-title")).not_to_contain_text("Evidence & Authority")
             expect(page.locator(".ops-overview")).to_be_visible(timeout=10_000)
-            expect(page.locator(".ops-overview")).to_contain_text("运行概览")
+            expect(page.locator(".ops-overview")).to_contain_text("处理服务")
             expect(page.locator(".ops-overview .ops-metric")).to_have_count(4)
-            expect(page.locator(".ops-overview")).to_contain_text("人工确认")
+            expect(page.locator(".ops-overview")).to_contain_text("需要确认")
             design = page.evaluate(
                 """() => {
                     const hero = document.querySelector('#welcomePanel h2');
@@ -109,8 +111,8 @@ def run() -> None:
                 }"""
             )
             assert "sans-serif" in design["fontFamily"], design
-            assert design["fontSize"] <= 40, design
-            assert design["leadLength"] <= 55, design
+            assert design["fontSize"] <= 44, design
+            assert design["leadLength"] <= 60, design
             assert design["cardCount"] == 4, design
             assert design["maxCardCopy"] <= 32, design
             assert design["routeCount"] == 5, design
@@ -118,24 +120,27 @@ def run() -> None:
 
             page.locator("#providerBtn").click()
             expect(page.locator("#providerModal")).to_be_visible()
+            expect(page.locator("#providerModalTitle")).to_have_text("可用服务")
             option_texts = page.locator("#providerSelect option").all_text_contents()
             assert option_texts and all(
-                text.startswith("认知引擎") or text.startswith("自动编排") or text.startswith("本地受控")
+                text.startswith("智能处理") or text.startswith("自动选择") or text.startswith("本地处理")
                 for text in option_texts
             ), option_texts
             for title in page.locator("#providerGrid .provider-card b").all_text_contents():
-                assert title.startswith("认知引擎") or title.startswith("本地受控"), title
+                assert title.startswith("智能处理") or title.startswith("本地处理"), title
             page.locator("#providerModal .modal-close").click()
 
-            # The runtime plugin registry is a real, read-only control plane rather than
-            # a README-only claim. Every loaded instance must surface contract health.
+            # The same real runtime data remains available, but the default customer
+            # surface translates it into service status and hides plugin internals.
             page.locator("#settingsBtn").click()
             expect(page.locator("#runtimeModal")).to_be_visible()
+            expect(page.locator("#runtimeModalTitle")).to_have_text("当前服务是否正常")
             expect(page.locator("#providerModal")).to_be_hidden()
             expect(page.locator("#runtimePluginGrid .runtime-plugin")).to_have_count(14, timeout=10_000)
-            expect(page.locator("#runtimeSummary")).to_contain_text("契约全部通过")
+            expect(page.locator("#runtimeSummary")).to_contain_text("服务正常")
             assert page.locator("#runtimePluginGrid .runtime-plugin-state.blocked").count() == 0
             assert page.locator("#runtimeLanes .runtime-lane").count() == 4
+            expect(page.locator(".runtime-catalog")).to_be_hidden()
             capture(page, "product-plugins.png")
             page.locator("#runtimeCloseBtn").click()
             expect(page.locator("#runtimeModal")).to_be_hidden()
@@ -151,21 +156,25 @@ def run() -> None:
             page.locator("#sendBtn").click()
             expect(page.locator(".msg.user .msg-content").filter(has_text=first_prompt)).to_be_visible()
             expect(page.locator(".msg.assistant")).to_have_count(1, timeout=45_000)
+            expect(page.locator(".answer-provider").last).to_have_text("由 EcomEvo 完成")
             expect(page.locator("#runtimePulse")).to_be_visible(timeout=10_000)
             expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中")
             page.locator("#tab-progress").click()
             expect(page.locator("#panel-progress")).to_be_visible()
             expect(page.locator(".trace-ledger-head")).to_be_visible()
-            expect(page.locator(".trace-ledger-head")).to_contain_text("执行轨迹")
-            expect(page.locator(".trace-ledger-meta")).to_contain_text("steps")
+            expect(page.locator(".trace-ledger-head")).to_contain_text("办理进度")
+            expect(page.locator(".trace-ledger-meta")).to_contain_text("项")
             capture(page, "product-runtime.png")
 
             page.locator("#tab-evidence").click()
             expect(page.locator("#panel-evidence")).to_be_visible()
+            expect(page.locator("#tab-evidence")).to_contain_text("相关资料")
             evidence_cards = page.locator("#evidenceList .evidence-card")
             if evidence_cards.count():
                 expect(page.locator("#panel-evidence .evidence-summary")).to_be_visible()
                 expect(page.locator("#panel-evidence .evidence-summary-stat")).to_have_count(3)
+                expect(page.locator("#panel-evidence .evidence-summary")).to_contain_text("你提供的")
+                expect(page.locator("#panel-evidence .evidence-summary")).to_contain_text("系统整理的")
                 expect(evidence_cards.first.locator(".evidence-provenance-line")).to_be_visible()
                 expect(evidence_cards.first.locator(".evidence-meta-item")).to_have_count(3)
                 expect(page.locator("#tab-evidence .ops-tab-count")).to_have_text(str(evidence_cards.count()))
