@@ -75,6 +75,10 @@ EcomEvo 把复杂的内部处理过程翻译成客户真正关心的四件事：
 
 当前 `main` 使用客户服务型界面：暖色工作画布、清晰任务入口、客户语言的办理进度与资料面板，以及克制的服务状态展示。
 
+![EcomEvo 客户服务工作台真实 Chromium 截图](docs/images/product-customer-overview.jpg)
+
+<sub>真实 Uvicorn + Chromium Browser E2E 采集。画面来自可运行产品，不是概念稿、设计稿或第三方产品界面。</sub>
+
 客户界面、文案和视觉层级的完整约束见 [`DESIGN.md`](DESIGN.md)。设计规范负责展示层，算法、API、权限和后端数据结构保持独立。
 
 ---
