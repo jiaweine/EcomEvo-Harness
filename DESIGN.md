@@ -1,411 +1,510 @@
 ---
-version: 1.0
-name: EcomEvo Carbon Operations UI
-description: "Enterprise decision-runtime interface adapted from IBM Carbon principles for EcomEvo. Dense, evidence-first, restrained, auditable, CJK-first, and operational rather than decorative."
-source_inspiration: "VoltAgent/awesome-design-md · IBM / Carbon"
+version: 2.0
+name: EcomEvo Customer Service UI
+description: "Customer-first commerce service workspace inspired by Intercom conversational clarity, Claude editorial calm, and a small amount of Clay warmth. Plain-language, reassuring, action-oriented, CJK-first."
+source_inspiration: "VoltAgent/awesome-design-md · Intercom + Claude + Clay"
 ---
 
 # EcomEvo Design System
 
 ## 1. Product character
 
-EcomEvo is an enterprise commerce decision runtime, not a marketing site and not a consumer chat app. The interface must feel like a serious operating console for product governance, merchant review, after-sales adjudication, risk review, content audit, evidence inspection, controlled actions, and runtime observability.
+EcomEvo is presented to customers as a clear, trustworthy business service workspace.
 
-The visual hierarchy should communicate five things immediately:
+Customers should never need to understand how the underlying AI, agent, runtime, verifier, planner, plugin, model, trace, event sourcing, or post-training system works. The product may use these internally, but the interface must translate them into ordinary business language.
 
-1. what task is active;
-2. what evidence exists;
-3. what the runtime is doing;
-4. what is uncertain or blocked;
-5. which real-world actions still require human authority.
+The customer should understand four things within a few seconds:
 
-Prefer clarity, traceability, density, and stable spatial structure over novelty, glassmorphism, large decorative gradients, oversized cards, or playful motion.
+1. What can I do here?
+2. What is happening with my request now?
+3. Is anything missing from me?
+4. What should I do next?
 
-## 2. Design direction
+The interface should feel helpful, calm, modern, and professional — closer to a premium customer-service product than a developer console.
 
-Use an EcomEvo adaptation of IBM Carbon rather than a literal IBM clone.
+## 2. Reference direction
 
-Core qualities:
+Use a blended design direction based on public references in `VoltAgent/awesome-design-md`:
 
-- light working surfaces with a dark operational navigation rail;
-- one confident blue accent for primary actions, focus, selection, and active runtime states;
-- neutral gray surfaces for hierarchy instead of decorative shadows;
-- thin borders and section dividers;
-- compact enterprise spacing;
-- small corner radii rather than pill-heavy UI;
-- typography-led hierarchy;
-- data, state, provenance, and authority always visible when relevant;
-- motion only for state transition, progress, feedback, and focus.
+- **Intercom** for friendly blue, conversational UI patterns, approachable service interactions, and obvious next actions.
+- **Claude** for clean editorial hierarchy, comfortable reading width, calm spacing, and human-feeling copy presentation.
+- **Clay** only for restrained warmth in the welcome page, onboarding, empty states, and selected starter cards.
 
-Do not add IBM logos, IBM branding, or copy IBM website composition. Carbon is the design-system reference; EcomEvo remains the brand.
+Do not make the product look like the source brands and do not use their logos or proprietary identity. These are design references only.
 
-## 3. Color system
+Do not use VoltAgent's terminal-native, developer-first visual language for customer-facing screens.
 
-Map these roles onto the existing CSS custom properties whenever possible instead of creating duplicate token families.
+## 3. Customer-language rule
+
+This is a hard product rule.
+
+### Never expose these words in normal customer UI
+
+- Runtime
+- Agent
+- Plugin
+- Verifier
+- Planner
+- Trace
+- Event Trace
+- Event Sourced
+- Provenance
+- Authority
+- Contract
+- Generation
+- Sandbox
+- Model
+- Provider
+- Tool Call
+- Belief State
+- Recursive Agent
+- Harness
+- Graph
+- Cognition
+- Execution Plane
+- Safety Plane
+
+These words may exist in source code, developer documentation, logs, admin diagnostics, and internal APIs. They should not appear in the normal customer journey.
+
+### Translate system concepts into customer concepts
+
+| Internal concept | Customer-facing wording |
+|---|---|
+| Runtime | 服务 / 处理服务 |
+| Runtime health | 服务状态 |
+| Agent execution | 正在处理 |
+| Event Trace / Trace | 办理进度 / 处理记录 |
+| Evidence | 相关资料 / 判断依据 |
+| Provenance | 来源 |
+| Authority | 待您确认 |
+| Action | 下一步 / 待确认操作 |
+| Plugin | 功能 / 服务组件 |
+| Provider / Model | 处理方式 |
+| Contract valid | 服务正常 |
+| Blocked | 暂时无法继续 |
+| Needs evidence | 需要补充资料 |
+| Derived evidence | 系统整理 |
+| Uploaded evidence | 您提交的 |
+| Asset | 资料 / 已上传资料 |
+| Verification | 核对 |
+
+## 4. Writing principles
+
+Customer copy must be:
+
+- short;
+- specific;
+- action-oriented;
+- free of engineering vocabulary;
+- reassuring without sounding childish;
+- explicit when customer action is required.
+
+Prefer:
+
+> 还需要一份品牌授权书，请补充上传。
+
+Over:
+
+> Evidence insufficient. Verification is blocked.
+
+Prefer:
+
+> 我们正在核对您提交的资料。
+
+Over:
+
+> Runtime is executing the verification pipeline.
+
+Prefer:
+
+> 请确认是否继续退款。
+
+Over:
+
+> Authority required for the proposed action.
+
+## 5. Tone
+
+Use warm professional Chinese.
+
+Good tone:
+
+- “我们已收到您的资料。”
+- “还需要补充一项信息。”
+- “您可以继续上传，之前的内容会保留。”
+- “这一步会影响订单状态，请您确认后再继续。”
+
+Avoid:
+
+- academic explanation;
+- implementation details;
+- exaggerated AI language;
+- “智能体正在自主推理” type copy;
+- overly formal legalistic language unless legally required;
+- cute or childish wording in serious disputes or risk cases.
+
+## 6. Core information architecture
+
+The existing three-column structure may remain, but customer semantics change.
+
+### Left: business navigation
+
+Purpose: let customers choose what they want to handle.
+
+Preferred labels:
+
+- 商品问题
+- 商家认证
+- 售后处理
+- 风险问题
+- 内容问题
+- 最近办理
+
+Do not describe architecture or system layers here.
+
+### Center: request and conversation
+
+Purpose: explain the current result in plain language and let the customer continue the request.
+
+A result should normally follow this reading order:
+
+1. **当前结果** — what we know now.
+2. **还需要您补充** — only when something is missing.
+3. **判断依据** — concise supporting information.
+4. **下一步** — what the customer can do now.
+
+Not every response needs all four sections. Never create empty sections.
+
+### Right: status and supporting information
+
+Use these tabs:
+
+- **进度**
+- **资料**
+- **待确认**
+- **已上传**
+
+Do not use “轨迹 / 证据 / 执行 / Authority / Assets”.
+
+## 7. Welcome page
+
+### Primary headline
+
+> 您好，今天想处理什么？
+
+### Supporting copy
+
+> 提交问题和相关资料，我们会帮您核对信息、说明当前结果，并告诉您下一步怎么做。
+
+### Starter cards
+
+Use customer goals, not system capabilities:
+
+- **商品问题** — 核对商品信息、素材或资质
+- **商家认证** — 查看主体、授权或认证问题
+- **售后处理** — 处理退款、履约或责任争议
+- **风险问题** — 核对异常交易或账户问题
+
+Cards should feel like Intercom-style service entry points: clear labels, short descriptions, restrained blue accent, no technical badges.
+
+## 8. Service overview
+
+The welcome overview should not show architecture metrics such as active plugins, contracts, generations, or execution graphs.
+
+Preferred customer overview:
+
+- **服务状态** — 正常 / 暂时繁忙
+- **最近办理** — number of recent requests shown
+- **待您确认** — number of current pending confirmations when available
+- **资料支持** — 图片、文档、表格等
+
+Only show real data. Never invent SLA, completion percentage, confidence score, success rate, or processing speed.
+
+## 9. Progress
+
+Use customer-readable stages such as:
+
+- 已提交
+- 正在核对资料
+- 需要补充资料
+- 正在处理中
+- 等待您确认
+- 已完成
+
+If a request is blocked, explain the reason immediately.
+
+Example:
+
+> 缺少品牌授权书首页，请补充上传后继续。
+
+Do not show internal step names, route-node IDs, planner stages, event IDs, or model states in the customer view.
+
+## 10. Supporting information
+
+Call customer-visible evidence **资料** or **判断依据**.
+
+Each item may show:
+
+- title;
+- short relevance explanation;
+- source: `您提交的` / `系统整理`;
+- related file name when useful;
+- a short reference number only when customers may need it for support.
+
+Do not show the labels `SOURCE`, `PROVENANCE`, or `TRACE`.
+
+Preferred summary labels:
+
+- 资料总数
+- 您提交的
+- 系统整理的
+
+## 11. Confirmations
+
+High-impact business actions must be easy to understand.
+
+Every confirmation should answer:
+
+1. What will happen?
+2. What will it affect?
+3. Can it be undone?
+4. What does the customer need to choose?
+
+Use labels like:
+
+- 待您确认
+- 确认继续
+- 暂不处理
+- 会影响订单状态
+- 仅更新当前记录
+
+Do not use “authority”, “execution control”, or “proposed action”.
+
+## 12. Composer
+
+The input area is a service request box, not an AI command console.
+
+### Label
+
+> 描述您的问题
+
+### Supporting text
+
+> 可以继续补充图片、文档、表格或其他相关资料。
+
+### Placeholder
+
+> 例如：这笔退款是否符合条件？订单、物流和聊天记录我都可以补充。
+
+### Primary action
+
+> 发送
+
+### Attachment action
+
+> 添加资料
+
+Do not use “目标”“指令”“多模态输入”“Prompt”“任务命令”等 technical phrasing in normal customer UI.
+
+## 13. Service settings
+
+Customer-facing settings should use:
+
+- **处理方式** instead of Provider / Model / Engine;
+- **自动选择** instead of Auto orchestration;
+- **系统状态** instead of Runtime plugins;
+- **服务正常** instead of Contract valid / Healthy.
+
+Advanced implementation details should be hidden from normal customers whenever role-based UI allows it.
+
+## 14. Visual theme
+
+The visual system should be friendlier than the former Carbon operations console.
+
+### Main qualities
+
+- light warm-neutral canvas;
+- white content surfaces;
+- friendly service blue as primary accent;
+- dark navy/charcoal text rather than pure technical black everywhere;
+- 8–12px normal corner radius;
+- subtle borders and soft shadow only where useful;
+- generous reading space in the center;
+- compact but comfortable right-side panels;
+- no terminal aesthetic;
+- no engineering-status dashboards on the customer homepage.
+
+## 15. Color system
 
 ```css
 :root {
-  --nav: #161616;
-  --nav-2: #262626;
-  --nav-3: #393939;
+  --ink: #1f2430;
+  --ink-2: #3f4652;
+  --muted: #6b7280;
+  --muted-2: #8a919d;
 
-  --ink: #161616;
-  --ink-2: #393939;
-  --muted: #525252;
-  --muted-2: #6f6f6f;
-
-  --canvas: #f4f4f4;
+  --canvas: #f7f8fb;
   --paper: #ffffff;
-  --paper-warm: #ffffff;
-  --soft: #f4f4f4;
-  --soft-blue: #edf5ff;
+  --soft: #f3f6fb;
+  --soft-blue: #edf4ff;
 
-  --line: #e0e0e0;
-  --line-strong: #c6c6c6;
+  --line: #e5e9f0;
+  --line-strong: #d5dbe5;
 
-  --accent: #0f62fe;
-  --accent-2: #0043ce;
-  --accent-soft: #edf5ff;
+  --accent: #2864dc;
+  --accent-hover: #1f55c7;
+  --accent-soft: #eaf1ff;
 
-  --success: #198038;
-  --success-soft: #defbe6;
-  --warning: #b28600;
-  --warning-soft: #fff8e1;
-  --danger: #da1e28;
-  --danger-soft: #fff1f1;
+  --success: #1f8a55;
+  --success-soft: #eaf7f0;
+  --warning: #b36b00;
+  --warning-soft: #fff6e5;
+  --danger: #c63d43;
+  --danger-soft: #fff0f1;
 
-  --shadow: none;
-  --shadow-small: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --radius: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-small: 0 1px 3px rgba(31, 36, 48, 0.06);
 }
 ```
 
-### Color rules
+Do not copy exact source-brand colors mechanically. EcomEvo owns its visual identity.
 
-- Blue is the primary interactive color. Do not introduce a second brand accent for normal UI.
-- Use red only for destructive/error states, amber for warning/attention, and green for verified/safe/success states.
-- Do not use gradients for ordinary cards, buttons, navigation, status panels, or evidence surfaces.
-- Do not use color alone to communicate state. Pair it with text, icon, label, position, or border treatment.
-- The right-side Evidence & Authority panel should be neutral by default; semantic color appears only on the specific state being communicated.
+## 16. Typography
 
-## 4. Typography
-
-EcomEvo is CJK-first. Do not force IBM Plex Sans onto Chinese text.
-
-Preferred UI stack:
+CJK-first UI stack:
 
 ```css
 --font-ui: "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
   "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei",
   system-ui, -apple-system, "Segoe UI", sans-serif;
-
---font-mono: "SFMono-Regular", "Cascadia Code", "Roboto Mono",
-  ui-monospace, monospace;
 ```
 
-Use typography and spacing before heavy font weight.
+Recommended hierarchy:
 
-Recommended roles:
+| Role | Size | Weight |
+|---|---:|---:|
+| Welcome title | 34–40px | 600 |
+| Page title | 22–28px | 600 |
+| Section title | 16–18px | 600 |
+| Body | 14–16px | 400 |
+| Supporting text | 13–14px | 400 |
+| Caption | 12px | 400–500 |
 
-| Role | Size | Weight | Use |
-|---|---:|---:|---|
-| Page title | 24–28px | 600 | Current task |
-| Welcome display | 34–44px | 600 | Empty/new task state only |
-| Section title | 16–20px | 600 | Runtime / evidence / action sections |
-| Body | 14–16px | 400 | Primary reading |
-| Dense body | 13–14px | 400 | Side panels and metadata |
-| Label | 12px | 500–600 | Eyebrows, tabs, compact labels |
-| Caption | 11–12px | 400 | Provenance, timestamps, secondary metadata |
-| Runtime value | 11–13px mono | 500–600 | IDs, latency, versions, scores |
+Avoid monospace in normal customer UI. Reserve it for hidden/internal diagnostics or short reference numbers.
 
-Avoid ultra-light Chinese text. Avoid excessive bold. Long answer content should stay comfortable to read and should not inherit dashboard-density line height.
+## 17. Buttons and controls
 
-## 5. Spacing and density
+Primary actions:
 
-Base spacing scale:
-
-- 4px: micro gap;
-- 8px: compact control gap;
-- 12px: dense component padding;
-- 16px: standard component spacing;
-- 24px: section spacing;
-- 32px: major workspace spacing;
-- 48px: empty-state / hero spacing only.
-
-Operational screens should favor 8 / 12 / 16 / 24. Do not spread every card apart with 24–32px gaps.
-
-The existing three-column mental model is intentional:
-
-- left: scene navigation and recent tasks;
-- center: task conversation and working state;
-- right: trajectory, evidence, actions, and assets.
-
-Do not turn this into a generic single-column chat experience.
-
-## 6. Shape, borders, and elevation
-
-EcomEvo should be flatter than a typical SaaS dashboard.
-
-- Primary radius: 4–6px.
-- Larger containers may use up to 8px when the current layout needs softer grouping.
-- Avoid 12–20px rounded cards except for an intentionally distinct modal or mobile container.
-- Avoid pill buttons unless the information is truly a compact status/tag.
-- Prefer `1px solid var(--line)` over drop shadows.
-- Use shadows only for temporary floating layers such as command palette, modal, dropdown, or mobile drawer.
-- Do not stack border + strong shadow + tinted background on the same normal card.
-
-## 7. Navigation
-
-### Left rail
-
-The left rail is operational chrome and should remain dark.
-
-- background: `--nav` / `--nav-2`;
-- active item: darker/lighter local surface plus a blue edge or blue state marker;
-- inactive icons and metadata: low-contrast gray;
-- active scene name: white;
-- use square/compact scene rows rather than floating rounded tiles;
-- do not add large colorful icons per business scene.
-
-### Top bar
-
-Keep the top bar light and quiet. Search/command is a utility, not a hero CTA.
-
-### Right control plane
-
-Tabs should feel like instrument controls:
-
-- clear selected state;
-- compact height;
-- neutral surface;
-- bottom/edge indicator preferred over filled pill tabs;
-- action count badges are small and semantic.
-
-## 8. Buttons
-
-### Primary
-
-- blue background `#0f62fe`;
+- solid service blue;
 - white text;
-- 4–6px radius;
-- no gradient;
-- no glow;
-- hover `#0050e6` or darker blue;
-- active `#0043ce`.
+- 8–10px radius;
+- clear hover and focus;
+- plain-language verb label.
 
-### Secondary
+Secondary actions:
 
-Use dark neutral or white with a strong neutral border depending on context.
+- white or soft-blue surface;
+- neutral border;
+- explicit label.
 
-### Tertiary / ghost
+Avoid icon-only actions when the meaning is not universal.
 
-Use for utility actions such as refresh, share, open details, copy, or local panel actions.
+## 18. Cards
 
-### Destructive
+Use cards to make choices and supporting information easier to scan.
 
-Use red only when the action is actually destructive or irreversible.
+Good uses:
 
-High-impact commerce actions must visually distinguish:
+- service starter card;
+- recent request;
+- missing-material notice;
+- confirmation request;
+- uploaded file;
+- important supporting information.
 
-1. proposed action;
-2. impact scope;
-3. required authority;
-4. confirm / reject controls.
+Avoid turning every sentence into a card.
 
-Do not visually style a proposed action as already completed.
+Clay-inspired color may appear in onboarding or empty states only, and should be soft rather than saturated.
 
-## 9. Inputs and composer
+## 19. Answer presentation
 
-The composer is a task command surface, not a social-chat bubble.
+Assistant answers should read like customer service, not AI analysis.
 
-- neutral white/light-gray surface;
-- 1px border;
-- strong blue focus ring;
-- compact attachment actions;
-- no floating glass panel;
-- upload busy state must remain visible;
-- send action can be primary blue;
-- pending evidence/assets should be visibly grouped with the composer.
+Preferred pattern:
 
-The provider selector must read as configuration/engine state, not as a promotional brand selector.
+**当前结果**
 
-## 10. Cards and panels
+我们已经核对了您提交的订单和物流信息，目前更支持……
 
-Use cards only when they group a meaningful operational unit.
+**还需要您补充**
 
-Good card purposes:
+请补充品牌授权书首页，图片需完整清晰。
 
-- evidence item;
-- runtime step;
-- proposed real-world action;
-- asset;
-- provider/runtime component;
-- compact status summary.
+**判断依据**
 
-Bad card purposes:
+订单记录显示……；物流记录显示……
 
-- wrapping every paragraph;
-- wrapping each tiny metric independently;
-- decorative marketing tiles inside the working console.
+**下一步**
 
-For most operational groups, use a white surface, thin divider, and internal spacing instead of a floating shadow card.
+补充资料后我们会继续处理，您无需重新提交问题。
 
-## 11. Evidence design
+Use headings only when they improve scanning. Keep short answers short.
 
-Evidence is a first-class product object.
+## 20. Accessibility and trust
 
-Every evidence component should make provenance easy to inspect. Where data exists, prefer this structure:
+- visible keyboard focus;
+- minimum 40px touch target on mobile;
+- no state represented by color alone;
+- plain explanation for disabled actions;
+- destructive actions require explicit wording;
+- never imply an action has happened before confirmation succeeds;
+- never fabricate confidence scores or service metrics.
 
-- evidence title / type;
-- source;
-- captured or observed time;
-- relation to current conclusion;
-- confidence or verification state;
-- expandable raw detail / excerpt;
-- link or trace identifier when available.
+## 21. Responsive behavior
 
-Strong evidence and weak clues must not look identical. Use labels and hierarchy, not only color.
+Desktop:
 
-## 12. Runtime / Agent state
+- left navigation;
+- main service conversation;
+- right status/detail panel.
 
-Runtime visualization should look like an execution trace, not an AI magic animation.
+Mobile:
 
-Prefer states such as:
+- conversation is primary;
+- navigation and details become drawers;
+- `待确认` state must remain easy to find;
+- do not expose internal architecture just because space is limited.
 
-- queued;
-- running;
-- waiting for evidence;
-- verifying;
-- blocked;
-- waiting for authority;
-- complete;
-- rolled back;
-- replanning.
+## 22. Do
 
-Show progress only when the number is meaningful. Otherwise show discrete step state.
+- Write for a customer who has never heard of agents or runtimes.
+- Tell the customer what is happening now.
+- Tell them exactly what is missing.
+- Make the next action obvious.
+- Keep serious cases calm and professional.
+- Use Intercom-like conversational clarity.
+- Use Claude-like reading hierarchy.
+- Use Clay-like warmth sparingly.
 
-Use monospace selectively for trace IDs, versions, latency, scores, model/runtime metadata, and event identifiers.
+## 23. Do not
 
-## 13. Status semantics
+- Do not expose academic or engineering jargon.
+- Do not present internal architecture as a product feature.
+- Do not show execution graphs to customers.
+- Do not turn the homepage into a system dashboard.
+- Do not use terminal styling.
+- Do not add fake analytics.
+- Do not overuse English uppercase labels.
+- Do not use developer-facing abbreviations when a Chinese phrase works.
+- Do not copy Intercom, Claude, or Clay 1:1.
 
-| State | Treatment |
-|---|---|
-| Active / running | IBM blue + motion only on the active element |
-| Verified / safe | Green + verified label/icon |
-| Warning / incomplete | Amber + explanatory text |
-| Error / blocked | Red + recovery explanation |
-| Neutral / pending | Gray |
-| Human authority required | Strong neutral/blue boundary; do not imply success |
+## 24. Agent prompt guide
 
-## 14. Motion
+Before editing customer-facing frontend files, read this `DESIGN.md` and `docs/CUSTOMER_COPY.md`.
 
-Motion is state-bound.
+Implementation prompt:
 
-Allowed:
-
-- short panel entrance;
-- focus/hover transition;
-- active runtime pulse;
-- determinate progress;
-- upload feedback;
-- modal/drawer transition.
-
-Avoid:
-
-- continuous decorative animation;
-- ambient floating blobs;
-- gradient animation;
-- large parallax effects;
-- bouncing cards;
-- motion that obscures traceability.
-
-Respect `prefers-reduced-motion`.
-
-## 15. Responsive behavior
-
-Desktop is the primary operational layout. Preserve information hierarchy as width shrinks.
-
-- Desktop: left rail + center workspace + right control plane.
-- Medium screens: right control plane may become a drawer; left navigation remains compact.
-- Mobile: navigation and control plane become explicit drawers; center task stays primary.
-- Minimum touch target: 40px for primary mobile actions, 36px for dense desktop controls.
-- Do not hide evidence/action state merely to make the layout look clean.
-
-## 16. Accessibility
-
-- Visible keyboard focus is mandatory.
-- All state colors require textual or structural reinforcement.
-- Maintain readable contrast on dark navigation.
-- Do not use 10px text for important business information.
-- Modal focus must be trapped and restored correctly.
-- Drawers must expose expanded/collapsed state.
-- Respect reduced motion.
-
-## 17. Existing EcomEvo components
-
-When modifying the current frontend, preserve these product concepts unless the feature itself changes:
-
-- `.app-shell` three-column runtime layout;
-- `.leftbar` business-scene navigation;
-- `.workspace` central task surface;
-- `.rightbar` Evidence & Authority control plane;
-- `.task-head` active task identity;
-- `.quick-grid` new-task starters;
-- `.agent-map` / runtime path visualization;
-- `.composer` multimodal task input;
-- `.status-card`, `.progress-list`, `.evidence-list`, `.action-list`, `.asset-list`;
-- runtime plugin control plane;
-- command palette;
-- accessibility and reduced-motion behavior.
-
-Do not redesign away product capabilities simply to match a reference screenshot.
-
-## 18. Migration priorities
-
-When polishing existing CSS, make changes in this order:
-
-1. normalize design tokens;
-2. remove unnecessary gradients and strong shadows;
-3. reduce oversized corner radii;
-4. align selected/active states to one blue accent;
-5. normalize button/input heights and borders;
-6. improve evidence/action hierarchy;
-7. tighten inconsistent spacing;
-8. preserve CJK readability;
-9. verify responsive drawers and keyboard focus;
-10. only then consider decorative polish.
-
-## 19. Do
-
-- Make the product look trustworthy under high-stakes commerce decisions.
-- Keep dense information scannable.
-- Use dividers and alignment as hierarchy.
-- Make evidence and authority boundaries obvious.
-- Reuse the existing semantic CSS variables.
-- Preserve product functionality before visual novelty.
-- Keep blue as the single brand/action accent.
-
-## 20. Do not
-
-- Do not turn EcomEvo into a purple Linear clone.
-- Do not use Shopify-style cinematic marketing surfaces inside the workspace.
-- Do not use Claude-style warm editorial treatment for operational panels.
-- Do not use glassmorphism.
-- Do not add random gradients.
-- Do not use huge radii everywhere.
-- Do not make every component a floating card.
-- Do not hide operational metadata to achieve minimalism.
-- Do not display fake metrics or decorative progress.
-- Do not introduce vendor logos into the product UI unless the feature explicitly requires vendor identity.
-
-## 21. Agent prompt guide
-
-Before editing any EcomEvo frontend file, read this `DESIGN.md` and inspect the existing component/interaction behavior first.
-
-A good implementation prompt is:
-
-> Refine the EcomEvo frontend using `DESIGN.md`. Preserve the current information architecture, behaviors, accessibility, runtime states, evidence model, and authority controls. Apply the Carbon-inspired token system, flatter surfaces, restrained radii, single-blue accent, CJK-first typography, and enterprise operational density. Do not redesign it as a marketing page or generic chat UI.
-
-## 22. Reference
-
-This design direction was selected from the public `VoltAgent/awesome-design-md` collection. The IBM entry is used as a systems-design reference because its Carbon-style enterprise structure, structured blue palette, flat surfaces, and data-oriented hierarchy fit EcomEvo's decision-runtime product better than consumer, editorial, or cinematic alternatives.
+> Refine EcomEvo as a customer-facing commerce service product. Use Intercom-inspired conversational clarity, Claude-inspired reading hierarchy, and restrained Clay warmth. Translate all implementation concepts into plain customer language. Preserve existing backend behavior, permissions, evidence integrity, confirmation requirements, accessibility, and business capabilities. Do not expose Runtime, Agent, Plugin, Trace, Provenance, Authority, Provider, Contract, Planner, Verifier, or other engineering terms in the normal customer journey.
