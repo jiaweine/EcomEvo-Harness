@@ -61,6 +61,10 @@
     return next;
   }
 
+  function setText(node, value) {
+    if (node && node.textContent !== value) node.textContent = value;
+  }
+
   function translateTextNodes(root) {
     if (!root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -127,6 +131,72 @@
     });
   }
 
+  function customerEvidenceValue(value) {
+    const text = String(value || '').trim();
+    if (text.includes('本轮查证中')) return '正在核对';
+    if (text.includes('证据完整')) return '资料已齐全';
+    const missing = text.match(/缺证\s*(\d+)/);
+    if (missing) return `还需补充 ${missing[1]} 项`;
+    if (text.includes('等待本轮')) return '等待处理';
+    return replaceText(text).replace('证据', '资料');
+  }
+
+  function customerStatusValue(value) {
+    const text = String(value || '').trim();
+    const map = new Map([
+      ['本轮处理中', '正在处理'],
+      ['验证完成', '已完成'],
+      ['预算用尽', '暂时停止'],
+      ['本轮主动停止', '本轮已结束'],
+      ['没有更高价值的下一步', '当前已处理'],
+      ['补证没有改变状态', '需要更多资料'],
+      ['达到处理步数上限', '暂时停止'],
+      ['证据仍不完整', '需要补充资料'],
+      ['等待本轮结果', '等待结果'],
+    ]);
+    return map.get(text) || replaceText(text).replace('证据', '资料');
+  }
+
+  function customerizeRuntimePulse() {
+    const host = document.getElementById('runtimePulse');
+    if (!host) return;
+
+    host.setAttribute('aria-label', '本次办理状态');
+    setText(host.querySelector('.runtime-pulse-head b'), '处理概况');
+    setText(host.querySelector('.runtime-pulse-head small'), '本次办理状态');
+
+    const cells = [...host.querySelectorAll('.runtime-pulse-grid > div')];
+    if (cells.length >= 6) {
+      const sourceValues = cells.map(cell => cell.querySelector('strong')?.textContent?.trim() || '');
+      const status = customerStatusValue(sourceValues[3]);
+      const steps = sourceValues[2] && sourceValues[2] !== '—' ? `${sourceValues[2]} 项` : '—';
+      const connected = host.querySelector('.runtime-live')?.classList.contains('ok') ? '正常' : '正在连接';
+      const rawMode = sourceValues[5];
+      const mode = rawMode.includes('自适应') ? '自动处理'
+        : rawMode.includes('本地') ? '本地处理'
+        : rawMode.includes('运行中') ? '正在处理'
+        : '自动选择';
+
+      const firstFoot = host.querySelector('.runtime-pulse-foot span:first-child')?.textContent?.trim() || '';
+      const gap = firstFoot.startsWith('最先缺口：') ? firstFoot.slice('最先缺口：'.length).trim() : '';
+      const next = gap ? '补充资料' : status === '已完成' ? '查看结果' : status.includes('补充') ? '补充资料' : '继续处理';
+
+      const values = [customerEvidenceValue(sourceValues[0]), status, steps, next, connected, mode];
+      const labels = ['资料情况', '当前状态', '已处理', '下一步', '服务连接', '处理方式'];
+      cells.forEach((cell, index) => {
+        setText(cell.querySelector('small'), labels[index]);
+        setText(cell.querySelector('strong'), values[index]);
+      });
+
+      const foot = host.querySelector('.runtime-pulse-foot');
+      if (foot) {
+        const spans = foot.querySelectorAll('span');
+        setText(spans[0], gap ? `还需要：${gap}` : status === '已完成' ? '本次办理已完成' : '已提交的信息会继续用于本次办理');
+        setText(spans[1], connected === '正常' ? '信息已同步' : '正在同步信息');
+      }
+    }
+  }
+
   function customerizeDynamicCopy() {
     const scopes = [
       document.getElementById('conversationList'),
@@ -140,6 +210,7 @@
     customerizeProviders();
     customerizeAnswerFooters();
     customerizeEvidence();
+    customerizeRuntimePulse();
   }
 
   function boot() {
