@@ -164,8 +164,11 @@ def run() -> None:
             expect(page.locator("#panel-evidence")).to_be_visible()
             evidence_cards = page.locator("#evidenceList .evidence-card")
             if evidence_cards.count():
-                expect(evidence_cards.first.locator(".evidence-audit-row")).to_be_visible()
-                expect(evidence_cards.first.locator(".evidence-audit-cell")).to_have_count(3)
+                expect(page.locator("#panel-evidence .evidence-summary")).to_be_visible()
+                expect(page.locator("#panel-evidence .evidence-summary-stat")).to_have_count(3)
+                expect(evidence_cards.first.locator(".evidence-provenance-line")).to_be_visible()
+                expect(evidence_cards.first.locator(".evidence-meta-item")).to_have_count(3)
+                expect(page.locator("#tab-evidence .ops-tab-count")).to_have_text(str(evidence_cards.count()))
             capture(page, "product-evidence.png")
             page.locator("#tab-progress").click()
 
