@@ -3,11 +3,11 @@
 
   const byId = id => document.getElementById(id);
   const SCENES = {
-    product_governance: '商品治理',
-    merchant_review: '商家审核',
-    aftersales: '售后判责',
-    risk_review: '风险核查',
-    content_audit: '内容审核',
+    product_governance: '商品问题',
+    merchant_review: '商家认证',
+    aftersales: '售后处理',
+    risk_review: '风险问题',
+    content_audit: '内容问题',
   };
 
   function installStylesheet() {
@@ -51,7 +51,7 @@
     const healthy = active.filter(plugin => plugin?.contract_valid);
     const blocked = active.length - healthy.length;
     return {
-      status: active.length > 0 && blocked === 0 ? '契约通过' : active.length ? '需要检查' : '等待实例',
+      status: active.length > 0 && blocked === 0 ? '服务正常' : active.length ? '部分服务需检查' : '正在准备',
       statusClass: active.length > 0 && blocked === 0 ? 'ok' : blocked ? 'warn' : 'neutral',
       active: active.length,
       healthy: healthy.length,
@@ -84,19 +84,19 @@
     const snapshot = runtimeSnapshot(runtime);
     const rows = Array.isArray(conversations) ? conversations.slice(0, 4) : [];
     const overview = el('section', 'ops-overview');
-    overview.setAttribute('aria-label', '运行概览');
+    overview.setAttribute('aria-label', '服务概况');
 
     const head = el('div', 'ops-overview-head');
     const titleWrap = el('div');
-    titleWrap.append(el('small', '', 'OPERATIONS SNAPSHOT'), el('b', '', '运行概览'));
-    head.append(titleWrap, el('span', 'ops-live-label', '真实运行数据'));
+    titleWrap.append(el('small', '', '当前服务'), el('b', '', '服务概况'));
+    head.append(titleWrap, el('span', 'ops-live-label', '信息会自动保存'));
 
     const metrics = el('div', 'ops-metrics');
     metrics.append(
-      metric('RUNTIME', snapshot.status, snapshot.blocked ? `${snapshot.blocked} 个实例需检查` : `${snapshot.healthy}/${snapshot.active || 0} 契约有效`, snapshot.statusClass),
-      metric('ACTIVE PLUGINS', snapshot.active, '当前进入执行图的实例'),
-      metric('RECENT', rows.length, rows.length ? '首页展示的可恢复任务' : '暂无历史任务'),
-      metric('AUTHORITY', '人工确认', '真实业务动作不会静默执行', 'authority'),
+      metric('服务状态', snapshot.status, snapshot.blocked ? `${snapshot.blocked} 项服务需要检查` : '当前可以正常使用', snapshot.statusClass),
+      metric('最近办理', rows.length, rows.length ? '可随时继续之前的办理' : '还没有办理记录'),
+      metric('资料支持', '图片 / 文档 / 表格', '可以继续补充相关资料'),
+      metric('重要操作', '先确认再继续', '不会自动改变真实业务状态', 'authority'),
     );
 
     overview.append(head, metrics);
@@ -104,16 +104,16 @@
     if (rows.length) {
       const recent = el('div', 'ops-recent');
       const recentHead = el('div', 'ops-recent-head');
-      recentHead.append(el('b', '', '最近运行'), el('small', '', '继续一个耐久任务'));
+      recentHead.append(el('b', '', '最近办理'), el('small', '', '从上次的位置继续'));
       const list = el('div', 'ops-recent-list');
       rows.forEach((row, index) => {
         const button = el('button', 'ops-recent-item');
         button.type = 'button';
         const indexNode = el('span', 'ops-recent-index', String(index + 1).padStart(2, '0'));
         const body = el('div', 'ops-recent-copy');
-        body.append(el('b', '', row?.title || '业务任务'));
-        body.append(el('small', '', `${SCENES[row?.scene] || '业务任务'} · ${fmtTime(row?.updated_at)}`));
-        button.append(indexNode, body, el('span', 'ops-recent-open', '打开'));
+        body.append(el('b', '', row?.title || '业务办理'));
+        body.append(el('small', '', `${SCENES[row?.scene] || '业务办理'} · ${fmtTime(row?.updated_at)}`));
+        button.append(indexNode, body, el('span', 'ops-recent-open', '继续'));
         button.addEventListener('click', () => navigateConversation(row?.id));
         list.appendChild(button);
       });
@@ -167,22 +167,23 @@
     const list = byId('evidenceList');
     if (!list) return;
     list.querySelectorAll('.evidence-card').forEach(card => {
-      if (card.dataset.auditEnhanced === '2') return;
-      card.dataset.auditEnhanced = '2';
+      if (card.dataset.auditEnhanced === '3') return;
+      card.dataset.auditEnhanced = '3';
       card.querySelector('.evidence-audit-row')?.remove();
       card.querySelector('.evidence-provenance-line')?.remove();
 
-      const source = card.querySelector('.evidence-top em')?.textContent?.trim() || '核对结果';
+      const rawSource = card.querySelector('.evidence-top em')?.textContent?.trim() || '系统整理';
       const traceId = traceIdFromCard(card);
-      const original = source.includes('业务资料');
+      const original = rawSource.includes('业务资料') || rawSource.includes('您提交');
+      const source = original ? '您提交的' : '系统整理';
       card.classList.toggle('evidence-original', original);
       card.classList.toggle('evidence-derived', !original);
 
       const meta = el('div', 'evidence-provenance-line');
       meta.append(
-        evidenceMeta('SOURCE', source, original ? 'original' : 'derived'),
-        evidenceMeta('PROVENANCE', original ? '原始资料' : '运行派生', original ? 'original' : 'derived'),
-        evidenceMeta('TRACE', traceId ? `…${traceId.slice(-8)}` : (original ? '已关联资料' : '当前结论')),
+        evidenceMeta('来源', source, original ? 'original' : 'derived'),
+        evidenceMeta('类型', original ? '原始资料' : '整理结果', original ? 'original' : 'derived'),
+        evidenceMeta('参考', traceId ? `编号 …${traceId.slice(-8)}` : '本次办理'),
       );
       card.appendChild(meta);
     });
@@ -211,9 +212,9 @@
     }
     summary.dataset.signature = signature;
     summary.replaceChildren(
-      summaryStat('TOTAL', cards.length),
-      summaryStat('ORIGINAL', original, 'original'),
-      summaryStat('DERIVED', derived, 'derived'),
+      summaryStat('资料总数', cards.length),
+      summaryStat('您提交的', original, 'original'),
+      summaryStat('系统整理的', derived, 'derived'),
     );
   }
 
@@ -240,18 +241,19 @@
     const list = byId('actionList');
     if (!list) return;
     list.querySelectorAll('.action-card').forEach(card => {
-      if (card.dataset.authorityEnhanced === '1') return;
-      card.dataset.authorityEnhanced = '1';
+      if (card.dataset.authorityEnhanced === '2') return;
+      card.dataset.authorityEnhanced = '2';
+      card.querySelector('.action-authority-row')?.remove();
       const chips = [...card.querySelectorAll('.risk-chip')].map(node => node.textContent.trim()).filter(Boolean);
-      const status = card.querySelector('.action-status')?.textContent?.trim() || '待处理';
+      const status = card.querySelector('.action-status')?.textContent?.trim() || '等待确认';
       const requiresConfirm = Boolean(card.querySelector('[data-decision="approve"]'));
       const changesState = chips.some(text => text.includes('改变业务状态'));
 
       const boundary = el('div', 'action-authority-row');
       boundary.append(
-        auditCell('STATUS', status),
-        auditCell('AUTHORITY', requiresConfirm ? '人工确认' : '已决策', requiresConfirm ? 'authority' : ''),
-        auditCell('IMPACT', changesState ? '业务状态变更' : '记录级影响', changesState ? 'impact' : ''),
+        auditCell('当前状态', status),
+        auditCell('需要确认', requiresConfirm ? '请您确认' : '已处理', requiresConfirm ? 'authority' : ''),
+        auditCell('可能影响', changesState ? '会改变业务状态' : '仅更新当前记录', changesState ? 'impact' : ''),
       );
       const buttons = card.querySelector('.action-buttons');
       if (buttons) card.insertBefore(boundary, buttons);
@@ -277,10 +279,10 @@
     trace.dataset.signature = signature;
     trace.replaceChildren(
       el('div', 'trace-ledger-title'),
-      el('span', 'trace-ledger-meta', `${done}/${count || 0} steps · ${sync}`),
+      el('span', 'trace-ledger-meta', `${done}/${count || 0} 已完成 · ${sync}`),
     );
     const title = trace.querySelector('.trace-ledger-title');
-    title.append(el('small', '', 'EVENT TRACE'), el('b', '', '执行轨迹'));
+    title.append(el('small', '', '处理记录'), el('b', '', '办理进度'));
   }
 
   function observeRightPlane() {
