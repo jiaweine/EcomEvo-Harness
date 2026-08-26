@@ -16,6 +16,7 @@
     '/assets/privacy-sanitize.js',
     '/assets/drawer-a11y.js',
     '/assets/enhancements-core.js',
+    '/assets/ops-intelligence.js',
     '/assets/plugin-control.js',
     '/assets/realtime-reconcile.js',
   ];
@@ -38,7 +39,7 @@
 
   if (document.readyState === 'loading') {
     // Parser-blocking loader: safety/privacy/a11y hooks install before the main module can render,
-    // then core telemetry/fetch guards and cross-tab reconciliation are layered on top.
+    // then core telemetry/fetch guards, operations intelligence and cross-tab reconciliation layer on top.
     document.write(modules.map(src => `<script src="${src}"><\/script>`).join(''));
   } else {
     fallbackLoad();

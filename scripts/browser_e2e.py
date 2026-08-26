@@ -87,6 +87,10 @@ def run() -> None:
             # The landing surface is deliberately concise and uses one CJK-first
             # sans-serif type system. Keep this as a product-density regression gate.
             expect(page.locator("#welcomePanel h2")).to_have_text("给出目标，带回证据。")
+            expect(page.locator(".ops-overview")).to_be_visible(timeout=10_000)
+            expect(page.locator(".ops-overview")).to_contain_text("运行概览")
+            expect(page.locator(".ops-overview .ops-metric")).to_have_count(4)
+            expect(page.locator(".ops-overview")).to_contain_text("人工确认")
             design = page.evaluate(
                 """() => {
                     const hero = document.querySelector('#welcomePanel h2');
@@ -127,6 +131,7 @@ def run() -> None:
             # a README-only claim. Every loaded instance must surface contract health.
             page.locator("#settingsBtn").click()
             expect(page.locator("#runtimeModal")).to_be_visible()
+            expect(page.locator("#providerModal")).to_be_hidden()
             expect(page.locator("#runtimePluginGrid .runtime-plugin")).to_have_count(14, timeout=10_000)
             expect(page.locator("#runtimeSummary")).to_contain_text("契约全部通过")
             assert page.locator("#runtimePluginGrid .runtime-plugin-state.blocked").count() == 0
@@ -150,12 +155,24 @@ def run() -> None:
             expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中")
             page.locator("#tab-progress").click()
             expect(page.locator("#panel-progress")).to_be_visible()
+            expect(page.locator(".trace-ledger-head")).to_be_visible()
+            expect(page.locator(".trace-ledger-head")).to_contain_text("执行轨迹")
+            expect(page.locator(".trace-ledger-meta")).to_contain_text("steps")
             capture(page, "product-runtime.png")
 
             page.locator("#tab-evidence").click()
             expect(page.locator("#panel-evidence")).to_be_visible()
+            evidence_cards = page.locator("#evidenceList .evidence-card")
+            if evidence_cards.count():
+                expect(evidence_cards.first.locator(".evidence-audit-row")).to_be_visible()
+                expect(evidence_cards.first.locator(".evidence-audit-cell")).to_have_count(3)
             capture(page, "product-evidence.png")
             page.locator("#tab-progress").click()
+
+            action_cards = page.locator("#actionList .action-card")
+            if action_cards.count():
+                expect(action_cards.first.locator(".action-authority-row")).to_be_visible()
+                expect(action_cards.first.locator(".evidence-audit-cell")).to_have_count(3)
 
             page.keyboard.press("Control+K")
             expect(page.locator("#commandModal")).to_be_visible()
