@@ -17,6 +17,20 @@ MOBILE_VIEWPORT = {"width": 390, "height": 844}
 DEVICE_SCALE_FACTOR = 2
 DESKTOP_CAPTURE = (DESKTOP_VIEWPORT["width"] * DEVICE_SCALE_FACTOR, DESKTOP_VIEWPORT["height"] * DEVICE_SCALE_FACTOR)
 MOBILE_CAPTURE = (MOBILE_VIEWPORT["width"] * DEVICE_SCALE_FACTOR, MOBILE_VIEWPORT["height"] * DEVICE_SCALE_FACTOR)
+CUSTOMER_BANNED_TERMS = (
+    "Runtime",
+    "Agent",
+    "Plugin",
+    "Provider",
+    "Evidence",
+    "Authority",
+    "Provenance",
+    "Event Trace",
+    "Event Sourced",
+    "认知引擎",
+    "运行时插件",
+    "执行轨迹",
+)
 
 
 def wait_server(timeout: float = 30.0) -> None:
@@ -47,13 +61,16 @@ def capture(page, name: str) -> None:
         assert captured.size == expected, (path, captured.size, expected)
 
 
+def assert_customer_language(text: str, *, context: str) -> None:
+    hits = [term for term in CUSTOMER_BANNED_TERMS if term in text]
+    assert not hits, f"customer jargon leaked in {context}: {hits}"
+
+
 def run() -> None:
     wait_server()
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        # Logical viewport stays deterministic for interaction assertions while DPR=2
-        # produces 3840x2400 desktop captures suitable for README/source inspection.
         context = browser.new_context(
             viewport=DESKTOP_VIEWPORT,
             device_scale_factor=DEVICE_SCALE_FACTOR,
@@ -68,15 +85,14 @@ def run() -> None:
             page.goto(BASE_URL, wait_until="networkidle")
             expect(page.locator("#conversationTitle")).to_be_visible()
             expect(page.locator("#messageInput")).to_be_visible()
-            expect(page.locator("#sceneEyebrow")).to_have_text("商品治理")
+            expect(page.locator("#sceneEyebrow")).to_have_text("商品问题")
 
-            # A fresh browser gets the first-run tour. It must be styled as the
-            # active modal, block nested command palettes, and release body state.
+            # First-run help must explain customer actions, not the internal architecture.
             expect(page.locator("#productTour")).to_be_visible()
-            # Reproduce the async boot race: conversation initialization may try to
-            # focus the composer after the modal opened. Focus containment must win.
+            expect(page.locator("#productTourTitle")).to_contain_text("问题和资料")
             page.locator("#messageInput").focus()
             expect(page.locator("#tourCloseBtn")).to_be_focused()
+            assert_customer_language(page.locator("#productTour").inner_text(), context="product help")
             capture(page, "product-tour.png")
             page.keyboard.press("Control+K")
             expect(page.locator("#commandModal")).to_be_hidden()
@@ -84,13 +100,15 @@ def run() -> None:
             expect(page.locator("#productTour")).to_be_hidden()
             expect(page.locator("body")).not_to_have_class(re.compile(r"\btour-open\b"))
 
-            # The landing surface is deliberately concise and uses one CJK-first
-            # sans-serif type system. Keep this as a product-density regression gate.
-            expect(page.locator("#welcomePanel h2")).to_have_text("给出目标，带回证据。")
+            # The landing page is a customer service entry point, not a developer dashboard.
+            expect(page.locator("#welcomePanel h2")).to_have_text("您好，今天想处理什么？")
             expect(page.locator(".ops-overview")).to_be_visible(timeout=10_000)
-            expect(page.locator(".ops-overview")).to_contain_text("运行概览")
+            expect(page.locator(".ops-overview")).to_contain_text("服务概况")
             expect(page.locator(".ops-overview .ops-metric")).to_have_count(4)
-            expect(page.locator(".ops-overview")).to_contain_text("人工确认")
+            expect(page.locator(".ops-overview")).to_contain_text("先确认再继续")
+            expect(page.locator(".quick-card")).to_have_count(4)
+            expect(page.locator(".agent-map-head")).to_contain_text("办理流程")
+            assert_customer_language(page.locator("#welcomePanel").inner_text(), context="welcome workspace")
             design = page.evaluate(
                 """() => {
                     const hero = document.querySelector('#welcomePanel h2');
@@ -98,6 +116,7 @@ def run() -> None:
                     const cards = [...document.querySelectorAll('.quick-card')].filter(node => !node.hidden);
                     const route = [...document.querySelectorAll('.agent-route .route-node')];
                     const style = getComputedStyle(hero);
+                    const firstCard = getComputedStyle(cards[0]);
                     return {
                         fontFamily: style.fontFamily,
                         fontSize: parseFloat(style.fontSize),
@@ -105,48 +124,54 @@ def run() -> None:
                         cardCount: cards.length,
                         maxCardCopy: Math.max(...cards.map(node => node.textContent.trim().length)),
                         routeCount: route.length,
+                        cardRadius: parseFloat(firstCard.borderRadius),
                     };
                 }"""
             )
             assert "sans-serif" in design["fontFamily"], design
             assert design["fontSize"] <= 40, design
-            assert design["leadLength"] <= 55, design
+            assert design["leadLength"] <= 70, design
             assert design["cardCount"] == 4, design
-            assert design["maxCardCopy"] <= 32, design
+            assert design["maxCardCopy"] <= 40, design
             assert design["routeCount"] == 5, design
+            assert design["cardRadius"] >= 8, design
             capture(page, "product-overview.png")
 
+            # Processing choices use ordinary customer labels.
             page.locator("#providerBtn").click()
             expect(page.locator("#providerModal")).to_be_visible()
+            expect(page.locator("#providerModalTitle")).to_have_text("选择处理方式")
             option_texts = page.locator("#providerSelect option").all_text_contents()
             assert option_texts and all(
-                text.startswith("认知引擎") or text.startswith("自动编排") or text.startswith("本地受控")
+                text.startswith("在线处理") or text.startswith("自动选择") or text.startswith("本地处理")
                 for text in option_texts
             ), option_texts
             for title in page.locator("#providerGrid .provider-card b").all_text_contents():
-                assert title.startswith("认知引擎") or title.startswith("本地受控"), title
+                assert title.startswith("在线处理") or title.startswith("本地处理"), title
+            assert_customer_language(page.locator("#providerModal").inner_text(), context="processing choices")
             page.locator("#providerModal .modal-close").click()
 
-            # The runtime plugin registry is a real, read-only control plane rather than
-            # a README-only claim. Every loaded instance must surface contract health.
+            # Service status remains truthful while hiding implementation vocabulary.
             page.locator("#settingsBtn").click()
             expect(page.locator("#runtimeModal")).to_be_visible()
             expect(page.locator("#providerModal")).to_be_hidden()
+            expect(page.locator("#runtimeModalTitle")).to_have_text("服务状态")
             expect(page.locator("#runtimePluginGrid .runtime-plugin")).to_have_count(14, timeout=10_000)
-            expect(page.locator("#runtimeSummary")).to_contain_text("契约全部通过")
+            expect(page.locator("#runtimeSummary")).to_contain_text("服务正常")
             assert page.locator("#runtimePluginGrid .runtime-plugin-state.blocked").count() == 0
             assert page.locator("#runtimeLanes .runtime-lane").count() == 4
+            assert_customer_language(page.locator("#runtimeModal").inner_text(), context="service status")
             capture(page, "product-plugins.png")
             page.locator("#runtimeCloseBtn").click()
             expect(page.locator("#runtimeModal")).to_be_hidden()
             expect(page.locator("#settingsBtn")).to_be_focused()
 
-            # Empty-task scene changes should reuse the current task rather than creating junk.
+            # Scene changes keep customer wording even though internal scene keys are unchanged.
             page.locator('.scene[data-scene="merchant_review"]').click()
-            expect(page.locator("#sceneEyebrow")).to_have_text("商家审核")
+            expect(page.locator("#sceneEyebrow")).to_have_text("商家认证")
             capture(page, "product-scenes.png")
 
-            first_prompt = "审核这个商家的主体和品牌授权；证据不足时明确告诉我还缺什么。"
+            first_prompt = "请帮我看看这个商家的主体和品牌授权是否齐全；如果缺材料，请直接告诉我还需要什么。"
             page.locator("#messageInput").fill(first_prompt)
             page.locator("#sendBtn").click()
             expect(page.locator(".msg.user .msg-content").filter(has_text=first_prompt)).to_be_visible()
@@ -156,19 +181,22 @@ def run() -> None:
             page.locator("#tab-progress").click()
             expect(page.locator("#panel-progress")).to_be_visible()
             expect(page.locator(".trace-ledger-head")).to_be_visible()
-            expect(page.locator(".trace-ledger-head")).to_contain_text("执行轨迹")
-            expect(page.locator(".trace-ledger-meta")).to_contain_text("steps")
+            expect(page.locator(".trace-ledger-head")).to_contain_text("办理进度")
+            expect(page.locator(".trace-ledger-meta")).to_contain_text("已完成")
             capture(page, "product-runtime.png")
 
             page.locator("#tab-evidence").click()
             expect(page.locator("#panel-evidence")).to_be_visible()
+            expect(page.locator("#panel-evidence .panel-copy")).to_contain_text("判断依据")
             evidence_cards = page.locator("#evidenceList .evidence-card")
             if evidence_cards.count():
                 expect(page.locator("#panel-evidence .evidence-summary")).to_be_visible()
                 expect(page.locator("#panel-evidence .evidence-summary-stat")).to_have_count(3)
+                expect(page.locator("#panel-evidence .evidence-summary")).to_contain_text("资料总数")
                 expect(evidence_cards.first.locator(".evidence-provenance-line")).to_be_visible()
                 expect(evidence_cards.first.locator(".evidence-meta-item")).to_have_count(3)
                 expect(page.locator("#tab-evidence .ops-tab-count")).to_have_text(str(evidence_cards.count()))
+            assert_customer_language(page.locator("#panel-evidence").inner_text(), context="supporting information")
             capture(page, "product-evidence.png")
             page.locator("#tab-progress").click()
 
@@ -176,6 +204,7 @@ def run() -> None:
             if action_cards.count():
                 expect(action_cards.first.locator(".action-authority-row")).to_be_visible()
                 expect(action_cards.first.locator(".evidence-audit-cell")).to_have_count(3)
+                expect(action_cards.first.locator(".action-authority-row")).to_contain_text("需要确认")
 
             page.keyboard.press("Control+K")
             expect(page.locator("#commandModal")).to_be_visible()
@@ -187,12 +216,13 @@ def run() -> None:
             page.set_viewport_size(MOBILE_VIEWPORT)
             page.locator("#detailToggle").click()
             expect(page.locator("#rightbar")).to_have_class(re.compile(r"\bopen\b"))
+            expect(page.locator(".right-title")).to_contain_text("办理详情")
+            assert_customer_language(page.locator("#rightbar").inner_text(), context="mobile details")
             capture(page, "product-mobile.png")
             page.locator("#rightClose").click()
             expect(page.locator("#rightbar")).not_to_have_class(re.compile(r"\bopen\b"))
 
-            # Same durable conversation in a second tab: remote accepted user message must
-            # reconcile into the first tab before/alongside its answer.
+            # Same durable conversation in a second tab still reconciles correctly.
             page.set_viewport_size(DESKTOP_VIEWPORT)
             assert "conversation=" in page.url, page.url
             page2 = context.new_page()
@@ -201,7 +231,7 @@ def run() -> None:
             page2.on("console", lambda msg: page2_errors.append(f"console: {msg.text}") if msg.type == "error" else None)
             page2.goto(page.url, wait_until="networkidle")
             assistants_before = page2.locator(".msg.assistant").count()
-            second_prompt = f"跨标签页继续核对授权材料，标记 {time.time_ns()}"
+            second_prompt = f"继续核对授权材料，标记 {time.time_ns()}"
             page2.locator("#messageInput").fill(second_prompt)
             page2.locator("#sendBtn").click()
             expect(page.locator(".msg.user .msg-content").filter(has_text=second_prompt)).to_be_visible(timeout=15_000)
