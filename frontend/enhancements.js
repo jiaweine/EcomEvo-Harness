@@ -22,6 +22,7 @@
     '/assets/plugin-control.js',
     '/assets/customer-copy.js',
     '/assets/customer-dynamic-copy.js',
+    '/assets/customer-polish.js',
     '/assets/realtime-reconcile.js',
   ];
 
@@ -42,9 +43,9 @@
   }
 
   if (document.readyState === 'loading') {
-    // Safety/privacy/a11y hooks install first. Customer copy is deliberately a
-    // presentation-only layer loaded after operational UI modules, so backend
-    // contracts and runtime behavior remain unchanged.
+    // Safety/privacy/a11y hooks install first. Customer-facing translation and
+    // polish run after operational UI modules, so algorithms, API contracts,
+    // permissions and runtime behavior remain unchanged.
     document.write(modules.map(src => `<script src="${src}"><\/script>`).join(''));
   } else {
     fallbackLoad();
