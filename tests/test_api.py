@@ -33,8 +33,9 @@ def test_full_conversation_asset_message_and_action(tmp_path):
 
 def test_frontend_is_customer_facing():
     c=TestClient(app);html=c.get('/').text
-    assert 'EcomEvo 商业决策工作台' in html
-    assert '商品治理' in html and '售后判责' in html and '待确认操作' in html
+    assert 'EcomEvo 业务服务助手' in html
+    assert '商品问题' in html and '售后处理' in html and '待您确认' in html
+    assert 'Runtime 插件' not in html and 'Evidence & Authority' not in html
     assert 'Harness 边界' not in html and '策略先验' not in html
 
 

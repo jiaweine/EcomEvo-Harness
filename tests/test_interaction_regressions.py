@@ -35,7 +35,8 @@ def test_plugin_control_plane_is_read_only_live_runtime_observability():
     for field in ('contract_valid', 'contract_missing', 'generation', 'api_version', 'source'):
         assert field in PLUGIN_CONTROL
     assert 'plugin_start' not in PLUGIN_CONTROL and 'replace_plugin' not in PLUGIN_CONTROL
-    assert '控制面只读' in HTML and '部署管理员' in HTML
+    assert '系统状态' in HTML and '重要操作仍需您的确认' in HTML
+    assert '控制面只读' not in HTML and '部署管理员' not in HTML
 
 
 def test_plugin_control_plane_escapes_api_content_and_has_modal_focus_contract():

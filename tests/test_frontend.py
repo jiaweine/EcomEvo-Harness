@@ -54,7 +54,7 @@ def test_data_disclosure_is_accurate_for_external_providers():
 def test_mobile_brand_remains_identifiable():
     assert '.brand-copy small{display:none}' in CSS
     assert '.brand-copy b{font-size:15px}' in CSS
-    assert '商业决策工作台' in HTML
+    assert '业务服务助手' in HTML
 
 
 def test_customer_ui_self_hosts_deterministic_cjk_font():

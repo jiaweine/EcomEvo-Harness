@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#2b2926" />
-  <meta name="description" content="EcomEvo 商业决策工作台：面向真实电商业务的自主核对、自适应查证、多模态证据与受控执行。" />
-  <title>EcomEvo 商业决策工作台</title>
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="description" content="EcomEvo 业务服务助手：提交问题和相关资料，查看办理进度、判断依据和待确认事项。" />
+  <title>EcomEvo 业务服务助手</title>
   <link rel="stylesheet" href="/assets/fonts/noto-sans-sc/index.css" />
   <link rel="stylesheet" href="/assets/app.css" />
   <link rel="stylesheet" href="/assets/intro.css" />
@@ -18,98 +18,98 @@
   <header class="topbar">
     <div class="top-left">
       <button class="mobile-icon" id="navToggle" aria-label="打开业务导航" aria-expanded="false">☰</button>
-      <div class="brand" aria-label="EcomEvo 商业决策工作台">
+      <div class="brand" aria-label="EcomEvo 业务服务助手">
         <span class="brand-mark" aria-hidden="true">E</span>
-        <div class="brand-copy"><b>EcomEvo</b><small>Decision Runtime</small></div>
+        <div class="brand-copy"><b>EcomEvo</b><small>业务服务助手</small></div>
       </div>
     </div>
-    <button class="command-trigger" id="commandBtn" aria-label="搜索任务和业务入口">
-      <span class="command-symbol" aria-hidden="true">⌕</span><span class="command-placeholder">搜索任务、场景与历史记录</span><kbd>⌘ K</kbd>
+    <button class="command-trigger" id="commandBtn" aria-label="搜索办理记录和业务入口">
+      <span class="command-symbol" aria-hidden="true">⌕</span><span class="command-placeholder">搜索办理记录或业务入口</span><kbd>⌘ K</kbd>
     </button>
     <div class="top-actions">
-      <button class="top-action" id="productGuideBtn"><span aria-hidden="true">◎</span><em>导览</em></button>
-      <button class="top-action" id="assetLibraryBtn"><span aria-hidden="true">▤</span><em>资料</em></button>
-      <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>引擎</em></button>
+      <button class="top-action" id="productGuideBtn"><span aria-hidden="true">◎</span><em>使用帮助</em></button>
+      <button class="top-action" id="assetLibraryBtn"><span aria-hidden="true">▤</span><em>我的资料</em></button>
+      <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>处理方式</em></button>
       <button class="avatar" aria-label="当前工作区">商</button>
-      <button class="mobile-icon" id="detailToggle" aria-label="打开任务控制面" aria-expanded="false">⋯</button>
+      <button class="mobile-icon" id="detailToggle" aria-label="打开办理详情" aria-expanded="false">⋯</button>
     </div>
   </header>
 
   <aside class="leftbar" id="leftbar" aria-label="业务导航">
     <div class="left-top">
-      <button class="new-task" id="newTaskBtn"><span aria-hidden="true">＋</span><b>新建任务</b><kbd>⌘ N</kbd></button>
+      <button class="new-task" id="newTaskBtn"><span aria-hidden="true">＋</span><b>新建办理</b><kbd>⌘ N</kbd></button>
     </div>
     <div class="left-scroll">
       <section class="nav-section">
-        <div class="nav-title">业务场景</div>
-        <button class="scene active" data-scene="product_governance"><span class="scene-icon">品</span><div><b>商品治理</b><small>商品 · 素材 · 资质</small></div></button>
-        <button class="scene" data-scene="merchant_review"><span class="scene-icon">商</span><div><b>商家审核</b><small>主体 · 授权 · 风险</small></div></button>
-        <button class="scene" data-scene="aftersales"><span class="scene-icon">售</span><div><b>售后判责</b><small>订单 · 履约 · 举证</small></div></button>
-        <button class="scene" data-scene="risk_review"><span class="scene-icon">险</span><div><b>风险核查</b><small>交易 · 账户 · 履约</small></div></button>
-        <button class="scene" data-scene="content_audit"><span class="scene-icon">审</span><div><b>内容审核</b><small>图文 · 视频 · 一致性</small></div></button>
+        <div class="nav-title">业务办理</div>
+        <button class="scene active" data-scene="product_governance"><span class="scene-icon">品</span><div><b>商品问题</b><small>商品信息 · 素材 · 资质</small></div></button>
+        <button class="scene" data-scene="merchant_review"><span class="scene-icon">商</span><div><b>商家认证</b><small>主体信息 · 授权 · 认证</small></div></button>
+        <button class="scene" data-scene="aftersales"><span class="scene-icon">售</span><div><b>售后处理</b><small>订单 · 物流 · 退款</small></div></button>
+        <button class="scene" data-scene="risk_review"><span class="scene-icon">险</span><div><b>风险问题</b><small>交易 · 账户 · 异常</small></div></button>
+        <button class="scene" data-scene="content_audit"><span class="scene-icon">审</span><div><b>内容问题</b><small>图片 · 视频 · 文案</small></div></button>
       </section>
       <section class="nav-section recent-section">
-        <div class="nav-title"><span>最近任务</span><button id="refreshBtn" aria-label="刷新任务">刷新</button></div>
+        <div class="nav-title"><span>最近办理</span><button id="refreshBtn" aria-label="刷新办理记录">刷新</button></div>
         <div id="conversationList" class="conversation-list"></div>
       </section>
     </div>
     <div class="left-footer">
-      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>认知自治</b><small>真实动作始终受控</small></p></div>
-      <button id="settingsBtn">Runtime 插件</button>
+      <div class="privacy-mini"><span aria-hidden="true"></span><p><b>信息会自动保存</b><small>重要操作会先请您确认</small></p></div>
+      <button id="settingsBtn">系统状态</button>
     </div>
   </aside>
 
   <main class="workspace">
     <header class="task-head">
       <div class="task-head-main">
-        <div class="eyebrow"><span id="sceneEyebrow">商品治理</span><i></i><span id="taskConnection">已同步</span></div>
-        <h1 id="conversationTitle">新的业务任务</h1>
-        <p id="conversationMeta">交代目标并加入资料，系统会围绕证据缺口继续处理。</p>
-        <div class="task-chips" aria-label="任务摘要">
+        <div class="eyebrow"><span id="sceneEyebrow">商品问题</span><i></i><span id="taskConnection">已同步</span></div>
+        <h1 id="conversationTitle">新的业务办理</h1>
+        <p id="conversationMeta">描述您的问题并添加相关资料，我们会继续帮您处理。</p>
+        <div class="task-chips" aria-label="办理摘要">
           <span class="task-chip"><small>资料</small><b id="assetCountChip">0</b></span>
-          <span class="task-chip"><small>待确认操作</small><b id="actionCountChip">0</b></span>
+          <span class="task-chip"><small>待确认</small><b id="actionCountChip">0</b></span>
           <span class="task-chip ready" id="taskReadyChip"><i></i><b>就绪</b></span>
         </div>
       </div>
       <div class="task-head-actions">
-        <label class="provider-control"><small>认知引擎</small><select id="providerSelect" aria-label="选择认知引擎"><option value="auto">自动编排</option></select><span aria-hidden="true">⌄</span></label>
-        <button class="icon-btn" id="shareBtn" title="复制任务链接" aria-label="复制任务链接">分享</button>
+        <label class="provider-control"><small>处理方式</small><select id="providerSelect" aria-label="选择处理方式"><option value="auto">自动选择</option></select><span aria-hidden="true">⌄</span></label>
+        <button class="icon-btn" id="shareBtn" title="复制办理链接" aria-label="复制办理链接">分享</button>
       </div>
     </header>
 
-    <div class="history-notice" id="historyNotice" hidden>当前展示最近 200 条记录，较早内容仍保留在任务审计中。</div>
+    <div class="history-notice" id="historyNotice" hidden>当前展示最近 200 条记录，更早内容仍会保留。</div>
 
     <div class="chat-scroll" id="chatScroll">
       <section class="welcome" id="welcomePanel">
         <div class="welcome-layout">
           <div class="welcome-copy">
-            <h2>给出目标，带回证据。</h2>
-            <p>资料进入，Runtime 自主查证；缺证停下，动作待你确认。</p>
+            <h2>您好，今天想处理什么？</h2>
+            <p>提交问题和相关资料，我们会帮您核对信息、说明当前结果，并告诉您下一步怎么做。</p>
             <div class="quick-grid">
-              <button class="quick-card" data-scene="product_governance" data-prompt="帮我核对这批商品的标题、主图和详情，找出需要下架或补资质的高风险项，并说明依据。"><div><b>核对商品</b><small>标题、素材与资质</small></div><em>商品</em></button>
-              <button class="quick-card" data-scene="merchant_review" data-prompt="帮我审核这个商家的主体、授权和历史风险，给出通过、补件或拒绝的建议。"><div><b>审核商家</b><small>主体、授权与风险</small></div><em>商家</em></button>
-              <button class="quick-card" data-scene="aftersales" data-prompt="结合订单、物流、沟通记录和用户举证，帮我还原事实并给出售后判责建议。"><div><b>处理售后</b><small>订单、履约与举证</small></div><em>售后</em></button>
-              <button class="quick-card" data-scene="risk_review" data-prompt="帮我核对这组异常交易和账户信息，区分强风险证据与普通线索，给出是否升级复核的建议。"><div><b>核查风险</b><small>强证据与弱线索</small></div><em>风险</em></button>
+              <button class="quick-card" data-scene="product_governance" data-prompt="帮我看看这批商品的信息、主图、详情和资质有没有问题，并告诉我哪些需要补充或调整。"><div><b>商品问题</b><small>核对商品信息、素材或资质</small></div><em>商品</em></button>
+              <button class="quick-card" data-scene="merchant_review" data-prompt="帮我看看这个商家的主体信息、授权和认证材料是否齐全，还需要补充什么。"><div><b>商家认证</b><small>查看主体、授权或认证问题</small></div><em>商家</em></button>
+              <button class="quick-card" data-scene="aftersales" data-prompt="帮我结合订单、物流、聊天记录和相关资料，看看这笔售后应该怎么处理。"><div><b>售后处理</b><small>处理退款、履约或责任争议</small></div><em>售后</em></button>
+              <button class="quick-card" data-scene="risk_review" data-prompt="帮我看看这些异常交易和账户信息是否有风险，并告诉我接下来需要做什么。"><div><b>风险问题</b><small>核对异常交易或账户问题</small></div><em>风险</em></button>
             </div>
-            <div class="input-types" aria-label="支持的多模态输入"><span>输入</span><b>图片</b><b>视频</b><b>音频</b><b>文档</b><b>表格</b><b>日志</b></div>
+            <div class="input-types" aria-label="支持的资料类型"><span>支持</span><b>图片</b><b>视频</b><b>音频</b><b>文档</b><b>表格</b></div>
           </div>
           <aside class="ag&#101;nt-map" aria-hidden="true">
-            <div class="ag&#101;nt-map-head"><b>决策路径</b><span>Event Sourced</span></div>
+            <div class="ag&#101;nt-map-head"><b>办理流程</b><span>信息自动保存</span></div>
             <div class="ag&#101;nt-route">
-              <div class="route-node active"><span>01</span><div><strong>目标与证据</strong><small>Goal → Current State</small></div><em>STATE</em></div>
-              <div class="route-node step-plan"><span>02</span><div><strong>自适应规划</strong><small>收益 × 成本 × 停止</small></div><em>PLAN</em></div>
-              <div class="route-node parallel"><span>03</span><div><strong>并行查证</strong><small>拆分 × 工具 × 复核</small></div><em>ACT</em></div>
-              <div class="route-node gate"><span>04</span><div><strong>验证门禁</strong><small>证据 × 约束 × 副作用</small></div><em>GATE</em></div>
-              <div class="route-node evolver"><span>05</span><div><strong>恢复演进</strong><small>恢复 × 重规划 × 回归</small></div><em>EVOLVE</em></div>
+              <div class="route-node active"><span>01</span><div><strong>提交问题</strong><small>描述情况并添加相关资料</small></div><em>开始</em></div>
+              <div class="route-node step-plan"><span>02</span><div><strong>核对信息</strong><small>整理订单、资料和业务记录</small></div><em>核对</em></div>
+              <div class="route-node parallel"><span>03</span><div><strong>补充需要</strong><small>缺少内容会明确告诉您</small></div><em>补充</em></div>
+              <div class="route-node gate"><span>04</span><div><strong>确认结果</strong><small>查看判断依据和处理建议</small></div><em>确认</em></div>
+              <div class="route-node evolver"><span>05</span><div><strong>完成办理</strong><small>重要变更会先请您确认</small></div><em>完成</em></div>
             </div>
-            <div class="ag&#101;nt-map-foot"><span>Plugin Runtime</span><b>权限内核冻结</b></div>
+            <div class="ag&#101;nt-map-foot"><span>办理过程可继续</span><b>重要操作先确认</b></div>
           </aside>
         </div>
       </section>
 
       <div id="messageList" class="message-list"></div>
       <div class="work-card" id="workCard" hidden>
-        <div class="work-head"><div class="pulse" aria-hidden="true"><i></i><i></i><i></i></div><div><b id="workStep">正在自主处理</b><small id="workDetail">正在建立任务状态与证据路径</small></div><em id="workPercent">0%</em></div>
+        <div class="work-head"><div class="pulse" aria-hidden="true"><i></i><i></i><i></i></div><div><b id="workStep">正在处理</b><small id="workDetail">正在核对您提交的信息</small></div><em id="workPercent">0%</em></div>
         <div class="work-progress"><i id="workBar"></i></div>
       </div>
     </div>
@@ -117,8 +117,8 @@
     <div class="composer-zone">
       <div id="pendingAssets" class="pending-assets" hidden></div>
       <div class="composer" id="composer">
-        <div class="composer-head"><b>多模态输入</b><span>资料可以持续追加</span></div>
-        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="交代目标，例如：这笔退款到底该不该退？订单、物流、聊天记录和图片都在这里，请把证据核对清楚。" aria-label="任务目标"></textarea>
+        <div class="composer-head"><b>描述您的问题</b><span>可以继续补充相关资料</span></div>
+        <textarea id="messageInput" rows="1" maxlength="16000" placeholder="例如：这笔退款是否符合条件？订单、物流和聊天记录我都可以补充。" aria-label="描述您的问题"></textarea>
         <div class="composer-bottom">
           <div class="attach-row">
             <button class="attach" data-accept="image/*"><span aria-hidden="true">▧</span>图片</button>
@@ -127,55 +127,55 @@
             <button class="attach" data-accept=".pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span aria-hidden="true">＋</span>文档 / 表格</button>
             <button class="attach mobile-attach" data-accept="image/*,video/*,audio/*,.pdf,.docx,.xlsx,.xlsm,.csv,.json,.txt,.log,.yaml,.yml,.xml"><span aria-hidden="true">＋</span>添加资料</button>
           </div>
-          <div class="send-row"><small>Enter 发送 · Shift+Enter 换行</small><button id="sendBtn" class="send-btn" aria-label="发送任务">发送</button></div>
+          <div class="send-row"><small>Enter 发送 · Shift+Enter 换行</small><button id="sendBtn" class="send-btn" aria-label="发送">发送</button></div>
         </div>
         <input type="file" id="fileInput" multiple hidden />
       </div>
-      <div class="composer-note">查证与规划可以自主推进，真实业务动作仍需确认。</div>
+      <div class="composer-note">我们会继续核对已提交的信息；涉及真实业务变更时，会先请您确认。</div>
     </div>
   </main>
 
-  <aside class="rightbar" id="rightbar" aria-label="任务控制面">
+  <aside class="rightbar" id="rightbar" aria-label="办理详情">
     <div class="right-head">
-      <div class="right-title"><div><b>任务控制面</b><small>Evidence & Authority</small></div><button class="right-close" id="rightClose" aria-label="关闭任务控制面">×</button></div>
-      <div class="right-tabs" role="tablist" aria-label="任务控制分类">
-        <button class="right-tab active" data-panel="progress" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="true">轨迹</button>
-        <button class="right-tab" data-panel="evidence" role="tab" id="tab-evidence" aria-controls="panel-evidence" aria-selected="false" tabindex="-1">证据</button>
-        <button class="right-tab" data-panel="actions" role="tab" id="tab-actions" aria-controls="panel-actions" aria-selected="false" tabindex="-1">执行 <i id="actionBadge" hidden>0</i></button>
-        <button class="right-tab" data-panel="assets" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">资料</button>
+      <div class="right-title"><div><b>办理详情</b><small>进度、资料与待确认事项</small></div><button class="right-close" id="rightClose" aria-label="关闭办理详情">×</button></div>
+      <div class="right-tabs" role="tablist" aria-label="办理详情分类">
+        <button class="right-tab active" data-panel="progress" role="tab" id="tab-progress" aria-controls="panel-progress" aria-selected="true">进度</button>
+        <button class="right-tab" data-panel="evidence" role="tab" id="tab-evidence" aria-controls="panel-evidence" aria-selected="false" tabindex="-1">资料</button>
+        <button class="right-tab" data-panel="actions" role="tab" id="tab-actions" aria-controls="panel-actions" aria-selected="false" tabindex="-1">待确认 <i id="actionBadge" hidden>0</i></button>
+        <button class="right-tab" data-panel="assets" role="tab" id="tab-assets" aria-controls="panel-assets" aria-selected="false" tabindex="-1">已上传</button>
       </div>
     </div>
     <div class="right-scroll">
       <section class="right-panel active" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress">
         <div class="status-card">
-          <div class="status-top"><div><small>当前状态</small><b id="taskState">等待目标</b><p id="taskDetail">交代目标或先加入资料，系统会自主规划下一步。</p></div><div class="status-ring"><em>run</em><span id="statusPercent">0</span><small>%</small></div></div>
+          <div class="status-top"><div><small>当前进度</small><b id="taskState">等待提交</b><p id="taskDetail">描述您的问题或先添加资料，我们会从这里开始处理。</p></div><div class="status-ring"><em>进度</em><span id="statusPercent">0</span><small>%</small></div></div>
           <div class="status-line"><i id="statusBar"></i></div>
         </div>
         <div id="progressList" class="progress-list"></div>
-        <div class="follow-card"><div class="follow-title"><b>继续处理</b><small>低成本追加指令</small></div><div id="suggestionList" class="suggestions"></div></div>
+        <div class="follow-card"><div class="follow-title"><b>您还可以</b><small>继续补充信息或选择下一步</small></div><div id="suggestionList" class="suggestions"></div></div>
       </section>
       <section class="right-panel" id="panel-evidence" role="tabpanel" aria-labelledby="tab-evidence" hidden>
-        <div class="panel-copy"><b>关键证据</b><p>只展示与当前判断直接相关、可以追溯的数据与资料。</p></div>
-        <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次核对后，这里会出现可追溯证据。</div></div>
+        <div class="panel-copy"><b>判断依据</b><p>这里展示与当前结果直接相关的资料，方便您核对。</p></div>
+        <div id="evidenceList" class="evidence-list"><div class="empty-side">完成一次处理后，相关资料会显示在这里。</div></div>
       </section>
       <section class="right-panel" id="panel-actions" role="tabpanel" aria-labelledby="tab-actions" hidden>
-        <div class="panel-copy"><b>执行控制</b><p>高影响动作在这里明确说明影响范围，并等待人工确认。</p></div>
-        <div id="actionList" class="action-list"><div class="empty-side">目前没有需要确认的业务操作。</div></div>
+        <div class="panel-copy"><b>待您确认</b><p>会影响订单、退款或其他业务状态的操作，会先在这里说明清楚。</p></div>
+        <div id="actionList" class="action-list"><div class="empty-side">目前没有需要您确认的事项。</div></div>
       </section>
       <section class="right-panel" id="panel-assets" role="tabpanel" aria-labelledby="tab-assets" hidden>
-        <div class="panel-copy"><b>任务资料</b><p>后续可继续追加，多轮追问仍围绕同一个任务上下文。</p></div>
-        <div id="assetList" class="asset-list"><div class="empty-side">还没有加入资料。</div></div>
+        <div class="panel-copy"><b>已上传资料</b><p>您可以继续添加资料，之前上传的内容会保留在本次办理中。</p></div>
+        <div id="assetList" class="asset-list"><div class="empty-side">还没有上传资料。</div></div>
       </section>
     </div>
   </aside>
   <div class="drawer-scrim" id="drawerScrim" hidden></div>
 </div>
 
-<div class="drop-mask" id="dropMask" hidden><div><span>＋</span><b>加入当前任务</b><small>图片、视频、音频、PDF、Word、Excel、JSON 与日志都可以直接拖入</small></div></div>
+<div class="drop-mask" id="dropMask" hidden><div><span>＋</span><b>添加到本次办理</b><small>图片、视频、音频、PDF、Word、Excel 和其他相关文件都可以直接拖入</small></div></div>
 
 <div class="modal-backdrop" id="providerModal" hidden role="dialog" aria-modal="true" aria-labelledby="providerModalTitle">
   <div class="modal">
-    <div class="modal-head"><div><small>认知引擎</small><h3 id="providerModalTitle">运行能力</h3><p>只展示能力与可用状态，不在产品界面暴露底层服务品牌。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-head"><div><small>处理方式</small><h3 id="providerModalTitle">选择处理方式</h3><p>系统会根据当前业务和资料类型选择合适的处理方式。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
     <div id="providerGrid" class="provider-grid"></div>
     <div class="modal-foot"><span>选择外部服务时，当前任务内容会按配置发送到对应服务；本地受控模式不会自动出站。</span></div>
   </div>
@@ -185,32 +185,32 @@
   <section class="runtime-modal">
     <header class="runtime-modal-head">
       <div>
-        <small>PLUGIN CONTROL PLANE</small>
-        <h3 id="runtimeModalTitle">运行时插件图</h3>
-        <p id="runtimeModalDescription">查看真实实例、能力契约与安全边界。控制面只读，插件仅能在任务之间更换。</p>
+        <small>系统状态</small>
+        <h3 id="runtimeModalTitle">服务状态</h3>
+        <p id="runtimeModalDescription">查看当前服务是否可以正常使用。</p>
       </div>
-      <button class="runtime-close" id="runtimeCloseBtn" aria-label="关闭插件控制面">×</button>
+      <button class="runtime-close" id="runtimeCloseBtn" aria-label="关闭系统状态">×</button>
     </header>
     <div class="runtime-modal-scroll">
       <div class="runtime-summary" id="runtimeSummary" aria-live="polite">
-        <div class="runtime-summary-loading"><i></i><span>正在读取运行时状态</span></div>
+        <div class="runtime-summary-loading"><i></i><span>正在读取服务状态</span></div>
       </div>
       <section class="runtime-topology" aria-labelledby="runtimeTopologyTitle">
-        <div class="runtime-section-title"><div><small>LIVE DEPENDENCY GRAPH</small><h4 id="runtimeTopologyTitle">执行图分层</h4></div><span>单任务 · 单代次</span></div>
+        <div class="runtime-section-title"><div><small>服务组成</small><h4 id="runtimeTopologyTitle">当前可用服务</h4></div><span>实时状态</span></div>
         <div class="runtime-lanes" id="runtimeLanes"></div>
       </section>
       <section class="runtime-catalog" aria-labelledby="runtimeCatalogTitle">
-        <div class="runtime-section-title"><div><small>REGISTERED INSTANCES</small><h4 id="runtimeCatalogTitle">插件目录</h4></div><div class="runtime-filters" id="runtimeFilters" aria-label="筛选插件层级"></div></div>
+        <div class="runtime-section-title"><div><small>功能列表</small><h4 id="runtimeCatalogTitle">已启用功能</h4></div><div class="runtime-filters" id="runtimeFilters" aria-label="筛选服务分类"></div></div>
         <div class="runtime-plugin-grid" id="runtimePluginGrid"></div>
       </section>
     </div>
-    <footer class="runtime-modal-foot"><span><i></i>认知组件可替换</span><b>安全内核只能由部署管理员变更</b></footer>
+    <footer class="runtime-modal-foot"><span><i></i>服务会根据业务需要自动使用</span><b>重要操作仍需您的确认</b></footer>
   </section>
 </div>
 
 <div class="command-backdrop" id="commandModal" hidden role="dialog" aria-modal="true" aria-labelledby="commandTitle">
   <div class="command-modal">
-    <div class="command-input"><span aria-hidden="true">⌕</span><input id="commandInput" autocomplete="off" placeholder="搜索任务或业务场景" aria-labelledby="commandTitle" /><kbd>Esc</kbd></div>
+    <div class="command-input"><span aria-hidden="true">⌕</span><input id="commandInput" autocomplete="off" placeholder="搜索办理记录或业务入口" aria-labelledby="commandTitle" /><kbd>Esc</kbd></div>
     <div class="command-caption" id="commandTitle">快速打开</div>
     <div id="commandResults" class="command-results"></div>
   </div>
@@ -218,42 +218,42 @@
 
 <div class="tour-backdrop" id="productTour" hidden role="dialog" aria-modal="true" aria-labelledby="productTourTitle" aria-describedby="productTourDescription">
   <div class="tour-modal">
-    <button class="tour-close" id="tourCloseBtn" aria-label="关闭产品导览">×</button>
-    <div class="tour-kicker"><span aria-hidden="true">E</span><div><b>ECOMEVO PRODUCT TOUR</b><small>证据驱动的电商商业决策工作台</small></div></div>
-    <h2 id="productTourTitle">从目标到证据，再到受控行动。</h2>
-    <p class="tour-lead" id="productTourDescription">目标、资料、判断与动作留在同一个耐久任务中。随时补充证据，Runtime 会继续规划。</p>
+    <button class="tour-close" id="tourCloseBtn" aria-label="关闭使用帮助">×</button>
+    <div class="tour-kicker"><span aria-hidden="true">E</span><div><b>ECOMEVO 使用帮助</b><small>快速了解如何提交问题、补充资料和确认处理结果</small></div></div>
+    <h2 id="productTourTitle">把问题和资料交给我们，处理过程会一直保留。</h2>
+    <p class="tour-lead" id="productTourDescription">您可以随时补充资料、查看进度；涉及真实业务变更时，我们会先请您确认。</p>
 
     <div class="tour-flow" aria-label="三步使用 EcomEvo">
-      <section><span>01</span><div><b>说清目标</b><p>选择业务场景并描述要完成的判断。</p></div></section>
-      <section><span>02</span><div><b>补充证据</b><p>持续加入图片、文档、表格与业务记录。</p></div></section>
-      <section><span>03</span><div><b>确认行动</b><p>先看依据，高影响动作再由人工确认。</p></div></section>
+      <section><span>01</span><div><b>描述问题</b><p>告诉我们您想处理什么。</p></div></section>
+      <section><span>02</span><div><b>补充资料</b><p>添加图片、文档、表格或业务记录。</p></div></section>
+      <section><span>03</span><div><b>确认结果</b><p>查看依据，需要时确认下一步操作。</p></div></section>
     </div>
 
     <div class="tour-grid">
       <section>
-        <div class="tour-section-title"><small>适合处理</small><b>5 类高价值业务任务</b></div>
+        <div class="tour-section-title"><small>适合处理</small><b>常见业务</b></div>
         <div class="tour-scenes">
-          <span><i>品</i>商品治理</span><span><i>商</i>商家审核</span><span><i>售</i>售后判责</span><span><i>险</i>风险核查</span><span><i>审</i>内容审核</span>
+          <span><i>品</i>商品问题</span><span><i>商</i>商家认证</span><span><i>售</i>售后处理</span><span><i>险</i>风险问题</span><span><i>审</i>内容问题</span>
         </div>
       </section>
       <section>
-        <div class="tour-section-title"><small>产品边界</small><b>认知可以自动，权限不能自动</b></div>
+        <div class="tour-section-title"><small>使用说明</small><b>重要操作会先请您确认</b></div>
         <ul class="tour-boundaries">
-          <li>关键结论必须回到资料或工具结果。</li>
-          <li>多模态能力取决于实际 Provider。</li>
-          <li>真实业务动作不会静默执行。</li>
+          <li>当前结果会对应到您提交的资料或相关记录。</li>
+          <li>您可以在同一次办理中持续补充资料。</li>
+          <li>需要改变真实业务状态的操作不会自动执行。</li>
         </ul>
       </section>
     </div>
 
     <div class="tour-status">
-      <span>当前版本</span>
-      <p><b>运行边界：</b>认知策略可以学习，安全沙箱、硬性校验、角色权限与动作授权保持冻结。</p>
+      <span>温馨提示</span>
+      <p>您提交的资料会用于本次办理；需要您确认的操作不会自动执行。</p>
     </div>
 
     <div class="tour-actions">
-      <button class="tour-secondary" id="tourSkipBtn">直接进入工作台</button>
-      <button class="tour-primary" id="tourStartBtn">用示例任务开始</button>
+      <button class="tour-secondary" id="tourSkipBtn">稍后再看</button>
+      <button class="tour-primary" id="tourStartBtn">用示例开始</button>
     </div>
   </div>
 </div>
