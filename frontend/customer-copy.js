@@ -12,23 +12,9 @@
     setNodeText($(selector), value);
   }
 
-  function attr(selector, name, value) {
-    const node = $(selector);
-    if (node && node.getAttribute(name) !== value) node.setAttribute(name, value);
-  }
-
-  function label(selector, value) {
-    const node = $(selector);
-    if (!node) return;
-    const textNode = [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE && child.nodeValue.trim());
-    if (textNode) {
-      if (textNode.nodeValue.trim() !== value) textNode.nodeValue = textNode.nodeValue.replace(textNode.nodeValue.trim(), value);
-      return;
-    }
-    node.insertBefore(document.createTextNode(value), node.firstChild);
-  }
-
   function installTheme() {
+    const themeColor = document.querySelector('meta[name="theme-color"]');
+    if (themeColor) themeColor.setAttribute('content', '#f5f1ec');
     if (document.querySelector('link[data-ecomevo-customer-theme]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
@@ -44,129 +30,6 @@
     while ((node = walker.nextNode())) {
       if (node.nodeValue?.trim() === from) node.nodeValue = node.nodeValue.replace(from, to);
     }
-  }
-
-  function applyPageCopy() {
-    if (document.title !== 'EcomEvo 业务服务助手') document.title = 'EcomEvo 业务服务助手';
-    attr('meta[name="description"]', 'content', 'EcomEvo 业务服务助手：提交资料、查看处理进度、补充信息，并在重要操作前由你确认。');
-    attr('meta[name="theme-color"]', 'content', '#f5f1ec');
-
-    text('.brand-copy small', '业务服务助手');
-    text('#productGuideBtn em', '帮助');
-    text('#providerBtn em', '服务');
-    text('.left-footer .privacy-mini b', '安心处理');
-    text('.left-footer .privacy-mini small', '重要操作会先请你确认');
-    text('#settingsBtn', '服务状态');
-
-    text('#conversationMeta', '告诉我们要处理的问题，也可以先上传相关资料。');
-    text('.provider-control small', '处理方式');
-    attr('#providerSelect', 'aria-label', '选择处理方式');
-
-    text('#welcomePanel h2', '今天想处理什么问题？');
-    text('#welcomePanel .welcome-copy > p', '把情况和相关资料告诉我，我会帮你核对重点、提示缺少的信息，并给出下一步建议。');
-    text('.input-types > span', '可上传');
-
-    const routeCopy = [
-      ['说明问题', '告诉我们你想处理什么'],
-      ['核对资料', '整理与问题相关的信息'],
-      ['补充信息', '缺少内容时会及时提醒'],
-      ['给出建议', '把重点和下一步说清楚'],
-      ['确认操作', '重要变更由你决定是否继续'],
-    ];
-    $$('.agent-route .route-node').forEach((node, index) => {
-      const copy = routeCopy[index];
-      if (!copy) return;
-      setNodeText(node.querySelector('strong'), copy[0]);
-      setNodeText(node.querySelector('small'), copy[1]);
-      const em = node.querySelector('em');
-      if (em && !em.hidden) em.hidden = true;
-    });
-    text('.agent-map-head b', '办理流程');
-    text('.agent-map-head span', '清晰可追踪');
-    text('.agent-map-foot span', '根据实际情况自动推进');
-    text('.agent-map-foot b', '重要操作会先征得你的确认');
-
-    text('.composer-head b', '补充说明或资料');
-    text('.composer-head span', '可以随时继续添加');
-    attr('#messageInput', 'placeholder', '例如：这笔退款该怎么处理？订单、物流、聊天记录和图片都在这里，请帮我核对清楚。');
-    text('.composer-note', '重要操作会先请你确认，再执行。');
-
-    text('.right-title b', '处理详情');
-    text('.right-title small', '进度 · 资料 · 待确认');
-    attr('#rightbar', 'aria-label', '处理详情');
-    label('#tab-progress', '进度');
-    label('#tab-evidence', '相关资料');
-    label('#tab-actions', '待确认');
-    label('#tab-assets', '已上传');
-
-    text('#panel-progress .status-top small', '当前进度');
-    text('.status-ring em', '进度');
-    text('.follow-title b', '继续补充');
-    text('.follow-title small', '你可以接着说明');
-
-    text('#panel-evidence .panel-copy b', '与结果相关的资料');
-    text('#panel-evidence .panel-copy p', '这里会整理影响当前结果的资料和信息，并保留来源方便查看。');
-    text('#panel-actions .panel-copy b', '需要你确认');
-    text('#panel-actions .panel-copy p', '涉及重要变更时，会先说明影响，再由你决定是否继续。');
-    text('#panel-assets .panel-copy b', '你上传的资料');
-    text('#panel-assets .panel-copy p', '可以随时继续补充，后续处理会继续使用这些资料。');
-
-    text('#providerModal .modal-head small', '处理方式');
-    text('#providerModalTitle', '可用服务');
-    text('#providerModal .modal-head p', '选择本次任务的处理方式。系统只显示是否可用，不展示复杂的技术配置。');
-    text('#providerModal .modal-foot span', '部分处理方式可能会按当前配置使用已接入的外部服务。');
-
-    text('#runtimeModal .runtime-modal-head small', '服务状态');
-    text('#runtimeModalTitle', '当前服务是否正常');
-    text('#runtimeModalDescription', '这里展示当前服务的可用情况，不影响你的任务内容和处理结果。');
-    text('#runtimeTopologyTitle', '服务组成');
-    text('#runtimeModal .runtime-topology .runtime-section-title > div > small', '当前可用能力');
-    text('#runtimeModal .runtime-topology .runtime-section-title > span', '实时状态');
-    text('#runtimeCatalogTitle', '功能详情');
-    text('#runtimeModal .runtime-catalog .runtime-section-title > div > small', '更多信息');
-    text('#runtimeModal .runtime-modal-foot b', '重要安全设置由管理员统一维护');
-
-    text('#productTour .tour-kicker b', 'ECOMEVO 使用指南');
-    text('#productTour .tour-kicker small', '更简单地处理电商业务问题');
-    text('#productTourTitle', '把问题和资料交给我，重要操作由你确认。');
-    text('#productTourDescription', '同一个任务里可以持续补充资料和追问，处理进度随时可看。');
-
-    const tourCopy = [
-      ['说明问题', '告诉我们你遇到的情况和希望得到的结果。'],
-      ['上传资料', '加入图片、文档、表格或相关记录。'],
-      ['查看并确认', '先看处理建议，重要操作再由你决定。'],
-    ];
-    $$('.tour-flow section').forEach((node, index) => {
-      const copy = tourCopy[index];
-      if (!copy) return;
-      setNodeText(node.querySelector('b'), copy[0]);
-      setNodeText(node.querySelector('p'), copy[1]);
-    });
-
-    const tourSections = $$('.tour-grid > section .tour-section-title');
-    if (tourSections[0]) {
-      setNodeText(tourSections[0].querySelector('small'), '常用场景');
-      setNodeText(tourSections[0].querySelector('b'), '5 类电商业务问题');
-    }
-    if (tourSections[1]) {
-      setNodeText(tourSections[1].querySelector('small'), '使用说明');
-      setNodeText(tourSections[1].querySelector('b'), '信息可自动核对，重要操作由你决定');
-    }
-
-    const boundaryCopy = [
-      '处理结果会尽量说明参考了哪些资料。',
-      '图片、音频和文档的处理能力以当前可用服务为准。',
-      '涉及重要业务变更时，不会在你不知情的情况下执行。',
-    ];
-    $$('.tour-boundaries li').forEach((node, index) => {
-      if (boundaryCopy[index]) setNodeText(node, boundaryCopy[index]);
-    });
-    text('.tour-status > span', '使用提示');
-    const tourStatus = $('.tour-status p');
-    const statusHtml = '<b>放心使用：</b>系统会自动完成信息核对和整理；涉及重要业务变更时，会先请你确认。';
-    if (tourStatus && tourStatus.innerHTML !== statusHtml) tourStatus.innerHTML = statusHtml;
-    text('#tourSkipBtn', '进入首页');
-    text('#tourStartBtn', '用示例开始');
   }
 
   function applyDynamicCopy() {
@@ -263,21 +126,16 @@
     if (workDetail?.textContent.includes('任务状态') || workDetail?.textContent.includes('证据路径')) setNodeText(workDetail, '正在核对你提供的信息和相关资料');
   }
 
-  function applyAll() {
-    applyPageCopy();
-    applyDynamicCopy();
-  }
-
   function boot() {
     installTheme();
-    applyAll();
+    applyDynamicCopy();
     let queued = false;
     const observer = new MutationObserver(() => {
       if (queued) return;
       queued = true;
       queueMicrotask(() => {
         queued = false;
-        applyAll();
+        applyDynamicCopy();
       });
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
