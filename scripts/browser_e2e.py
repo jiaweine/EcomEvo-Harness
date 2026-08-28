@@ -72,7 +72,7 @@ def run() -> None:
             # A fresh browser gets the first-run tour. It must be customer-readable,
             # block nested command palettes, and release body state when closed.
             expect(page.locator("#productTour")).to_be_visible()
-            expect(page.locator("#productTourTitle")).to_have_text("把问题和资料交给我，重要操作由你确认。")
+            expect(page.locator("#productTourTitle")).to_have_text("把问题和资料交给我们，处理过程会一直保留。")
             page.locator("#messageInput").focus()
             expect(page.locator("#tourCloseBtn")).to_be_focused()
             capture(page, "product-tour.png")
@@ -84,8 +84,8 @@ def run() -> None:
 
             # Customer landing surface: warm service language, CJK-first type, four
             # business shortcuts, and no developer-console terminology.
-            expect(page.locator("#welcomePanel h2")).to_have_text("今天想处理什么问题？")
-            expect(page.locator("#welcomePanel .welcome-copy > p")).to_contain_text("下一步建议")
+            expect(page.locator("#welcomePanel h2")).to_have_text("您好，今天想处理什么？")
+            expect(page.locator("#welcomePanel .welcome-copy > p")).to_contain_text("下一步怎么做")
             expect(page.locator(".agent-map-head")).to_contain_text("办理流程")
             expect(page.locator(".agent-map")).not_to_contain_text("Event Sourced")
             expect(page.locator(".right-title")).not_to_contain_text("Evidence & Authority")
@@ -120,7 +120,8 @@ def run() -> None:
 
             page.locator("#providerBtn").click()
             expect(page.locator("#providerModal")).to_be_visible()
-            expect(page.locator("#providerModalTitle")).to_have_text("可用服务")
+            expect(page.locator("#providerModalTitle")).to_have_text("选择处理方式")
+            expect(page.locator("#providerModal .modal-foot")).to_contain_text("当前任务内容会按配置发送到对应服务")
             option_texts = page.locator("#providerSelect option").all_text_contents()
             assert option_texts and all(
                 text.startswith("智能处理") or text.startswith("自动选择") or text.startswith("本地处理")
@@ -134,7 +135,7 @@ def run() -> None:
             # surface translates it into service status and hides plugin internals.
             page.locator("#settingsBtn").click()
             expect(page.locator("#runtimeModal")).to_be_visible()
-            expect(page.locator("#runtimeModalTitle")).to_have_text("当前服务是否正常")
+            expect(page.locator("#runtimeModalTitle")).to_have_text("服务状态")
             expect(page.locator("#providerModal")).to_be_hidden()
             expect(page.locator("#runtimePluginGrid .runtime-plugin")).to_have_count(14, timeout=10_000)
             expect(page.locator("#runtimeSummary")).to_contain_text("服务正常")
@@ -168,7 +169,7 @@ def run() -> None:
 
             page.locator("#tab-evidence").click()
             expect(page.locator("#panel-evidence")).to_be_visible()
-            expect(page.locator("#tab-evidence")).to_contain_text("相关资料")
+            expect(page.locator("#tab-evidence")).to_contain_text("资料")
             evidence_cards = page.locator("#evidenceList .evidence-card")
             if evidence_cards.count():
                 expect(page.locator("#panel-evidence .evidence-summary")).to_be_visible()
