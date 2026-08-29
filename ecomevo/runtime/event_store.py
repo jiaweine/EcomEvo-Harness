@@ -117,17 +117,16 @@ class EventStore:
 
     @staticmethod
     def _session_tail(c: sqlite3.Connection, session_id: str):
-        # The normal hot path is a non-empty session. Probe the composite event PK
-        # directly and only consult sessions for the rare empty-session case.
-        row = c.execute(
-            "SELECT seq,hash FROM events WHERE session_id=? ORDER BY seq DESC LIMIT 1",
+        # Keep the #39 one-query session existence + chain-tail lookup. A direct
+        # event-only probe benchmarked worse under concurrent SQLite writers.
+        return c.execute(
+            """SELECT s.session_id,e.seq,e.hash
+               FROM sessions AS s
+               LEFT JOIN events AS e ON e.session_id=s.session_id
+               WHERE s.session_id=?
+               ORDER BY e.seq DESC LIMIT 1""",
             (session_id,),
         ).fetchone()
-        if row is not None:
-            return row
-        if c.execute("SELECT 1 FROM sessions WHERE session_id=?", (session_id,)).fetchone() is None:
-            return None
-        return {"seq": None, "hash": None}
 
     @staticmethod
     def _verify_rows(rows) -> bool:
@@ -358,9 +357,7 @@ class EventStore:
         """Persist a state checkpoint bound atomically to an exact event-chain position."""
         with self._lock, self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
-            return self._save_checkpoint_in_transaction(
-                c, session_id, snapshot, seq=seq
-            )
+            return self._save_checkpoint_in_transaction(c, session_id, snapshot, seq=seq)
 
     def save_checkpoint_and_append(
         self,
@@ -380,19 +377,11 @@ class EventStore:
             c.execute("BEGIN IMMEDIATE")
             tail = self._session_tail(c, session_id)
             reference = self._save_checkpoint_in_transaction(
-                c,
-                session_id,
-                snapshot,
-                seq=seq,
-                tail=tail,
+                c, session_id, snapshot, seq=seq, tail=tail
             )
             payload = {**(event_payload or {}), **reference}
             event = self._append_in_transaction(
-                c,
-                session_id,
-                event_type,
-                payload,
-                tail=tail,
+                c, session_id, event_type, payload, tail=tail
             )
             return reference, event
 
