@@ -3,6 +3,7 @@
 
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
+  const ROUTING_STYLE_ID = 'composerRoutingStyles';
 
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
@@ -18,6 +19,35 @@
       replacements.forEach(([from, to]) => { after = after.replace(from, to); });
       if (after !== before) node.nodeValue = after;
     }
+  }
+
+  function ensureRoutingStyles() {
+    if (document.getElementById(ROUTING_STYLE_ID)) return;
+    const link = document.createElement('link');
+    link.id = ROUTING_STYLE_ID;
+    link.rel = 'stylesheet';
+    link.href = '/assets/composer-routing.css';
+    document.head.appendChild(link);
+  }
+
+  function polishRoutingControl() {
+    const route = $('#providerBtn');
+    const attachRow = $('.composer .attach-row');
+    const attachment = $('.composer .composer-attach-wrap');
+    if (!route || !attachRow) return;
+
+    if (route.parentElement !== attachRow) {
+      if (attachment?.parentElement === attachRow) attachment.insertAdjacentElement('afterend', route);
+      else attachRow.appendChild(route);
+    }
+    route.classList.add('composer-route-control');
+    route.dataset.surface = 'composer';
+
+    const name = route.querySelector('#providerTriggerName');
+    if (name?.textContent.trim() === '自动选择') setText(name, '自动路由');
+    const visibleName = name?.textContent.trim() || '自动路由';
+    route.setAttribute('aria-label', `选择路由，当前 ${visibleName}`);
+    route.title = `路由：${visibleName}`;
   }
 
   function friendlyEvidenceState(value = '') {
@@ -198,6 +228,7 @@
   }
 
   function apply() {
+    polishRoutingControl();
     polishRuntimePulse();
     polishOverview();
     polishEvidence();
@@ -210,6 +241,7 @@
   }
 
   function boot() {
+    ensureRoutingStyles();
     apply();
     let queued = false;
     const observer = new MutationObserver(() => {
