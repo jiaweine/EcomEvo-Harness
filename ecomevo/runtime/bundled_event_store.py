@@ -141,6 +141,20 @@ class BundledEventStore(EventStore):
                 raise
             raise cancelled
 
+    @staticmethod
+    def _fail_requests(requests: list[_GroupedAppend], error: BaseException) -> None:
+        for request in requests:
+            if not request.future.done():
+                request.future.set_exception(error)
+
+    def _stop_append_group(self, group: _LoopAppendGroup) -> list[_GroupedAppend]:
+        with self._append_group_lock:
+            queued = list(group.queue)
+            group.queue.clear()
+            group.scheduled = False
+            group.worker = None
+        return queued
+
     async def _flush_append_group(self, group: _LoopAppendGroup) -> None:
         try:
             while True:
@@ -155,22 +169,64 @@ class BundledEventStore(EventStore):
                     batch = list(group.queue[:_APPEND_GROUP_LIMIT])
                     del group.queue[: len(batch)]
 
+                persist_task = asyncio.create_task(
+                    asyncio.to_thread(self._persist_append_group, batch)
+                )
+                worker_cancelled: asyncio.CancelledError | None = None
                 try:
-                    persisted = await asyncio.to_thread(self._persist_append_group, batch)
+                    persisted = await asyncio.shield(persist_task)
+                except asyncio.CancelledError as cancelled:
+                    # The thread cannot be cancelled once SQLite work has started. Wait
+                    # until its commit/rollback is known, resolve this batch, then stop.
+                    worker_cancelled = cancelled
+                    try:
+                        persisted = await asyncio.shield(persist_task)
+                    except Exception as exc:
+                        self._fail_requests(batch, exc)
+                        queued = self._stop_append_group(group)
+                        self._fail_requests(
+                            queued,
+                            RuntimeError("event append worker cancelled before persistence"),
+                        )
+                        raise cancelled
                 except Exception:
-                    # The shared transaction has rolled back. Isolate malformed sessions
-                    # or payloads one by one, also off-loop, so unrelated requests can
-                    # still complete without reintroducing event-loop blocking.
-                    for request in batch:
+                    # The shared transaction rolled back. Isolate malformed sessions or
+                    # payloads one by one, also off-loop, so unrelated requests complete.
+                    for index, request in enumerate(batch):
                         if request.future.done():
                             continue
-                        try:
-                            event = await asyncio.to_thread(
+                        single_task = asyncio.create_task(
+                            asyncio.to_thread(
                                 self.append,
                                 request.session_id,
                                 request.event_type,
                                 request.payload,
                             )
+                        )
+                        try:
+                            event = await asyncio.shield(single_task)
+                        except asyncio.CancelledError as cancelled:
+                            # This single retry has already entered the thread pool. Its
+                            # durability must also be resolved before worker cancellation.
+                            try:
+                                event = await asyncio.shield(single_task)
+                            except Exception as exc:
+                                request.future.set_exception(exc)
+                            else:
+                                request.future.set_result(event)
+                            pending = batch[index + 1 :]
+                            self._fail_requests(
+                                pending,
+                                RuntimeError(
+                                    "event append worker cancelled before isolated persistence"
+                                ),
+                            )
+                            queued = self._stop_append_group(group)
+                            self._fail_requests(
+                                queued,
+                                RuntimeError("event append worker cancelled before persistence"),
+                            )
+                            raise cancelled
                         except Exception as exc:
                             request.future.set_exception(exc)
                         else:
@@ -180,20 +236,22 @@ class BundledEventStore(EventStore):
                 for request, event in zip(batch, persisted):
                     if not request.future.done():
                         request.future.set_result(event)
+
+                if worker_cancelled is not None:
+                    queued = self._stop_append_group(group)
+                    self._fail_requests(
+                        queued,
+                        RuntimeError("event append worker cancelled before persistence"),
+                    )
+                    raise worker_cancelled
         except asyncio.CancelledError:
-            # A loop shutdown may cancel the worker. Requests not yet submitted to
-            # SQLite are known to be non-durable; complete them explicitly instead of
-            # leaving caller Futures pending forever. A batch already inside to_thread
-            # is shielded by normal task lifetime while active application calls exist.
-            with self._append_group_lock:
-                queued = list(group.queue)
-                group.queue.clear()
-                group.scheduled = False
-                group.worker = None
-            error = RuntimeError("event append worker cancelled before persistence")
-            for request in queued:
-                if not request.future.done():
-                    request.future.set_exception(error)
+            # Cancellation between batches means every item still in the queue is known
+            # to be non-durable. Complete those Futures rather than leaking pending waits.
+            queued = self._stop_append_group(group)
+            self._fail_requests(
+                queued,
+                RuntimeError("event append worker cancelled before persistence"),
+            )
             raise
 
     def _persist_append_group(self, batch: list[_GroupedAppend]) -> list[RuntimeEvent]:
