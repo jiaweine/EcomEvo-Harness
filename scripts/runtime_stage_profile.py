@@ -110,14 +110,15 @@ def attach_profiler(engine: EcomEvoEngine, profiler: MethodProfiler) -> None:
     for name in ("parse_goal", "initial_belief", "plan"):
         targets.append((engine.planner, name, f"planner.{name}"))
 
-    for name in ("verify",):
-        targets.append((engine.verifier, name, f"verifier.{name}"))
+    targets.append((engine.verifier, "verify", "verifier.verify"))
+    targets.append((engine.autonomy, "run", "autonomy.run"))
+    targets.append((engine.ptc, "execute", "ptc.execute"))
+    targets.append((engine.ptc, "_one", "ptc._one"))
 
-    for name in ("run",):
-        targets.append((engine.autonomy, name, f"autonomy.{name}"))
-
-    for name in ("execute",):
-        targets.append((engine.ptc, name, f"ptc.{name}"))
+    # Separating actual local-tool execution from ptc._one makes scheduler/semaphore
+    # waiting visible. Default pressure tasks use only these in-process read tools.
+    for key, tool in engine.tools.tools.items():
+        targets.append((tool, "execute", f"tool.{key}.execute"))
 
     for name in ("evolve", "ingest", "distill_success"):
         targets.append((engine.evolver, name, f"evolver.{name}"))
@@ -136,6 +137,18 @@ async def run_profile(tasks: int) -> dict[str, Any]:
 
         failures: list[str] = []
         latencies: list[float] = []
+        loop_lag_ms: list[float] = []
+        stop_heartbeat = asyncio.Event()
+
+        async def heartbeat() -> None:
+            interval = 0.01
+            loop = asyncio.get_running_loop()
+            target = loop.time() + interval
+            while not stop_heartbeat.is_set():
+                await asyncio.sleep(max(0.0, target - loop.time()))
+                now = loop.time()
+                loop_lag_ms.append(max(0.0, now - target) * 1000.0)
+                target = now + interval
 
         async def one(index: int) -> None:
             started = time.perf_counter()
@@ -150,13 +163,18 @@ async def run_profile(tasks: int) -> dict[str, Any]:
             if not summary.stop_reason:
                 failures.append(f"{index}: empty stop reason")
 
+        heartbeat_task = asyncio.create_task(heartbeat())
         started = time.perf_counter()
-        await asyncio.gather(*(one(index) for index in range(tasks)))
+        try:
+            await asyncio.gather(*(one(index) for index in range(tasks)))
+        finally:
+            stop_heartbeat.set()
+            await heartbeat_task
         wall = time.perf_counter() - started
         rows = profiler.report(tasks=tasks, wall_seconds=wall)
 
-        # These are overlapping method timers, so wall_equivalent_pct is diagnostic,
-        # not an additive percentage. The ranking and per-call tails are the signal.
+        # Timers overlap by design: autonomy contains PTC, and PTC contains _one/tool calls.
+        # The actionable signal is leaf execution plus queue/scheduler tails, not percentages summed.
         return {
             "ok": not failures,
             "tasks": tasks,
@@ -167,6 +185,13 @@ async def run_profile(tasks: int) -> dict[str, Any]:
                 "p95": round(percentile(latencies, 0.95), 4),
                 "p99": round(percentile(latencies, 0.99), 4),
                 "mean": round(statistics.fmean(latencies), 4) if latencies else 0.0,
+            },
+            "event_loop_lag_ms": {
+                "samples": len(loop_lag_ms),
+                "p50": round(percentile(loop_lag_ms, 0.50), 3),
+                "p95": round(percentile(loop_lag_ms, 0.95), 3),
+                "p99": round(percentile(loop_lag_ms, 0.99), 3),
+                "max": round(max(loop_lag_ms), 3) if loop_lag_ms else 0.0,
             },
             "top_methods": rows,
             "failures": failures[:20],
