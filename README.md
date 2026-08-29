@@ -10,10 +10,12 @@
 </div>
 
 <p align="center">
-  <img src="./docs/images/product-customer-overview.png" alt="EcomEvo 业务服务工作台" width="100%" />
+  <a href="./docs/images/product-customer-overview.png">
+    <img src="./docs/images/product-customer-overview.png" alt="EcomEvo 业务服务工作台" width="100%" />
+  </a>
 </p>
 
-<p align="center"><sub>从业务入口开始，一次办理持续保留问题、资料和处理状态。</sub></p>
+<p align="center"><sub>业务服务工作台 · 点击查看 3840 × 2400 高清原图</sub></p>
 
 ---
 
@@ -48,10 +50,12 @@ EcomEvo 面向真实电商业务中的复杂问题。您只需要说明情况并
 处理完成后，结果和它所依据的资料会放在同一个任务里。您可以继续追问，也可以直接查看右侧的资料、待确认事项和已上传内容。
 
 <p align="center">
-  <img src="./docs/images/product-customer-evidence.png" alt="EcomEvo 处理结果与判断依据" width="100%" />
+  <a href="./docs/images/product-customer-evidence.png">
+    <img src="./docs/images/product-customer-evidence.png" alt="EcomEvo 处理结果与判断依据" width="100%" />
+  </a>
 </p>
 
-<p align="center"><sub>处理结果、主要依据和资料来源放在同一个界面里，方便继续核对。</sub></p>
+<p align="center"><sub>处理结果与判断依据 · 点击查看 3840 × 2400 高清原图</sub></p>
 
 ---
 
@@ -74,8 +78,12 @@ EcomEvo 把每一次补充、处理和确认都留在当前任务中。页面刷
 办理详情在窄屏下会变成独立侧栏，进度、资料和待确认事项仍然保持清晰。
 
 <p align="center">
-  <img src="./docs/images/product-customer-mobile.png" alt="EcomEvo 移动端办理详情" width="360" />
+  <a href="./docs/images/product-customer-mobile.png">
+    <img src="./docs/images/product-customer-mobile.png" alt="EcomEvo 移动端办理详情" width="360" />
+  </a>
 </p>
+
+<p align="center"><sub>移动端办理详情 · 点击查看高清原图</sub></p>
 
 ---
 
@@ -91,7 +99,12 @@ EcomEvo 把每一次补充、处理和确认都留在当前任务中。页面刷
 
 ---
 
-## 开始使用
+## 使用与部署
+
+完整的产品使用说明见 [产品手册](docs/PRODUCT_MANUAL.md)，部署方式见 [部署指南](docs/DEPLOYMENT.md)。
+
+<details>
+<summary><b>本地启动</b></summary>
 
 ### macOS / Linux
 
@@ -119,7 +132,7 @@ uvicorn ecomevo.api.app:app --host 0.0.0.0 --port 8000
 
 打开 `http://localhost:8000` 即可进入 EcomEvo。
 
-如果希望使用容器部署，可直接查看 [部署指南](docs/DEPLOYMENT.md)。完整的产品使用说明见 [产品手册](docs/PRODUCT_MANUAL.md)。
+</details>
 
 ---
 
