@@ -168,6 +168,16 @@ class ProfiledEventStore(BundledEventStore):
             lambda: super(ProfiledEventStore, self).append(session_id, event_type, payload),
         )
 
+    async def append_grouped(self, session_id, event_type, payload):
+        stage = "event.group_commit"
+        token = _stage.set(stage)
+        started = time.perf_counter()
+        try:
+            return await super().append_grouped(session_id, event_type, payload)
+        finally:
+            self._writer_profile.operation(stage, (time.perf_counter() - started) * 1000.0)
+            _stage.reset(token)
+
     def save_checkpoint(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
