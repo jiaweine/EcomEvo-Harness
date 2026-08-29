@@ -7,10 +7,25 @@ from typing import Any
 from .adaptive_routing import AdaptiveDecisionPolicy
 from .autonomy import AutonomousController
 from .delegation import CognitiveDelegator
+from .posterior_cache import CachedAdaptiveRoutingStore
 
 
 class CounterfactualAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
     """EvoGain-APR trained from verifier leave-one-out difference credit."""
+
+    def __init__(self, planner, registry, sandbox, skills, *, max_calls: int, max_delegations: int):
+        super().__init__(
+            planner,
+            registry,
+            sandbox,
+            skills,
+            max_calls=max_calls,
+            max_delegations=max_delegations,
+        )
+        # AdaptiveDecisionPolicy establishes the durable schema. Swap only the local
+        # derived-posterior implementation; the database remains authoritative and the
+        # scoring / update mathematics are inherited unchanged.
+        self.routing = CachedAdaptiveRoutingStore(getattr(skills, "path", "outputs/runtime.db"))
 
     def learn_marginal(
         self,
