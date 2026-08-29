@@ -13,6 +13,9 @@ from ecomevo.models import RuntimeEvent
 from .event_store import EventStore
 
 
+_APPEND_GROUP_LIMIT = 64
+
+
 @dataclass(slots=True)
 class _GroupedAppend:
     session_id: str
@@ -25,6 +28,7 @@ class _GroupedAppend:
 class _LoopAppendGroup:
     queue: list[_GroupedAppend] = field(default_factory=list)
     scheduled: bool = False
+    worker: asyncio.Task[None] | None = None
 
 
 class BundledEventStore(EventStore):
@@ -101,11 +105,12 @@ class BundledEventStore(EventStore):
         event_type: str,
         payload: dict[str, Any],
     ) -> RuntimeEvent:
-        """Coalesce sinkless append calls that arrive in the same event-loop turn.
+        """Durably coalesce sinkless appends without blocking the caller event loop.
 
-        Every caller waits for the shared SQLite transaction to commit before this
-        coroutine returns. The queue is loop-local so one EventStore can be used by
-        independent asyncio loops without sharing Futures across loops.
+        One loop-local worker preserves enqueue order and drains bounded batches. Each
+        caller waits until its SQLite transaction has committed before returning. The
+        actual SQLite work runs in a worker thread so short durable writes do not freeze
+        unrelated async tool/reasoning tasks on the main loop.
         """
         loop = asyncio.get_running_loop()
         future: asyncio.Future[RuntimeEvent] = loop.create_future()
@@ -123,59 +128,73 @@ class BundledEventStore(EventStore):
             group.queue.append(request)
             if not group.scheduled:
                 group.scheduled = True
-                loop.create_task(self._flush_append_group(loop, group))
+                group.worker = loop.create_task(self._flush_append_group(group))
 
         try:
             return await asyncio.shield(future)
         except asyncio.CancelledError as cancelled:
-            # Preserve the synchronous append contract: once an append has entered the
-            # persistence queue, cancellation is observed only after durability (or a
-            # persistence error) is known. This avoids ambiguous late commits.
+            # Once queued, keep the synchronous durability contract: caller cancellation
+            # becomes observable only after this append has committed or failed.
             try:
                 await asyncio.shield(future)
             except Exception:
                 raise
             raise cancelled
 
-    async def _flush_append_group(
-        self,
-        loop: asyncio.AbstractEventLoop,
-        group: _LoopAppendGroup,
-    ) -> None:
-        # One scheduler turn is enough for peer runtime tasks to enqueue the same
-        # lifecycle event. No fixed sleep/latency budget is introduced.
-        await asyncio.sleep(0)
-        with self._append_group_lock:
-            batch = list(group.queue)
-            group.queue.clear()
-            group.scheduled = False
-        if not batch:
-            return
-
+    async def _flush_append_group(self, group: _LoopAppendGroup) -> None:
         try:
-            persisted = self._persist_append_group(batch)
-        except Exception:
-            # One malformed payload/session must not poison unrelated sessions. The
-            # shared transaction has rolled back, so isolate by replaying each request
-            # through the proven single-append path.
-            for request in batch:
-                if request.future.done():
-                    continue
-                try:
-                    event = self.append(
-                        request.session_id,
-                        request.event_type,
-                        request.payload,
-                    )
-                except Exception as exc:
-                    request.future.set_exception(exc)
-                else:
-                    request.future.set_result(event)
-            return
+            while True:
+                # Give peer tasks one turn to join the next bounded batch. There is no
+                # fixed sleep window, so isolated writes do not gain artificial latency.
+                await asyncio.sleep(0)
+                with self._append_group_lock:
+                    if not group.queue:
+                        group.scheduled = False
+                        group.worker = None
+                        return
+                    batch = list(group.queue[:_APPEND_GROUP_LIMIT])
+                    del group.queue[: len(batch)]
 
-        for request, event in zip(batch, persisted):
-            if not request.future.done():
-                request.future.set_result(event)
+                try:
+                    persisted = await asyncio.to_thread(self._persist_append_group, batch)
+                except Exception:
+                    # The shared transaction has rolled back. Isolate malformed sessions
+                    # or payloads one by one, also off-loop, so unrelated requests can
+                    # still complete without reintroducing event-loop blocking.
+                    for request in batch:
+                        if request.future.done():
+                            continue
+                        try:
+                            event = await asyncio.to_thread(
+                                self.append,
+                                request.session_id,
+                                request.event_type,
+                                request.payload,
+                            )
+                        except Exception as exc:
+                            request.future.set_exception(exc)
+                        else:
+                            request.future.set_result(event)
+                    continue
+
+                for request, event in zip(batch, persisted):
+                    if not request.future.done():
+                        request.future.set_result(event)
+        except asyncio.CancelledError:
+            # A loop shutdown may cancel the worker. Requests not yet submitted to
+            # SQLite are known to be non-durable; complete them explicitly instead of
+            # leaving caller Futures pending forever. A batch already inside to_thread
+            # is shielded by normal task lifetime while active application calls exist.
+            with self._append_group_lock:
+                queued = list(group.queue)
+                group.queue.clear()
+                group.scheduled = False
+                group.worker = None
+            error = RuntimeError("event append worker cancelled before persistence")
+            for request in queued:
+                if not request.future.done():
+                    request.future.set_exception(error)
+            raise
 
     def _persist_append_group(self, batch: list[_GroupedAppend]) -> list[RuntimeEvent]:
         with self._lock, self._conn() as c:
