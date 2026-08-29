@@ -219,6 +219,13 @@ class HarnessEvolutionOptimizer:
         ).fetchall()
         return [self._decode(row) for row in rows]
 
+    def _domain_initialized(self, connection: sqlite3.Connection, domain: str) -> bool:
+        rows = connection.execute(
+            "SELECT DISTINCT kind FROM harness_components WHERE domain=? AND status='active'",
+            (domain,),
+        ).fetchall()
+        return {str(row['kind']) for row in rows} >= set(self.KINDS)
+
     def _active(self, connection: sqlite3.Connection, domain: str, kind: str) -> HarnessComponent:
         self._ensure_domain(connection, domain)
         row = connection.execute(
@@ -284,43 +291,60 @@ class HarnessEvolutionOptimizer:
             return 0.5, candidate.exposures, incumbent.exposures
         return self._superiority_from_stats(candidate, incumbent), candidate.exposures, incumbent.exposures
 
+    def _profile_from_rows(
+        self,
+        connection: sqlite3.Connection,
+        domain: str,
+        session_key: str,
+        rows: list[HarnessComponent],
+    ) -> dict[str, Any]:
+        by_kind: dict[str, list[HarnessComponent]] = {kind: [] for kind in self.KINDS}
+        for row in rows:
+            if row.kind in by_kind:
+                by_kind[row.kind].append(row)
+        profile: dict[str, Any] = {"domain": domain, "component_ids": [], "components": {}}
+        for kind in self.KINDS:
+            active = next((row for row in by_kind[kind] if row.status == "active"), None)
+            if active is None:
+                continue
+            shadow = next((row for row in by_kind[kind] if row.status == "shadow"), None)
+            chosen = active
+            probability = 0.0
+            candidate_exposures = incumbent_exposures = 0
+            if shadow and shadow.parent_id == active.component_id:
+                probability, candidate_exposures, incumbent_exposures = self._shadow_probability(
+                    connection, shadow, active
+                )
+                if self._stable_unit(f"{session_key}|{shadow.component_id}") < probability:
+                    chosen = shadow
+            profile["component_ids"].append(chosen.component_id)
+            profile["components"][kind] = {
+                **chosen.content,
+                "component_id": chosen.component_id,
+                "status": chosen.status,
+                "generation": chosen.generation,
+                "posterior_mean": round(chosen.mean, 4),
+                "shadow_probability": round(probability, 4),
+                "shadow_candidate_exposures": candidate_exposures,
+                "shadow_incumbent_exposures": incumbent_exposures,
+            }
+        return profile
+
     def profile(self, domain: str, *, session_key: str) -> dict[str, Any]:
         """Bind one durable profile and allocate shadow traffic from posterior superiority."""
+        # The established-domain path is read-only and runs for every task. WAL readers
+        # can coexist with a writer, so keep this on a stable read snapshot and reserve
+        # BEGIN IMMEDIATE for the rare bootstrap path where components are missing.
+        with self._conn() as connection:
+            connection.execute("BEGIN")
+            rows = self._rows(connection, domain)
+            if {row.kind for row in rows if row.status == 'active'} >= set(self.KINDS):
+                return self._profile_from_rows(connection, domain, session_key, rows)
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._ensure_domain(connection, domain)
             rows = self._rows(connection, domain)
-            by_kind: dict[str, list[HarnessComponent]] = {kind: [] for kind in self.KINDS}
-            for row in rows:
-                by_kind[row.kind].append(row)
-
-            profile: dict[str, Any] = {"domain": domain, "component_ids": [], "components": {}}
-            for kind in self.KINDS:
-                active = next((row for row in by_kind[kind] if row.status == "active"), None)
-                if active is None:
-                    continue
-                shadow = next((row for row in by_kind[kind] if row.status == "shadow"), None)
-                chosen = active
-                probability = 0.0
-                candidate_exposures = incumbent_exposures = 0
-                if shadow and shadow.parent_id == active.component_id:
-                    probability, candidate_exposures, incumbent_exposures = self._shadow_probability(
-                        connection, shadow, active
-                    )
-                    if self._stable_unit(f"{session_key}|{shadow.component_id}") < probability:
-                        chosen = shadow
-                profile["component_ids"].append(chosen.component_id)
-                profile["components"][kind] = {
-                    **chosen.content,
-                    "component_id": chosen.component_id,
-                    "status": chosen.status,
-                    "generation": chosen.generation,
-                    "posterior_mean": round(chosen.mean, 4),
-                    "shadow_probability": round(probability, 4),
-                    "shadow_candidate_exposures": candidate_exposures,
-                    "shadow_incumbent_exposures": incumbent_exposures,
-                }
-        return profile
+            return self._profile_from_rows(connection, domain, session_key, rows)
 
     def _transition_shadows(
         self,
@@ -826,13 +850,26 @@ class HarnessEvolutionOptimizer:
         }
 
     def snapshot(self, domain: str) -> dict[str, Any]:
-        with self._lock, self._conn() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            self._ensure_domain(connection, domain)
-            rows = connection.execute(
-                "SELECT * FROM harness_components WHERE domain=? ORDER BY kind,generation,created_at",
-                (domain,),
-            ).fetchall()
+        # Snapshot is also a read path once a domain is initialized. Avoid taking the
+        # global writer slot merely for introspection; bootstrap only when necessary.
+        with self._conn() as connection:
+            connection.execute("BEGIN")
+            initialized = self._domain_initialized(connection, domain)
+            if initialized:
+                rows = connection.execute(
+                    "SELECT * FROM harness_components WHERE domain=? ORDER BY kind,generation,created_at",
+                    (domain,),
+                ).fetchall()
+            else:
+                rows = []
+        if not initialized:
+            with self._lock, self._conn() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                self._ensure_domain(connection, domain)
+                rows = connection.execute(
+                    "SELECT * FROM harness_components WHERE domain=? ORDER BY kind,generation,created_at",
+                    (domain,),
+                ).fetchall()
         return {
             "domain": domain,
             "accept_risk": self.accept_risk,
