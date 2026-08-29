@@ -58,6 +58,8 @@ def test_routing_control_is_semantically_moved_into_composer_bottom_bar():
     for needle in (
         "const route = $('#providerBtn')",
         "const attachRow = $('.composer .attach-row')",
+        "const attachment = $('.composer .composer-attach-wrap')",
+        "if (!route || !attachRow || !attachment || attachment.parentElement !== attachRow) return",
         "attachment.insertAdjacentElement('afterend', route)",
         "route.dataset.surface = 'composer'",
         "选择路由，当前",
