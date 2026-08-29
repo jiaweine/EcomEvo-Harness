@@ -192,7 +192,10 @@ def test_decision_round_context_is_task_local(tmp_path):
             skills=active,
         )
 
-    first, second = asyncio.run(asyncio.gather(one(), one()))
+    async def exercise():
+        return await asyncio.gather(one(), one())
+
+    first, second = asyncio.run(exercise())
     assert _call_shape(first) == _call_shape(second)
     assert skills.policy_calls == 2
     assert routing["calls"] == 2
