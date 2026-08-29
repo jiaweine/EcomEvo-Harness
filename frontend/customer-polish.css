@@ -1,6 +1,33 @@
 /* Final customer-facing visual cleanup.
    Keep technical telemetry in the DOM/data layer while presenting a calm service surface. */
 
+/* Make the primary first-run shortcut read as an intentional bento anchor,
+   not a large empty dashboard tile. */
+.quick-card:nth-child(1){
+  position:relative!important;
+  display:flex!important;
+  flex-direction:column!important;
+  justify-content:flex-end!important;
+  align-items:flex-start!important;
+}
+.quick-card:nth-child(1)>div{
+  max-width:280px!important;
+}
+.quick-card:nth-child(1)>em{
+  position:absolute!important;
+  top:16px!important;
+  right:16px!important;
+}
+.quick-card:nth-child(1) b{
+  font-size:21px!important;
+  line-height:1.18!important;
+}
+.quick-card:nth-child(1) small{
+  margin-top:8px!important;
+  font-size:12px!important;
+  line-height:1.6!important;
+}
+
 .runtime-pulse{
   background:#fff!important;
   border:1px solid var(--customer-line-soft)!important;
@@ -46,6 +73,31 @@
 
 .evidence-meta-item[hidden]{display:none!important}
 .evidence-provenance-line{gap:4px!important}
+
+/* Evidence type lives in the icon, not in a repeated colored rail. This keeps
+   dense result lists quiet while preserving source distinction. */
+.evidence-original,
+.evidence-derived{
+  box-shadow:none!important;
+}
+.evidence-original .evidence-icon{
+  border-color:#cfe9dc!important;
+  background:#f0f8f4!important;
+  color:var(--customer-success)!important;
+}
+.evidence-derived .evidence-icon{
+  border-color:#ddddff!important;
+  background:#f3f3ff!important;
+  color:var(--customer-accent)!important;
+}
+.evidence-card{
+  transition:border-color .16s ease,background .16s ease,transform .16s ease!important;
+}
+.evidence-card:hover{
+  border-color:var(--customer-line)!important;
+  background:#fdfdff!important;
+  transform:translateY(-1px)!important;
+}
 
 /* Informational counts stay quiet; semantic warning colors are reserved for attention. */
 .right-tab .ops-tab-count{
@@ -95,6 +147,16 @@
 }
 
 @media(max-width:820px){
+  .quick-card:nth-child(1){
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) auto!important;
+    align-items:start!important;
+  }
+  .quick-card:nth-child(1)>em{
+    position:static!important;
+  }
+  .quick-card:nth-child(1) b{font-size:15px!important}
+  .quick-card:nth-child(1) small{font-size:11.5px!important}
   .runtime-pulse-grid{grid-template-columns:1fr 1fr!important}
   .runtime-health-grid{grid-template-columns:1fr!important}
   .status-ring.customer-status-chip{min-width:68px!important;padding:8px 9px!important}
