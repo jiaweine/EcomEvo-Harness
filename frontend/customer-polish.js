@@ -34,12 +34,11 @@
     const route = $('#providerBtn');
     const attachRow = $('.composer .attach-row');
     const attachment = $('.composer .composer-attach-wrap');
-    if (!route || !attachRow) return;
+    // provider-marketplace.js rebuilds attachRow once during boot. Moving the
+    // authoritative provider button before that rebuild would delete the node.
+    if (!route || !attachRow || !attachment || attachment.parentElement !== attachRow) return;
 
-    if (route.parentElement !== attachRow) {
-      if (attachment?.parentElement === attachRow) attachment.insertAdjacentElement('afterend', route);
-      else attachRow.appendChild(route);
-    }
+    if (route.parentElement !== attachRow) attachment.insertAdjacentElement('afterend', route);
     route.classList.add('composer-route-control');
     route.dataset.surface = 'composer';
 
