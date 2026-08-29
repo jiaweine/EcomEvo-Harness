@@ -3,11 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sqlite3
 import statistics
 import tempfile
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -16,6 +17,8 @@ from ecomevo.models import ToolCall
 from ecomevo.providers.base import BaseProvider, ProviderInfo
 from ecomevo.providers.registry import ProviderRegistry
 from ecomevo.runtime import EcomEvoEngine
+from ecomevo.runtime.event_store import EventStore
+from ecomevo.runtime.harness_optimizer import HarnessEvolutionOptimizer
 from ecomevo.runtime.resilient_executor import ResilientPTCExecutor
 from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
@@ -180,12 +183,9 @@ async def run_routing_pressure_probe(tasks: int = 6000) -> dict[str, Any]:
     await asyncio.gather(*(one(index) for index in range(tasks)))
     wall = time.perf_counter() - started
 
-    # Explicit provider choices must never silently cross a capability boundary.
     explicit = registry.choose("deepseek", [{"mime": "image/png"}])
     if explicit is not None:
         failures.append("explicit text-only provider accepted a visual asset")
-    # The routing hot path should remain effectively constant-time even under a
-    # large task fan-out. The envelope is intentionally generous for hosted CI.
     p99 = percentile(latencies_ms, 0.99)
     if p99 >= 5.0:
         failures.append(f"routing p99 exceeded 5ms envelope: {p99:.3f}ms")
@@ -259,6 +259,115 @@ def run_policy_contention_probe(root: Path, workers: int = 8) -> dict[str, Any]:
     }
 
 
+def run_shared_db_read_isolation_probe(root: Path, reads: int = 256, workers: int = 32) -> dict[str, Any]:
+    """Established adaptive reads must not queue behind SQLite's single writer slot."""
+    db = root / "shared-read-isolation.db"
+    skills = AdaptiveSkillLibrary(db)
+    harness = HarnessEvolutionOptimizer(db)
+    expected_policy = skills.policy("merchant_review")
+    expected_profile = harness.profile("merchant_review", session_key="pressure")
+    latencies_ms: list[float] = []
+    failures: list[str] = []
+
+    def read(index: int):
+        started = time.perf_counter()
+        if index % 2:
+            value = skills.policy("merchant_review")
+            ok = value == expected_policy
+        else:
+            value = harness.profile("merchant_review", session_key="pressure")
+            ok = value == expected_profile
+        latencies_ms.append((time.perf_counter() - started) * 1000)
+        return ok
+
+    writer = sqlite3.connect(db, timeout=30)
+    writer.execute("PRAGMA busy_timeout=30000")
+    writer.execute("BEGIN IMMEDIATE")
+    started = time.perf_counter()
+    pool = ThreadPoolExecutor(max_workers=workers)
+    futures = [pool.submit(read, index) for index in range(reads)]
+    try:
+        done, pending = wait(futures, timeout=0.75)
+        wall = time.perf_counter() - started
+        if pending:
+            failures.append(f"{len(pending)} established reads waited behind an unrelated writer")
+    finally:
+        writer.rollback()
+        writer.close()
+    for future in futures:
+        try:
+            if future.result(timeout=2) is not True:
+                failures.append("shared-db read returned an inconsistent snapshot")
+        except Exception as exc:
+            failures.append(f"shared-db read failed: {exc!r}")
+    pool.shutdown(wait=True)
+    p99 = percentile(latencies_ms, 0.99)
+    if p99 >= 250.0:
+        failures.append(f"shared-db read p99 exceeded 250ms: {p99:.3f}ms")
+    return {
+        "name": "shared_db_read_isolation",
+        "reads": reads,
+        "workers": workers,
+        "wall_seconds_before_writer_release": round(wall, 4),
+        "latency_ms": {
+            "p50": round(percentile(latencies_ms, 0.50), 3),
+            "p95": round(percentile(latencies_ms, 0.95), 3),
+            "p99": round(p99, 3),
+        },
+        "failures": failures[:20],
+    }
+
+
+def run_event_store_contention_probe(root: Path, events: int = 256, workers: int = 16) -> dict[str, Any]:
+    db = root / "event-store-contention.db"
+    owner = EventStore(db)
+    owner.create_session("shared-pressure")
+    stores = [EventStore(db) for _ in range(8)]
+    latencies_ms: list[float] = []
+    failures: list[str] = []
+
+    def append(index: int):
+        started = time.perf_counter()
+        event = stores[index % len(stores)].append("shared-pressure", "pressure.event", {"index": index})
+        latencies_ms.append((time.perf_counter() - started) * 1000)
+        return event.seq
+
+    started = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        try:
+            seqs = list(pool.map(append, range(events)))
+        except Exception as exc:
+            seqs = []
+            failures.append(f"event append contention failed: {exc!r}")
+    wall = time.perf_counter() - started
+    if sorted(seqs) != list(range(1, events + 1)):
+        failures.append("concurrent event sequence was not unique and contiguous")
+    if not owner.verify_chain("shared-pressure"):
+        failures.append("concurrent event hash chain failed verification")
+    checkpoint = owner.save_checkpoint("shared-pressure", {"events": events})
+    if checkpoint["seq"] != events:
+        failures.append(f"checkpoint tail mismatch: {checkpoint['seq']} != {events}")
+    sessions = owner.list_sessions(limit=1)
+    if not sessions or sessions[0]["event_count"] != events or not sessions[0]["hash_chain_valid"]:
+        failures.append("batched session inspection lost event count or chain integrity")
+    p99 = percentile(latencies_ms, 0.99)
+    if wall >= 5.0:
+        failures.append(f"event-store contention wall time exceeded 5s: {wall:.3f}s")
+    return {
+        "name": "event_store_contention",
+        "events": events,
+        "workers": workers,
+        "wall_seconds": round(wall, 4),
+        "throughput_events_per_second": round(events / wall, 1) if wall else 0.0,
+        "append_latency_ms": {
+            "p50": round(percentile(latencies_ms, 0.50), 3),
+            "p95": round(percentile(latencies_ms, 0.95), 3),
+            "p99": round(p99, 3),
+        },
+        "failures": failures,
+    }
+
+
 async def run_level(level: int, root: Path) -> dict[str, Any]:
     db = root / f"runtime-{level}.db"
     engine = EcomEvoEngine(db)
@@ -319,6 +428,8 @@ async def main_async(levels: list[int]) -> dict[str, Any]:
             await run_backpressure_probe(),
             await run_routing_pressure_probe(),
             await asyncio.to_thread(run_policy_contention_probe, root),
+            await asyncio.to_thread(run_shared_db_read_isolation_probe, root),
+            await asyncio.to_thread(run_event_store_contention_probe, root),
         ]
         results = []
         for level in levels:
