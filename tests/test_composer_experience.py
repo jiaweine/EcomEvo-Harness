@@ -52,6 +52,13 @@ def test_composer_visual_hierarchy_matches_modern_chat_products():
         assert needle in CSS
 
 
+def test_empty_composer_is_visually_quiet_and_focus_stays_on_outer_shell():
+    assert '#messageInput:focus-visible' in CSS
+    assert 'outline:none!important' in CSS
+    assert '.composer:has(#messageInput:placeholder-shown):not(:has(.pending-asset)) .send-btn' in CSS
+    assert 'background:#e1e1e1!important' in CSS
+
+
 def test_new_task_composer_is_lower_than_previous_upper_third_layout():
     assert 'padding:clamp(126px,19vh,228px) 0 22px!important' in OPS
     assert 'the lower-middle focal zone' in OPS
