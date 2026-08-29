@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ecomevo.models import EvolutionPatch, RuntimeSummary
+from .bundled_event_store import BundledEventStore
 from .counterfactual_routing import CounterfactualAdaptiveAutonomousController
-from .event_store import EventStore
 from .evolver import FailureDrivenEvolver
 from .governance import GovernanceBoundary
 from .harness_context import bind_harness_profile, reset_harness_profile
@@ -49,7 +49,7 @@ class EcomEvoEngine:
         def component(key: str, factory):
             return overrides[key] if key in overrides else factory()
 
-        self.events = component('event.store', lambda: EventStore(db_path))
+        self.events = component('event.store', lambda: BundledEventStore(db_path))
         self.skills = component('memory.skills', lambda: AdaptiveSkillLibrary(db_path))
         self.sandbox = component('sandbox.action', ActionSandbox)
         self.harness = component('evolver.harness', lambda: HarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
@@ -234,22 +234,43 @@ class EcomEvoEngine:
 
         session_meta={'domain':goal.domain.value,'goal':text[:220]}
         goal_payload=goal.model_dump(mode='json')
-        create_and_append=getattr(self.events,'create_session_and_append',None)
-        if callable(create_and_append):
-            create_and_append(sid,'goal.parsed',goal_payload,meta=session_meta)
-            if sink:await sink('goal.parsed',goal_payload)
-        else:
-            self.events.create_session(sid,meta=session_meta)
-            await self._emit(sid,'goal.parsed',goal_payload,sink)
-        await self._emit(sid,'belief.updated',belief.model_dump(),sink)
-        await self._emit(sid,'harness.profile.bound',{
+        belief_payload=belief.model_dump()
+        harness_payload={
             'domain':goal.domain.value,
             'component_ids':list(harness_profile.get('component_ids') or []),
             'components':belief.facts['harness_profile']['components'],
             'authority':'cognition-only',
-        },sink)
-        if prior_cases:await self._emit(sid,'memory.recalled',{'case_count':len(prior_cases),'watch_terms':memory_risks,'usage':'planning_only_not_evidence'},sink)
-        self.events.save_checkpoint(sid,{'goal':goal.model_dump(),'belief':belief.model_dump(),'stage':'initial'})
+        }
+        memory_payload={'case_count':len(prior_cases),'watch_terms':memory_risks,'usage':'planning_only_not_evidence'} if prior_cases else None
+        initial_snapshot={'goal':goal.model_dump(),'belief':belief.model_dump(),'stage':'initial'}
+
+        bootstrap_bundle=getattr(self.events,'create_session_events_checkpoint',None)
+        if sink is None and callable(bootstrap_bundle):
+            initial_events=[
+                ('goal.parsed',goal_payload),
+                ('belief.updated',belief_payload),
+                ('harness.profile.bound',harness_payload),
+            ]
+            if memory_payload is not None:initial_events.append(('memory.recalled',memory_payload))
+            bootstrap_bundle(
+                sid,
+                initial_events,
+                initial_snapshot,
+                meta=session_meta,
+            )
+        else:
+            create_and_append=getattr(self.events,'create_session_and_append',None)
+            if callable(create_and_append):
+                create_and_append(sid,'goal.parsed',goal_payload,meta=session_meta)
+                if sink:await sink('goal.parsed',goal_payload)
+            else:
+                self.events.create_session(sid,meta=session_meta)
+                await self._emit(sid,'goal.parsed',goal_payload,sink)
+            await self._emit(sid,'belief.updated',belief_payload,sink)
+            await self._emit(sid,'harness.profile.bound',harness_payload,sink)
+            if memory_payload is not None:await self._emit(sid,'memory.recalled',memory_payload,sink)
+            self.events.save_checkpoint(sid,initial_snapshot)
+
         ctx={'text':text,'assets':assets,'goal':goal,'belief':belief}
         async def controller_emit(t,p):await self._emit(sid,t,p,sink)
         async def controller_checkpoint(stage,state):
