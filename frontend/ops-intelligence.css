@@ -331,3 +331,66 @@
   .evidence-summary-stat{padding-inline:6px!important}
   .evidence-meta-item::after{display:none!important}
 }
+
+/* Unified AI workbench: this late-loaded layer must not pull the first-run
+   surface back toward a dashboard or hide essential utility actions. */
+html body #welcomePanel.welcome h2{
+  font-size:32px!important;
+  line-height:1.18!important;
+  letter-spacing:-.035em!important;
+  font-weight:600!important;
+}
+html body #welcomePanel .ops-overview{
+  display:block!important;
+  min-height:28px!important;
+  margin:18px 0 0!important;
+  border:0!important;
+  border-radius:0!important;
+  overflow:visible!important;
+  background:transparent!important;
+  box-shadow:none!important;
+}
+html body #welcomePanel .ops-overview-head{
+  min-height:28px!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+}
+html body #welcomePanel .ops-overview-head>div{gap:6px!important}
+html body #welcomePanel .ops-overview-head b{
+  font-size:10px!important;
+  font-weight:500!important;
+  color:#808080!important;
+}
+html body #welcomePanel .ops-overview-head small{display:none!important}
+html body #welcomePanel .ops-live-label{
+  font-size:9.5px!important;
+  color:#8a8a8a!important;
+}
+html body #welcomePanel .ops-live-label::before{
+  width:5px!important;
+  height:5px!important;
+  box-shadow:none!important;
+}
+html body #welcomePanel .ops-metrics,
+html body #welcomePanel .ops-recent{display:none!important}
+
+#providerBtn,#productGuideBtn{
+  display:inline-flex!important;
+  width:32px!important;
+  min-width:32px!important;
+  height:32px!important;
+  padding:0!important;
+  align-items:center!important;
+  justify-content:center!important;
+  border-radius:9px!important;
+  color:#666!important;
+}
+#providerBtn:hover,#productGuideBtn:hover{background:#f2f2f2!important;color:#222!important}
+#providerBtn em,#productGuideBtn em{display:none!important}
+#assetLibraryBtn{display:none!important}
+
+@media(max-width:820px){
+  html body #welcomePanel.welcome h2{font-size:27px!important}
+  #providerBtn,#productGuideBtn{display:none!important}
+}
