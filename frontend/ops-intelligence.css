@@ -42,7 +42,7 @@ html body #welcomePanel .ops-overview{display:none!important}
     padding-bottom:0!important;
   }
   .workspace:has(#welcomePanel:not([hidden])) .welcome{
-    padding:clamp(126px,19vh,228px) 0 22px!important;
+    padding:clamp(150px,23vh,276px) 0 22px!important;
   }
   .workspace:has(#welcomePanel:not([hidden])) .composer-zone{
     grid-row:4!important;
