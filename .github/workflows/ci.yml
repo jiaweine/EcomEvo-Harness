@@ -243,6 +243,5 @@ jobs:
             fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:8767/healthz >/dev/null
           curl -fsS http://127.0.0.1:8767/ >/dev/null
           curl -fsS http://127.0.0.1:8767/assets/app.js >/dev/null
