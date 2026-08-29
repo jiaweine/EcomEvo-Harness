@@ -171,14 +171,20 @@ class EventStore:
         return out
     def list_sessions(self, limit:int=30)->list[dict[str,Any]]:
         # Avoid the old 1 + 2N connection/read pattern (list_events + verify_chain for
-        # every session). Fetch all selected chains once, then derive counts and
-        # integrity in memory.
+        # every session). The second query joins the same parameterized top-session
+        # subquery, so batching never requires constructing an IN clause from values.
         with self._conn() as c:
             rows=c.execute("SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?",(limit,)).fetchall()
             if not rows:return []
-            ids=[str(r['session_id']) for r in rows]
-            marks=','.join('?' for _ in ids)
-            event_rows=c.execute(f'SELECT * FROM events WHERE session_id IN ({marks}) ORDER BY session_id,seq',ids).fetchall()
+            event_rows=c.execute(
+                '''SELECT e.* FROM events AS e
+                   JOIN (
+                       SELECT session_id FROM sessions ORDER BY created_at DESC LIMIT ?
+                   ) AS selected ON selected.session_id=e.session_id
+                   ORDER BY e.session_id,e.seq''',
+                (limit,),
+            ).fetchall()
+        ids=[str(r['session_id']) for r in rows]
         grouped:dict[str,list[Any]]={sid:[] for sid in ids}
         for event in event_rows:grouped[str(event['session_id'])].append(event)
         return [{"session_id":r["session_id"],"parent_session_id":r["parent_session_id"],"parent_seq":r["parent_seq"],"created_at":r["created_at"],"meta":json.loads(r["meta_json"] or "{}"),"event_count":len(grouped[str(r["session_id"])]),"hash_chain_valid":self._verify_rows(grouped[str(r["session_id"])])} for r in rows]
