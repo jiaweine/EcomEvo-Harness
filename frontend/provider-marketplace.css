@@ -90,6 +90,288 @@ html body #providerBtn.ai-provider-trigger .ai-provider-copy small{
 .ai-provider-chevron{color:#929292;font-size:11px;line-height:1;text-align:center}
 .provider-control{display:none!important}
 
+/* --------------------------------------------------------------------------
+   Composer v5 — voice + multimodal intake.
+   One add menu, one voice action, one send action. Drag and paste are first-class.
+   -------------------------------------------------------------------------- */
+html body .composer-zone{
+  position:relative!important;
+}
+html body .composer{
+  position:relative!important;
+  overflow:visible!important;
+  border-radius:25px!important;
+  border-color:#d9d9d9!important;
+  box-shadow:0 4px 18px rgba(0,0,0,.075)!important;
+  transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease!important;
+}
+html body .composer:focus-within{
+  border-color:#c9c9c9!important;
+  box-shadow:0 6px 24px rgba(0,0,0,.10)!important;
+}
+html body #messageInput{
+  min-height:66px!important;
+  max-height:210px!important;
+  padding:17px 17px 9px!important;
+  font-size:14px!important;
+  line-height:1.58!important;
+}
+html body #messageInput:focus-visible{
+  outline:none!important;
+  outline-offset:0!important;
+}
+html body #messageInput::placeholder{color:#909090!important}
+html body .composer-bottom{
+  min-height:47px!important;
+  padding:5px 8px 8px 9px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:8px!important;
+}
+html body .attach-row{
+  min-width:0!important;
+  flex:1 1 auto!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:5px!important;
+}
+.composer-attach-wrap{position:relative;display:inline-flex;align-items:center}
+.composer-tool-btn{
+  width:34px;
+  min-width:34px;
+  height:34px;
+  padding:0;
+  display:inline-grid;
+  place-items:center;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:#5f5f5f;
+  box-shadow:none;
+  transition:background .14s ease,color .14s ease,transform .14s ease;
+}
+.composer-tool-btn:hover{background:#f1f1f1;color:#222}
+.composer-tool-btn:active{transform:scale(.96)}
+.composer-tool-btn:focus-visible{outline:2px solid #bdbdbd;outline-offset:2px}
+.attach-menu-trigger span{font-size:23px;font-weight:300;line-height:1;transform:translateY(-1px)}
+
+.attachment-menu{
+  position:absolute;
+  left:0;
+  bottom:43px;
+  z-index:95;
+  width:272px;
+  padding:7px;
+  display:grid;
+  gap:2px;
+  border:1px solid #dedede;
+  border-radius:15px;
+  background:rgba(255,255,255,.985);
+  box-shadow:0 18px 50px rgba(0,0,0,.16),0 2px 8px rgba(0,0,0,.06);
+  backdrop-filter:blur(16px);
+}
+.attachment-menu[hidden]{display:none!important}
+.attachment-option{
+  width:100%!important;
+  min-height:48px!important;
+  height:auto!important;
+  padding:7px 9px!important;
+  display:grid!important;
+  grid-template-columns:30px minmax(0,1fr)!important;
+  grid-template-rows:auto auto!important;
+  column-gap:9px!important;
+  align-items:center!important;
+  border:0!important;
+  border-radius:10px!important;
+  background:transparent!important;
+  color:#292929!important;
+  text-align:left!important;
+}
+.attachment-option:hover,.attachment-option:focus-visible{
+  background:#f3f3f4!important;
+  outline:0!important;
+}
+.attachment-option>span{
+  grid-column:1;
+  grid-row:1/3;
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border:1px solid #e3e3e3;
+  border-radius:9px;
+  background:#fafafa;
+  color:#555;
+  font-size:12px;
+}
+.attachment-option>b{
+  grid-column:2;
+  grid-row:1;
+  align-self:end;
+  font-size:11.5px!important;
+  line-height:1.3!important;
+  font-weight:600!important;
+  color:#292929!important;
+}
+.attachment-option>small{
+  grid-column:2;
+  grid-row:2;
+  align-self:start;
+  margin:2px 0 0!important;
+  font-size:9.5px!important;
+  line-height:1.3!important;
+  color:#8a8a8a!important;
+}
+.attachment-menu-hint{
+  margin:5px 4px 2px;
+  padding-top:7px;
+  border-top:1px solid #efefef;
+  color:#969696;
+  font-size:9px;
+  line-height:1.45;
+}
+
+html body .send-row{
+  flex:0 0 auto!important;
+  display:flex!important;
+  align-items:center!important;
+  gap:4px!important;
+}
+.voice-live-status{
+  max-width:160px;
+  margin-right:3px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#777;
+  font-size:9.5px;
+}
+.voice-input-btn{position:relative}
+.voice-glyph{
+  width:16px;height:18px;display:flex;align-items:center;justify-content:center;gap:2px;
+}
+.voice-glyph i{
+  width:2px;
+  border-radius:999px;
+  background:currentColor;
+  transition:height .14s ease;
+}
+.voice-glyph i:nth-child(1){height:7px}
+.voice-glyph i:nth-child(2){height:14px}
+.voice-glyph i:nth-child(3){height:9px}
+.voice-input-btn.listening{
+  background:#202020!important;
+  color:#fff!important;
+}
+.voice-input-btn.listening .voice-glyph i{animation:voiceBar .72s ease-in-out infinite alternate}
+.voice-input-btn.listening .voice-glyph i:nth-child(2){animation-delay:.12s}
+.voice-input-btn.listening .voice-glyph i:nth-child(3){animation-delay:.24s}
+.voice-input-btn.recording-audio::after{
+  content:"";
+  position:absolute;
+  right:2px;
+  top:2px;
+  width:6px;
+  height:6px;
+  border:2px solid #fff;
+  border-radius:50%;
+  background:#d84b4b;
+}
+@keyframes voiceBar{from{height:5px}to{height:16px}}
+
+html body .send-btn{
+  width:36px!important;
+  min-width:36px!important;
+  height:36px!important;
+}
+@supports selector(.composer:has(.pending-asset)){
+  html body .composer:has(#messageInput:placeholder-shown):not(:has(.pending-asset)) .send-btn{
+    background:#e1e1e1!important;
+    color:#fff!important;
+    box-shadow:none!important;
+  }
+  html body .composer:has(#messageInput:placeholder-shown):not(:has(.pending-asset)) .send-btn:hover{
+    background:#dadada!important;
+  }
+}
+html body .send-btn:disabled{
+  background:#d8d8d8!important;
+  color:#fff!important;
+  opacity:1!important;
+}
+
+/* Pending multimodal context lives inside the composer, like mature chat products. */
+html body .composer>.pending-assets{
+  width:100%!important;
+  margin:0!important;
+  padding:11px 12px 0!important;
+  display:flex!important;
+  gap:7px!important;
+  overflow-x:auto!important;
+  overflow-y:hidden!important;
+  scrollbar-width:thin!important;
+  scrollbar-color:#d5d5d5 transparent!important;
+}
+html body .composer>.pending-assets[hidden]{display:none!important}
+html body .composer .pending-asset{
+  flex:0 0 auto!important;
+  max-width:240px!important;
+  min-height:48px!important;
+  padding:5px 7px 5px 5px!important;
+  border:1px solid #e4e4e4!important;
+  border-radius:12px!important;
+  background:#fafafa!important;
+  box-shadow:none!important;
+}
+html body .composer .pending-asset .thumb{
+  width:38px!important;
+  height:38px!important;
+  border-radius:8px!important;
+}
+html body .composer .pending-asset b{
+  max-width:145px!important;
+  font-size:10.5px!important;
+  font-weight:550!important;
+}
+html body .composer .pending-asset small{font-size:9px!important;color:#8a8a8a!important}
+html body .composer .pending-asset>button{
+  width:22px!important;
+  height:22px!important;
+  margin-left:2px!important;
+  border-radius:50%!important;
+  color:#777!important;
+}
+html body .composer .pending-asset>button:hover{background:#e9e9e9!important;color:#222!important}
+
+html body .composer.is-drop-target{
+  border-color:#888!important;
+  box-shadow:0 0 0 4px rgba(0,0,0,.055),0 10px 28px rgba(0,0,0,.10)!important;
+}
+html body .composer.is-drop-target::after{
+  content:"松开即可添加图片、视频、音频、文档或表格";
+  position:absolute;
+  inset:0;
+  z-index:80;
+  display:grid;
+  place-items:center;
+  padding:18px;
+  border-radius:24px;
+  background:rgba(255,255,255,.94);
+  color:#343434;
+  font-size:12px;
+  font-weight:600;
+  letter-spacing:-.01em;
+  pointer-events:none;
+  backdrop-filter:blur(5px);
+}
+html body .composer-note{
+  margin-top:8px!important;
+  color:#9a9a9a!important;
+  font-size:9px!important;
+  line-height:1.45!important;
+}
+
 /* Provider picker: neutral marketplace, not a settings table or brand-color wall. */
 #providerModal .modal{
   width:min(860px,94vw)!important;
@@ -172,6 +454,14 @@ html body #providerBtn.ai-provider-trigger .ai-provider-copy small{
   }
   .ai-provider-mark{width:26px;height:26px;border-radius:7px}
   html body #providerBtn.ai-provider-trigger .ai-provider-copy small{display:none!important}
+  html body #messageInput{min-height:60px!important;padding:15px 14px 8px!important}
+  html body .composer-bottom{padding:4px 7px 7px!important}
+  .composer-tool-btn{width:36px;min-width:36px;height:36px}
+  .attachment-menu{position:fixed;left:12px;right:12px;bottom:calc(78px + env(safe-area-inset-bottom));width:auto;max-height:60vh;overflow:auto}
+  .voice-live-status{display:none!important}
+  html body .composer-note{display:none!important}
+  html body .composer>.pending-assets{padding:9px 9px 0!important}
+  html body .composer .pending-asset{max-width:210px!important}
   #providerModal .modal{width:min(94vw,620px)!important;max-height:88vh!important;border-radius:16px!important}
   .ai-provider-toolbar{padding:12px 16px 10px}.ai-provider-search{width:100%}.ai-provider-toolbar-note{display:none}
   .ai-provider-sections{padding:2px 16px 16px}
@@ -186,4 +476,11 @@ html body #providerBtn.ai-provider-trigger .ai-provider-copy small{
   .ai-provider-mark{width:24px;height:24px;font-size:8px}
   .ai-provider-card{grid-template-columns:34px minmax(0,1fr) auto;padding:10px}
   .ai-provider-card-mark{width:32px;height:32px;border-radius:9px}
+  html body .composer{border-radius:22px!important}
+  html body .composer.is-drop-target::after{border-radius:21px}
+}
+
+@media(prefers-reduced-motion:reduce){
+  .voice-input-btn.listening .voice-glyph i{animation:none!important}
+  .composer-tool-btn{transition:none!important}
 }

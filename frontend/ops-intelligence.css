@@ -27,7 +27,8 @@
 
 /* New-task landing: one focused column. Runtime telemetry still exists and is
    tested, but it is not part of the visual hierarchy until the user asks for
-   detail. */
+   detail. The larger top breathing room deliberately places the composer in
+   the lower-middle focal zone instead of crowding the upper third. */
 html body #welcomePanel .ops-overview{display:none!important}
 
 @supports selector(.workspace:has(#welcomePanel:not([hidden]))){
@@ -41,7 +42,7 @@ html body #welcomePanel .ops-overview{display:none!important}
     padding-bottom:0!important;
   }
   .workspace:has(#welcomePanel:not([hidden])) .welcome{
-    padding:clamp(70px,10vh,104px) 0 18px!important;
+    padding:clamp(150px,23vh,276px) 0 22px!important;
   }
   .workspace:has(#welcomePanel:not([hidden])) .composer-zone{
     grid-row:4!important;
@@ -234,7 +235,7 @@ html body #welcomePanel .ops-overview{display:none!important}
   .evidence-audit-cell{border-right:0!important;border-bottom:1px solid #e7e7e7!important}
   .evidence-audit-cell:last-child{border-bottom:0!important}
   @supports selector(.workspace:has(#welcomePanel:not([hidden]))){
-    .workspace:has(#welcomePanel:not([hidden])) .welcome{padding:48px 0 14px!important}
+    .workspace:has(#welcomePanel:not([hidden])) .welcome{padding:56px 0 16px!important}
     .workspace:has(#welcomePanel:not([hidden])) .composer-zone{
       padding:0 9px calc(10px + env(safe-area-inset-bottom))!important;
     }
