@@ -1,13 +1,13 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOADER = (ROOT / 'frontend/enhancements.js').read_text(encoding='utf-8')
+HTML = (ROOT / 'frontend/index.html').read_text(encoding='utf-8')
 DRAWER = (ROOT / 'frontend/drawer-a11y.js').read_text(encoding='utf-8')
 
 
 def test_drawer_guard_loads_before_main_core_hooks():
-    assert '/assets/drawer-a11y.js' in LOADER
-    assert LOADER.index('/assets/drawer-a11y.js') < LOADER.index('/assets/enhancements-core.js')
+    assert '/assets/drawer-a11y.js' in HTML
+    assert HTML.index('/assets/drawer-a11y.js') < HTML.index('/assets/enhancements-core.js')
 
 
 def test_mobile_drawer_traps_and_restores_keyboard_focus():
