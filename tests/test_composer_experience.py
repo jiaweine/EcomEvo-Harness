@@ -5,7 +5,6 @@ JS = (ROOT / 'frontend/provider-marketplace.js').read_text(encoding='utf-8')
 CSS = (ROOT / 'frontend/provider-marketplace.css').read_text(encoding='utf-8')
 OPS = (ROOT / 'frontend/ops-intelligence.css').read_text(encoding='utf-8')
 POLISH = (ROOT / 'frontend/customer-polish.js').read_text(encoding='utf-8')
-ROUTING = (ROOT / 'frontend/composer-routing.css').read_text(encoding='utf-8')
 
 
 def test_composer_has_first_class_voice_input_with_audio_fallback():
@@ -63,12 +62,13 @@ def test_routing_control_is_semantically_moved_into_composer_bottom_bar():
         "attachment.insertAdjacentElement('afterend', route)",
         "route.dataset.surface = 'composer'",
         "选择路由，当前",
-        "link.href = '/assets/composer-routing.css'",
+        "routeMaxWidth()",
+        "style.setProperty(name, value, 'important')",
+        "window.addEventListener('resize', polishRoutingControl",
     ):
         assert needle in POLISH
-    assert 'html body .composer #providerBtn.ai-provider-trigger' in ROUTING
-    assert 'display:inline-grid!important' in ROUTING
-    assert '@media(max-width:820px)' in ROUTING
+    assert "document.createElement('link')" not in POLISH
+    assert "composer-routing.css" not in POLISH
 
 
 def test_empty_composer_is_visually_quiet_and_focus_stays_on_outer_shell():
@@ -88,4 +88,6 @@ def test_mobile_and_reduced_motion_details_are_explicit():
     assert 'bottom:calc(78px + env(safe-area-inset-bottom))' in CSS
     assert '@media(prefers-reduced-motion:reduce)' in CSS
     assert 'animation:none!important' in CSS
-    assert '@media(prefers-reduced-motion:reduce)' in ROUTING
+    assert "if (window.innerWidth <= 390) return '104px'" in POLISH
+    assert "if (window.innerWidth <= 520) return '116px'" in POLISH
+    assert "if (window.innerWidth <= 820) return '132px'" in POLISH
