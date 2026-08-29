@@ -57,14 +57,12 @@ def test_mobile_brand_remains_identifiable():
     assert '业务服务助手' in HTML
 
 
-def test_customer_ui_self_hosts_deterministic_cjk_font():
-    polish=(ROOT/'frontend/product-polish.css').read_text(encoding='utf-8')
-    font_css=ROOT/'frontend/fonts/noto-sans-sc/index.css'
-    font_files=ROOT/'frontend/fonts/noto-sans-sc/files'
-    assert 'href="/assets/fonts/noto-sans-sc/index.css"' in HTML
-    assert '"Noto Sans SC Variable"' in polish
-    assert font_css.is_file()
-    assert any(font_files.glob('*.woff2'))
+def test_customer_ui_uses_platform_native_system_font_stack():
+    polish=(ROOT/'frontend/customer-polish.css').read_text(encoding='utf-8')
+    assert 'href="/assets/fonts/noto-sans-sc/index.css"' not in HTML
+    for family in ('ui-sans-serif', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', '"PingFang SC"', '"Microsoft YaHei"'):
+        assert family in polish
+    assert 'font-family:var(--font-ui)!important' in polish
 
 
 def test_cloud_studio_preview_runs_the_complete_same_origin_service():
