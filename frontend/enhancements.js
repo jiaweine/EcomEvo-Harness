@@ -2,17 +2,10 @@
   'use strict';
 
   document.documentElement.dataset.ecomevoTheme = 'customer-service';
-  const themeColor = document.querySelector('meta[name="theme-color"]');
-  if (themeColor) themeColor.setAttribute('content', '#f5f1ec');
 
-  // Keep the proven Carbon layer as structural fallback; customer-copy.js adds
-  // the final customer-facing theme after all existing enhancement modules.
-  const theme = document.createElement('link');
-  theme.rel = 'stylesheet';
-  theme.href = '/assets/carbon-theme.css';
-  theme.dataset.ecomevoThemeBase = 'carbon-operations';
-  document.head.appendChild(theme);
-
+  // The final customer-facing CSS stack is declared statically in index.html so
+  // the first paint does not depend on JavaScript. This loader owns behavior
+  // modules only and keeps their proven execution order intact.
   const modules = [
     '/assets/safety-guards.js',
     '/assets/privacy-sanitize.js',
