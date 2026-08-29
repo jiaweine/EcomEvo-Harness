@@ -4,6 +4,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
 from ecomevo.runtime.event_store import EventStore
+from ecomevo.runtime.harness_optimizer import HarnessEvolutionOptimizer
 from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
 
@@ -34,6 +35,32 @@ def test_initialized_skill_policy_read_does_not_wait_for_sqlite_writer(tmp_path)
         writer.close()
 
     assert observed == expected
+
+
+def test_initialized_harness_profile_and_snapshot_do_not_wait_for_writer(tmp_path):
+    db = tmp_path / "harness.db"
+    optimizer = HarnessEvolutionOptimizer(db)
+    expected_profile = optimizer.profile("merchant_review", session_key="stable-session")
+    expected_snapshot = optimizer.snapshot("merchant_review")
+    assert len(expected_profile["component_ids"]) == len(optimizer.KINDS)
+
+    writer = sqlite3.connect(db, timeout=30)
+    writer.execute("PRAGMA busy_timeout=30000")
+    writer.execute("BEGIN IMMEDIATE")
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            profile_future = pool.submit(
+                optimizer.profile, "merchant_review", session_key="stable-session"
+            )
+            snapshot_future = pool.submit(optimizer.snapshot, "merchant_review")
+            observed_profile = profile_future.result(timeout=0.5)
+            observed_snapshot = snapshot_future.result(timeout=0.5)
+    finally:
+        writer.rollback()
+        writer.close()
+
+    assert observed_profile == expected_profile
+    assert observed_snapshot == expected_snapshot
 
 
 def test_event_store_hot_reads_use_single_connection(tmp_path):
