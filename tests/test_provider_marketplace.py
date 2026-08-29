@@ -8,7 +8,6 @@ HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend/provider-marketplace.css").read_text(encoding="utf-8")
 JS = (ROOT / "frontend/provider-marketplace.js").read_text(encoding="utf-8")
 POLISH = (ROOT / "frontend/customer-polish.js").read_text(encoding="utf-8")
-ROUTING = (ROOT / "frontend/composer-routing.css").read_text(encoding="utf-8")
 
 
 def test_provider_registry_exposes_major_ai_brands():
@@ -57,14 +56,14 @@ def test_ai_picker_bootstraps_once_then_moves_to_the_composer():
     assert '/assets/provider-marketplace.css' in HTML
     assert '/assets/provider-marketplace.js' in HTML
     assert '/assets/fonts/noto-sans-sc/index.css' not in HTML
-    # Keep one authoritative provider trigger in static HTML for no-JS/bootstrap
+    # Keep one authoritative provider trigger in static HTML for bootstrap
     # resilience; customer-polish moves that same node into the live composer.
     assert HTML.count('id="providerBtn"') == 1
     assert 'id="providerTriggerName">自动选择<' in HTML
     assert "attachment.insertAdjacentElement('afterend', route)" in POLISH
     assert "route.dataset.surface = 'composer'" in POLISH
-    assert "link.href = '/assets/composer-routing.css'" in POLISH
-    assert 'html body .composer #providerBtn.ai-provider-trigger' in ROUTING
+    assert "document.createElement('link')" not in POLISH
+    assert "routeMaxWidth()" in POLISH
 
 
 def test_picker_controls_the_existing_authoritative_provider_value():
@@ -84,5 +83,5 @@ def test_picker_keeps_the_workbench_compact_and_responsive():
     assert "grid-template-columns:1fr" in CSS
     assert "max-width:260px" in CSS
     assert "width:min(860px,94vw)" in CSS
-    assert "max-width:132px!important" in ROUTING
-    assert "max-width:116px!important" in ROUTING
+    assert "if (window.innerWidth <= 820) return '132px'" in POLISH
+    assert "if (window.innerWidth <= 520) return '116px'" in POLISH
