@@ -1,27 +1,16 @@
-/* Final customer-facing cleanup: keep engineering telemetry in the DOM/data layer,
-   but remove it from the default service experience. */
-
-.top-left{
-  background:var(--customer-canvas)!important;
-  border-right:1px solid var(--customer-line)!important;
-}
-.top-left .brand-copy b{color:var(--customer-ink)!important}
-.top-left .brand-copy small{color:var(--customer-muted)!important}
+/* Final customer-facing visual cleanup.
+   Keep technical telemetry in the DOM/data layer while presenting a calm service surface. */
 
 .runtime-pulse{
   background:#fff!important;
   border:1px solid var(--customer-line-soft)!important;
-  border-radius:10px!important;
-  box-shadow:none!important;
+  border-radius:11px!important;
+  box-shadow:var(--customer-shadow-xs)!important;
 }
-.runtime-pulse-head{
-  border-bottom:1px solid var(--customer-line-soft)!important;
-}
+.runtime-pulse-head{border-bottom:1px solid var(--customer-line-soft)!important}
 .runtime-pulse-head b{color:var(--customer-ink)!important}
 .runtime-pulse-head small{color:var(--customer-muted)!important}
-.runtime-pulse-grid{
-  grid-template-columns:repeat(2,minmax(0,1fr))!important;
-}
+.runtime-pulse-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 .runtime-pulse-grid>div{
   background:#fff!important;
   border-color:var(--customer-line-soft)!important;
@@ -36,22 +25,18 @@
 }
 .runtime-pulse-foot>span[hidden]{display:none!important}
 
-.runtime-health-grid{
-  grid-template-columns:1.2fr repeat(2,minmax(0,1fr))!important;
-}
+.runtime-health-grid{grid-template-columns:1.2fr repeat(2,minmax(0,1fr))!important}
 .runtime-health-grid>div[hidden]{display:none!important}
 .runtime-health-grid>div:first-child,
 .runtime-lane.safety{
-  background:#f4f7ff!important;
+  background:var(--customer-accent-soft)!important;
   color:var(--customer-ink)!important;
-  border-color:#dce6fb!important;
+  border-color:var(--customer-accent-line)!important;
 }
 .runtime-health-grid>div:first-child small,
 .runtime-health-grid>div:first-child span,
 .runtime-lane.safety p,
-.runtime-lane.safety .runtime-lane-count{
-  color:var(--customer-muted)!important;
-}
+.runtime-lane.safety .runtime-lane-count{color:var(--customer-muted)!important}
 .runtime-health-grid>div:first-child strong,
 .runtime-lane.safety>b{color:var(--customer-ink)!important}
 .runtime-lane.safety .runtime-lane-index{
@@ -62,7 +47,7 @@
 .evidence-meta-item[hidden]{display:none!important}
 .evidence-provenance-line{gap:4px!important}
 
-/* Informational counts are neutral. Red remains reserved for genuine attention states. */
+/* Informational counts stay quiet; semantic warning colors are reserved for attention. */
 .right-tab .ops-tab-count{
   min-width:18px!important;
   height:18px!important;
@@ -70,25 +55,25 @@
   padding:0 5px!important;
   border:1px solid var(--customer-line)!important;
   border-radius:999px!important;
-  background:#f3f1ee!important;
+  background:#f2f3f6!important;
   color:var(--customer-muted)!important;
   box-shadow:none!important;
 }
 .right-tab.active .ops-tab-count{
-  border-color:#cbd9f4!important;
-  background:#eef4ff!important;
+  border-color:var(--customer-accent-line)!important;
+  background:var(--customer-accent-soft)!important;
   color:var(--customer-accent)!important;
 }
 
 .status-ring.customer-status-chip{
   width:auto!important;
-  min-width:76px!important;
+  min-width:72px!important;
   height:auto!important;
-  min-height:38px!important;
-  padding:8px 12px!important;
-  border:1px solid #dce6fb!important;
+  min-height:36px!important;
+  padding:8px 11px!important;
+  border:1px solid var(--customer-accent-line)!important;
   border-radius:9px!important;
-  background:#f5f8ff!important;
+  background:var(--customer-accent-soft)!important;
   display:inline-flex!important;
   align-items:center!important;
   justify-content:center!important;
@@ -102,9 +87,9 @@
   width:auto!important;
   height:auto!important;
   margin:0!important;
-  font-size:13px!important;
+  font-size:12.5px!important;
   line-height:1.2!important;
-  font-weight:700!important;
+  font-weight:650!important;
   color:var(--customer-accent)!important;
   white-space:nowrap!important;
 }
@@ -112,5 +97,5 @@
 @media(max-width:820px){
   .runtime-pulse-grid{grid-template-columns:1fr 1fr!important}
   .runtime-health-grid{grid-template-columns:1fr!important}
-  .status-ring.customer-status-chip{min-width:72px!important;padding:8px 10px!important}
+  .status-ring.customer-status-chip{min-width:68px!important;padding:8px 9px!important}
 }
