@@ -6,7 +6,10 @@
   let activeDrawer = null;
 
   function narrow() {
-    return matchMedia('(max-width:1080px)').matches;
+    // The detail inspector is a contextual drawer at every desktop width in the
+    // unified AI-workbench layout. The left navigation only receives `.open`
+    // on compact screens, so keeping the focus trap available here is safe.
+    return true;
   }
 
   function focusables(drawer) {
