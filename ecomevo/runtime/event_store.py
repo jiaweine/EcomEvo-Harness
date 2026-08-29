@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib, json, sqlite3, threading, time
+import hashlib, json, os, sqlite3, threading, time
 from pathlib import Path
 from typing import Any
 from ecomevo.models import RuntimeEvent, EvolutionPatch
@@ -8,10 +8,22 @@ class EventStore:
     """Append-only hash-chained runtime history with JSON checkpoints, forks and evolution patches."""
     def __init__(self, path: str | Path):
         self.path = str(path); Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.RLock(); self._init()
-    def _conn(self):
+        self._lock = threading.RLock(); self._local = threading.local(); self._init()
+    def _open_conn(self):
         c=sqlite3.connect(self.path, check_same_thread=False, timeout=30); c.row_factory=sqlite3.Row
         c.execute('PRAGMA busy_timeout=30000'); return c
+    def _conn(self):
+        # EventStore methods are synchronous and transactions never span an await. A
+        # thread-local connection therefore removes repeated connect/PRAGMA setup while
+        # preserving independent transaction state for threads that share one engine.
+        # Forked workers must never inherit a live sqlite handle from the parent.
+        pid=os.getpid(); c=getattr(self._local,'connection',None); owner_pid=getattr(self._local,'pid',None)
+        if c is None or owner_pid!=pid:
+            if c is not None:
+                try:c.close()
+                except sqlite3.Error:pass
+            c=self._open_conn(); self._local.connection=c; self._local.pid=pid
+        return c
     def _init(self):
         with self._conn() as c:
             c.executescript('''
