@@ -48,6 +48,33 @@ class EventStore:
         semantic={'target':data.get('target'),'patch':data.get('patch') or {},'accepted':bool(data.get('accepted'))}
         body=json.dumps(semantic,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
         return hashlib.sha256(body.encode()).hexdigest()
+    @staticmethod
+    def _session_tail(c:sqlite3.Connection,session_id:str):
+        # One indexed query proves that the session exists and returns its current
+        # hash-chain tail. This replaces the old session lookup + second tail lookup
+        # on every emitted runtime event.
+        return c.execute(
+            '''SELECT s.session_id,e.seq,e.hash
+               FROM sessions AS s
+               LEFT JOIN events AS e ON e.session_id=s.session_id
+               WHERE s.session_id=?
+               ORDER BY e.seq DESC LIMIT 1''',
+            (session_id,),
+        ).fetchone()
+    @staticmethod
+    def _verify_rows(rows)->bool:
+        prev='GENESIS'
+        for r in rows:
+            if str(r['prev_hash'])!=prev:return False
+            try:
+                payload=json.loads(r['payload_json'])
+            except Exception:
+                return False
+            body=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
+            digest=hashlib.sha256(f"{r['session_id']}|{r['seq']}|{r['event_type']}|{body}|{float(r['ts']):.6f}|{r['prev_hash']}".encode()).hexdigest()
+            if digest!=r['hash']:return False
+            prev=str(r['hash'])
+        return True
 
     def has_session(self,session_id:str)->bool:
         with self._conn() as c:return c.execute('SELECT 1 FROM sessions WHERE session_id=?',(session_id,)).fetchone() is not None
@@ -57,9 +84,10 @@ class EventStore:
     def append(self, session_id:str, event_type:str, payload:dict[str,Any])->RuntimeEvent:
         with self._lock,self._conn() as c:
             c.execute('BEGIN IMMEDIATE')
-            if c.execute('SELECT 1 FROM sessions WHERE session_id=?',(session_id,)).fetchone() is None:raise KeyError(f'unknown session: {session_id}')
-            row=c.execute('SELECT seq,hash FROM events WHERE session_id=? ORDER BY seq DESC LIMIT 1',(session_id,)).fetchone()
-            seq=int(row['seq'])+1 if row else 1; prev=row['hash'] if row else 'GENESIS'; ts=time.time()
+            row=self._session_tail(c,session_id)
+            if row is None:raise KeyError(f'unknown session: {session_id}')
+            seq=int(row['seq'])+1 if row['seq'] is not None else 1
+            prev=str(row['hash']) if row['hash'] is not None else 'GENESIS'; ts=time.time()
             body=json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
             digest=hashlib.sha256(f'{session_id}|{seq}|{event_type}|{body}|{ts:.6f}|{prev}'.encode()).hexdigest()
             c.execute('INSERT INTO events VALUES(?,?,?,?,?,?,?)',(session_id,seq,event_type,body,ts,prev,digest))
@@ -68,15 +96,12 @@ class EventStore:
         with self._conn() as c: rows=c.execute('SELECT * FROM events WHERE session_id=? AND seq>? ORDER BY seq',(session_id,after_seq)).fetchall()
         return [RuntimeEvent(session_id=r['session_id'],seq=r['seq'],event_type=r['event_type'],payload=json.loads(r['payload_json']),ts=r['ts'],hash=r['hash'],prev_hash=r['prev_hash']) for r in rows]
     def verify_chain(self,session_id:str)->bool:
-        if not self.has_session(session_id):return False
-        prev='GENESIS'
-        for e in self.list_events(session_id):
-            if e.prev_hash!=prev:return False
-            body=json.dumps(e.payload,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
-            digest=hashlib.sha256(f'{e.session_id}|{e.seq}|{e.event_type}|{body}|{e.ts:.6f}|{e.prev_hash}'.encode()).hexdigest()
-            if digest!=e.hash:return False
-            prev=e.hash
-        return True
+        # Keep existence check and chain scan on one WAL snapshot instead of opening
+        # two independent connections and reading the same session twice.
+        with self._conn() as c:
+            if c.execute('SELECT 1 FROM sessions WHERE session_id=?',(session_id,)).fetchone() is None:return False
+            rows=c.execute('SELECT * FROM events WHERE session_id=? ORDER BY seq',(session_id,)).fetchall()
+        return self._verify_rows(rows)
     def save_snapshot(self,session_id:str,seq:int,snapshot:dict[str,Any]):
         self.save_checkpoint(session_id,snapshot,seq=seq)
     def latest_seq(self,session_id:str)->int:
@@ -87,16 +112,25 @@ class EventStore:
     def _state_body(snapshot:dict[str,Any])->str:
         return json.dumps(snapshot,ensure_ascii=False,sort_keys=True,separators=(',',':'),default=str)
     def save_checkpoint(self,session_id:str,snapshot:dict[str,Any],seq:int|None=None)->dict[str,Any]:
-        """Persist a state checkpoint bound to the exact event-chain position."""
-        if not self.has_session(session_id):raise KeyError(f'unknown session: {session_id}')
-        checkpoint_seq=self.latest_seq(session_id) if seq is None else int(seq)
-        if checkpoint_seq<0 or checkpoint_seq>self.latest_seq(session_id):raise ValueError('checkpoint seq is outside the session event range')
+        """Persist a state checkpoint bound atomically to an exact event-chain position."""
+        # Checkpoint selection and insertion share one writer transaction. Besides
+        # eliminating several connection opens, this closes a cross-process race in
+        # which another writer could advance the chain between latest_seq() calls.
         with self._lock,self._conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            tail=self._session_tail(c,session_id)
+            if tail is None:raise KeyError(f'unknown session: {session_id}')
+            latest=int(tail['seq'] or 0)
+            checkpoint_seq=latest if seq is None else int(seq)
+            if checkpoint_seq<0 or checkpoint_seq>latest:raise ValueError('checkpoint seq is outside the session event range')
             event_hash='GENESIS'
             if checkpoint_seq:
-                row=c.execute('SELECT hash FROM events WHERE session_id=? AND seq=?',(session_id,checkpoint_seq)).fetchone()
-                if row is None:raise ValueError('checkpoint seq does not exist')
-                event_hash=str(row['hash'])
+                if checkpoint_seq==latest and tail['hash'] is not None:
+                    event_hash=str(tail['hash'])
+                else:
+                    row=c.execute('SELECT hash FROM events WHERE session_id=? AND seq=?',(session_id,checkpoint_seq)).fetchone()
+                    if row is None:raise ValueError('checkpoint seq does not exist')
+                    event_hash=str(row['hash'])
             body=self._state_body(snapshot);state_hash=hashlib.sha256(body.encode()).hexdigest();blob='json:'+body
             c.execute(
                 'INSERT OR REPLACE INTO snapshots(session_id,seq,snapshot_blob,created_at,state_hash,event_hash) VALUES(?,?,?,?,?,?)',
@@ -136,8 +170,18 @@ class EventStore:
             out.append({'session_id':r['session_id'],'payload':payload,'ts':r['ts']})
         return out
     def list_sessions(self, limit:int=30)->list[dict[str,Any]]:
-        with self._conn() as c:rows=c.execute("SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?",(limit,)).fetchall()
-        return [{"session_id":r["session_id"],"parent_session_id":r["parent_session_id"],"parent_seq":r["parent_seq"],"created_at":r["created_at"],"meta":json.loads(r["meta_json"] or "{}"),"event_count":len(self.list_events(r["session_id"])),"hash_chain_valid":self.verify_chain(r["session_id"])} for r in rows]
+        # Avoid the old 1 + 2N connection/read pattern (list_events + verify_chain for
+        # every session). Fetch all selected chains once, then derive counts and
+        # integrity in memory.
+        with self._conn() as c:
+            rows=c.execute("SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?",(limit,)).fetchall()
+            if not rows:return []
+            ids=[str(r['session_id']) for r in rows]
+            marks=','.join('?' for _ in ids)
+            event_rows=c.execute(f'SELECT * FROM events WHERE session_id IN ({marks}) ORDER BY session_id,seq',ids).fetchall()
+        grouped:dict[str,list[Any]]={sid:[] for sid in ids}
+        for event in event_rows:grouped[str(event['session_id'])].append(event)
+        return [{"session_id":r["session_id"],"parent_session_id":r["parent_session_id"],"parent_seq":r["parent_seq"],"created_at":r["created_at"],"meta":json.loads(r["meta_json"] or "{}"),"event_count":len(grouped[str(r["session_id"])]),"hash_chain_valid":self._verify_rows(grouped[str(r["session_id"])])} for r in rows]
     def fork(self, source_session_id:str, at_seq:int, new_session_id:str, meta:dict[str,Any]|None=None):
         if not self.has_session(source_session_id):raise KeyError(source_session_id)
         source=self.list_events(source_session_id);max_seq=source[-1].seq if source else 0
