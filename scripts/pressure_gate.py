@@ -81,8 +81,6 @@ async def run_backpressure_probe(tasks: int = 64) -> dict[str, Any]:
     expected_error = "tool_timeout:0.05s"
     if any(result.error != expected_error for result in results):
         failures.append("overloaded calls did not converge to the bounded timeout result")
-    # A generous 15x scheduling envelope avoids runner-load flakes while still
-    # distinguishing the legacy per-queue-slot timeout (~1.6s for this probe).
     if wall >= 0.75:
         failures.append(f"backpressure queue exceeded total deadline envelope: {wall:.4f}s")
     if tool.peak > 2:
@@ -259,6 +257,69 @@ def run_policy_contention_probe(root: Path, workers: int = 8) -> dict[str, Any]:
     }
 
 
+def run_skill_batch_probe(root: Path, skills: int = 6, rounds: int = 48) -> dict[str, Any]:
+    """One multi-skill verifier outcome should remain one policy-learning round."""
+    db = root / "skill-batch.db"
+    library = AdaptiveSkillLibrary(db)
+    rows = [
+        library.upsert_candidate(
+            domain="merchant_review",
+            name=f"pressure-skill-{index}",
+            guidance=f"pressure guidance {index}",
+            preferred_tools=["merchant.inspect"],
+            trigger_terms=[f"pressure-{index}"],
+            shadow_score=0.95,
+            promote=True,
+        )
+        for index in range(skills)
+    ]
+    skill_ids = [row.skill_id for row in rows]
+    before = library.policy("merchant_review")
+    failures: list[str] = []
+    started = time.perf_counter()
+    for index in range(rounds):
+        updated = library.record_outcome(
+            skill_ids,
+            success=True,
+            score=0.92,
+            session_id=f"pressure-skill-round-{index}",
+            context={"round": index},
+        )
+        if len(updated) != skills:
+            failures.append(f"round {index}: updated {len(updated)} skills, expected {skills}")
+            break
+    wall = time.perf_counter() - started
+    policy = library.policy("merchant_review")
+    if policy["updates"] != before["updates"] + rounds:
+        failures.append(
+            f"policy write amplification detected: updates={policy['updates']} expected={before['updates'] + rounds}"
+        )
+    with sqlite3.connect(db) as connection:
+        outcome_count = int(connection.execute("SELECT COUNT(*) FROM skill_outcomes").fetchone()[0])
+    expected_outcomes = skills * rounds
+    if outcome_count != expected_outcomes:
+        failures.append(f"skill outcomes lost: {outcome_count} != {expected_outcomes}")
+    final_rows = [library.get(skill_id) for skill_id in skill_ids]
+    if any(row is None or row.uses != rounds for row in final_rows):
+        failures.append("skill posterior uses did not advance exactly once per learning round")
+    # This is intentionally generous; it catches accidental return to per-skill writer
+    # fan-out without depending on hosted-runner microbenchmark precision.
+    if wall >= 2.5:
+        failures.append(f"batched skill learning exceeded 2.5s envelope: {wall:.3f}s")
+    return {
+        "name": "skill_outcome_write_amplification",
+        "skills": skills,
+        "rounds": rounds,
+        "outcomes": outcome_count,
+        "policy_updates": policy["updates"] - before["updates"],
+        "wall_seconds": round(wall, 4),
+        "outcomes_per_policy_update": round(
+            outcome_count / max(1, policy["updates"] - before["updates"]), 3
+        ),
+        "failures": failures,
+    }
+
+
 def run_shared_db_read_isolation_probe(root: Path, reads: int = 256, workers: int = 32) -> dict[str, Any]:
     """Established adaptive reads must not queue behind SQLite's single writer slot."""
     db = root / "shared-read-isolation.db"
@@ -351,14 +412,22 @@ def run_event_store_contention_probe(root: Path, events: int = 256, workers: int
     if not sessions or sessions[0]["event_count"] != events or not sessions[0]["hash_chain_valid"]:
         failures.append("batched session inspection lost event count or chain integrity")
     p99 = percentile(latencies_ms, 0.99)
-    if wall >= 5.0:
-        failures.append(f"event-store contention wall time exceeded 5s: {wall:.3f}s")
+    throughput = events / wall if wall else 0.0
+    # #39's healthy hosted-runner samples were ~760-950 events/s with p99 below
+    # 200ms. These envelopes leave >4x headroom while catching the rejected #41
+    # long-connection regression (~105 events/s, p99 >1s).
+    if wall >= 1.6:
+        failures.append(f"event-store contention wall time exceeded 1.6s: {wall:.3f}s")
+    if throughput < 160.0:
+        failures.append(f"event-store throughput fell below 160 events/s: {throughput:.1f}")
+    if p99 >= 800.0:
+        failures.append(f"event-store append p99 exceeded 800ms: {p99:.3f}ms")
     return {
         "name": "event_store_contention",
         "events": events,
         "workers": workers,
         "wall_seconds": round(wall, 4),
-        "throughput_events_per_second": round(events / wall, 1) if wall else 0.0,
+        "throughput_events_per_second": round(throughput, 1),
         "append_latency_ms": {
             "p50": round(percentile(latencies_ms, 0.50), 3),
             "p95": round(percentile(latencies_ms, 0.95), 3),
@@ -428,6 +497,7 @@ async def main_async(levels: list[int]) -> dict[str, Any]:
             await run_backpressure_probe(),
             await run_routing_pressure_probe(),
             await asyncio.to_thread(run_policy_contention_probe, root),
+            await asyncio.to_thread(run_skill_batch_probe, root),
             await asyncio.to_thread(run_shared_db_read_isolation_probe, root),
             await asyncio.to_thread(run_event_store_contention_probe, root),
         ]

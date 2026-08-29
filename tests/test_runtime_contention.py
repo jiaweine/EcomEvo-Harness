@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
+
 from ecomevo.runtime.event_store import EventStore
 from ecomevo.runtime.harness_optimizer import HarnessEvolutionOptimizer
 from ecomevo.runtime.skills import AdaptiveSkillLibrary
@@ -90,6 +92,70 @@ def test_event_store_hot_reads_use_single_connection(tmp_path):
     assert restored["phase"] == "planned"
     assert restored["_checkpoint"]["event_hash"] == checkpoint["event_hash"]
     assert first.seq == 1
+
+
+def test_create_session_and_first_event_share_one_atomic_write(tmp_path):
+    store = EventStore(tmp_path / "events.db")
+    circular = {}
+    circular["self"] = circular
+
+    with pytest.raises(ValueError):
+        store.create_session_and_append(
+            "broken",
+            "goal.parsed",
+            circular,
+            meta={"domain": "merchant_review"},
+        )
+    assert store.has_session("broken") is False
+
+    event = store.create_session_and_append(
+        "s1",
+        "goal.parsed",
+        {"goal": "review"},
+        meta={"domain": "merchant_review"},
+    )
+    assert event.seq == 1
+    assert event.prev_hash == "GENESIS"
+    assert store.verify_chain("s1") is True
+    sessions = store.list_sessions(limit=1)
+    assert sessions[0]["event_count"] == 1
+
+
+def test_checkpoint_and_audit_event_commit_or_rollback_together(tmp_path):
+    store = EventStore(tmp_path / "events.db")
+    first = store.create_session_and_append("s1", "goal.parsed", {"goal": "review"})
+
+    reference, audit = store.save_checkpoint_and_append(
+        "s1",
+        {"stage": "before-plan", "belief": {"confidence": 0.2}},
+        "runtime.checkpointed",
+        {"stage": "before-plan"},
+    )
+    assert reference["seq"] == 1
+    assert reference["event_hash"] == first.hash
+    assert audit.seq == 2
+    assert audit.prev_hash == first.hash
+    assert audit.payload["seq"] == 1
+    assert audit.payload["state_hash"] == reference["state_hash"]
+    restored = store.restore_checkpoint("s1", seq=1)
+    assert restored is not None
+    assert restored["stage"] == "before-plan"
+    assert store.verify_chain("s1") is True
+
+    store2 = EventStore(tmp_path / "rollback.db")
+    store2.create_session_and_append("s2", "goal.parsed", {"goal": "review"})
+    circular = {}
+    circular["self"] = circular
+    with pytest.raises(ValueError):
+        store2.save_checkpoint_and_append(
+            "s2",
+            {"stage": "must-rollback"},
+            "runtime.checkpointed",
+            {"bad": circular},
+        )
+    assert store2.restore_checkpoint("s2") is None
+    assert len(store2.list_events("s2")) == 1
+    assert store2.verify_chain("s2") is True
 
 
 def test_event_store_multi_instance_appends_preserve_one_hash_chain(tmp_path):

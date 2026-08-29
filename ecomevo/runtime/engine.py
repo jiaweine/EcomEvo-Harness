@@ -232,8 +232,16 @@ class EcomEvoEngine:
         elif evolved_memory_terms:
             belief.facts['memory_watch_terms']=evolved_memory_terms[:16]
 
-        self.events.create_session(sid,meta={'domain':goal.domain.value,'goal':text[:220]})
-        await self._emit(sid,'goal.parsed',goal.model_dump(mode='json'),sink);await self._emit(sid,'belief.updated',belief.model_dump(),sink)
+        session_meta={'domain':goal.domain.value,'goal':text[:220]}
+        goal_payload=goal.model_dump(mode='json')
+        create_and_append=getattr(self.events,'create_session_and_append',None)
+        if callable(create_and_append):
+            create_and_append(sid,'goal.parsed',goal_payload,meta=session_meta)
+            if sink:await sink('goal.parsed',goal_payload)
+        else:
+            self.events.create_session(sid,meta=session_meta)
+            await self._emit(sid,'goal.parsed',goal_payload,sink)
+        await self._emit(sid,'belief.updated',belief.model_dump(),sink)
         await self._emit(sid,'harness.profile.bound',{
             'domain':goal.domain.value,
             'component_ids':list(harness_profile.get('component_ids') or []),
@@ -245,6 +253,13 @@ class EcomEvoEngine:
         ctx={'text':text,'assets':assets,'goal':goal,'belief':belief}
         async def controller_emit(t,p):await self._emit(sid,t,p,sink)
         async def controller_checkpoint(stage,state):
+            checkpoint_and_append=getattr(self.events,'save_checkpoint_and_append',None)
+            if callable(checkpoint_and_append):
+                reference,event=checkpoint_and_append(
+                    sid,state,'runtime.checkpointed',{'stage':stage}
+                )
+                if sink:await sink('runtime.checkpointed',event.payload)
+                return reference
             reference=self.events.save_checkpoint(sid,state)
             await self._emit(sid,'runtime.checkpointed',{'stage':stage,**reference},sink)
             return reference
