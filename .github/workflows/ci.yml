@@ -119,6 +119,8 @@ jobs:
           python -m pip install -e .
       - name: Bootstrap persistence A/B gate
         run: python scripts/bootstrap_pressure_gate.py
+      - name: Event group-commit A/B gate
+        run: python scripts/group_commit_pressure_gate.py
       - name: Writer-stage profile gate
         run: python scripts/writer_profile_gate.py
       - name: Current-head concurrency gate
