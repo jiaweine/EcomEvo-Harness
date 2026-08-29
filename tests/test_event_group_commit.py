@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import time
+
+import pytest
 
 from ecomevo.runtime.bundled_event_store import BundledEventStore
 from ecomevo.runtime.engine import EcomEvoEngine
@@ -38,9 +41,16 @@ class SpyGroupedStore(BundledEventStore):
         return super().append(*args, **kwargs)
 
 
+class SlowGroupedStore(BundledEventStore):
+    def _persist_append_group(self, batch):
+        time.sleep(0.12)
+        return super()._persist_append_group(batch)
+
+
 def test_concurrent_grouped_appends_share_one_durable_transaction(tmp_path):
     async def exercise():
         store = TracingGroupedStore(tmp_path / "group.db")
+        observer = EventStore(tmp_path / "group.db")
         session_ids = [f"s-{index}" for index in range(32)]
         for sid in session_ids:
             store.create_session(sid)
@@ -55,9 +65,13 @@ def test_concurrent_grouped_appends_share_one_durable_transaction(tmp_path):
 
         assert store.immediate_begins == 1
         assert [event.seq for event in events] == [1] * len(session_ids)
+        # A separate EventStore instance must observe the rows immediately after await:
+        # grouped callers never return before the shared transaction is committed.
         for sid in session_ids:
+            visible = observer.list_events(sid)
+            assert len(visible) == 1
+            assert visible[0].payload == {"index": int(sid.split("-")[-1])}
             assert store.verify_chain(sid) is True
-            assert len(store.list_events(sid)) == 1
 
     asyncio.run(exercise())
 
@@ -80,6 +94,68 @@ def test_grouped_appends_preserve_same_session_hash_order(tmp_path):
         for previous, current in zip(persisted, persisted[1:]):
             assert current.prev_hash == previous.hash
         assert store.verify_chain("shared") is True
+
+    asyncio.run(exercise())
+
+
+def test_group_worker_bounds_large_batches_without_reordering(tmp_path):
+    async def exercise():
+        store = TracingGroupedStore(tmp_path / "bounded.db")
+        store.create_session("shared")
+        store.immediate_begins = 0
+
+        events = await asyncio.gather(
+            *(store.append_grouped("shared", "step", {"index": index}) for index in range(130))
+        )
+
+        # The worker caps each transaction at 64 requests: 64 + 64 + 2.
+        assert store.immediate_begins == 3
+        assert [event.seq for event in events] == list(range(1, 131))
+        persisted = store.list_events("shared")
+        assert [event.payload["index"] for event in persisted] == list(range(130))
+        assert store.verify_chain("shared") is True
+
+    asyncio.run(exercise())
+
+
+def test_grouped_sqlite_work_does_not_freeze_the_event_loop(tmp_path):
+    async def exercise():
+        store = SlowGroupedStore(tmp_path / "off-loop.db")
+        store.create_session("s1")
+
+        started = time.perf_counter()
+        append_task = asyncio.create_task(store.append_grouped("s1", "step", {"value": 1}))
+        await asyncio.sleep(0.02)
+        loop_delay = time.perf_counter() - started
+
+        # The synthetic SQLite batch sleeps for 120ms. If persistence runs on the event
+        # loop this 20ms heartbeat cannot resume until after that sleep.
+        assert loop_delay < 0.08
+        event = await append_task
+        assert event.seq == 1
+        assert store.verify_chain("s1") is True
+
+    asyncio.run(exercise())
+
+
+def test_caller_cancellation_waits_until_queued_append_is_durable(tmp_path):
+    async def exercise():
+        path = tmp_path / "cancel.db"
+        store = SlowGroupedStore(path)
+        observer = EventStore(path)
+        store.create_session("s1")
+
+        task = asyncio.create_task(store.append_grouped("s1", "step", {"value": "durable"}))
+        # Let append_grouped enqueue and suspend on its shielded Future.
+        await asyncio.sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        visible = observer.list_events("s1")
+        assert len(visible) == 1
+        assert visible[0].payload == {"value": "durable"}
+        assert observer.verify_chain("s1") is True
 
     asyncio.run(exercise())
 
