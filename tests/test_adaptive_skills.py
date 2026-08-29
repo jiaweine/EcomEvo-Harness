@@ -67,17 +67,18 @@ def test_multi_skill_outcome_is_one_atomic_learning_round(tmp_path):
     before_policy = library.policy("merchant_review")
     assert before_first is not None and before_second is not None
 
-    # Force the second outcome insert to abort. A batched learning round must roll
-    # back the first skill update too; the legacy per-skill transaction path would
-    # leave a partially learned round behind.
+    # Abort the second insert in one learning round. SQLite sees the first uncommitted
+    # row in the same transaction, so this proves whether the whole batch rolls back.
     with sqlite3.connect(db) as connection:
-        connection.execute(
-            f"""CREATE TRIGGER abort_second_skill
-                BEFORE INSERT ON skill_outcomes
-                WHEN NEW.skill_id='{second.skill_id}'
-                BEGIN
-                    SELECT RAISE(ABORT, 'forced batch rollback');
-                END;"""  # nosec - test fixture uses a generated local identifier
+        connection.executescript(
+            """CREATE TRIGGER abort_second_skill
+               BEFORE INSERT ON skill_outcomes
+               WHEN NEW.session_id='rollback-round'
+                AND (SELECT COUNT(*) FROM skill_outcomes
+                     WHERE session_id='rollback-round') >= 1
+               BEGIN
+                   SELECT RAISE(ABORT, 'forced batch rollback');
+               END;"""
         )
 
     with pytest.raises(sqlite3.IntegrityError):
