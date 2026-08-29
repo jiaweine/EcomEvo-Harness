@@ -52,13 +52,27 @@ jobs:
 
           frontend = Path('frontend')
           html = (frontend / 'index.html').read_text(encoding='utf-8')
-          loader = (frontend / 'enhancements.js').read_text(encoding='utf-8')
           HTMLParser().feed(html)
           assert html.count('id="') == len({part.split('"', 1)[0] for part in html.split('id="')[1:]}), 'duplicate DOM id'
-          modules = re.findall(r"/assets/([A-Za-z0-9._-]+\.js)", loader)
-          assert modules, 'enhancement loader references no modules'
-          for module in modules:
-              assert (frontend / module).is_file(), f'missing loader module: {module}'
+          scripts = re.findall(r'<script\b[^>]*\bsrc="/assets/([A-Za-z0-9._-]+\.js)"[^>]*>', html)
+          expected_scripts = [
+              'safety-guards.js',
+              'privacy-sanitize.js',
+              'drawer-a11y.js',
+              'enhancements-core.js',
+              'ops-intelligence.js',
+              'plugin-control.js',
+              'customer-copy.js',
+              'customer-dynamic-copy.js',
+              'customer-polish.js',
+              'realtime-reconcile.js',
+              'app.js',
+              'intro.js',
+          ]
+          assert scripts == expected_scripts, f'unexpected frontend bootstrap order: {scripts}'
+          for script in scripts:
+              assert (frontend / script).is_file(), f'missing static script: {script}'
+          assert not (frontend / 'enhancements.js').exists(), 'legacy dynamic enhancement loader must stay removed'
           for css_path in ('frontend/visual.css', 'frontend/product-polish.css', 'frontend/intro.css', 'frontend/lifecycle.css'):
               css = Path(css_path).read_text(encoding='utf-8')
               assert css.count('{') == css.count('}'), f'unbalanced {css_path}'
@@ -229,5 +243,6 @@ jobs:
             fi
             sleep 1
           done
+          curl -fsS http://127.0.0.1:8767/healthz >/dev/null
           curl -fsS http://127.0.0.1:8767/ >/dev/null
           curl -fsS http://127.0.0.1:8767/assets/app.js >/dev/null
