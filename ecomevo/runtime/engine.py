@@ -193,7 +193,11 @@ class EcomEvoEngine:
         return self.plugins.load_entry_point(name)
 
     async def _emit(self,sid:str,t:str,p:dict[str,Any],sink:EventSink|None):
-        ev=self.events.append(sid,t,p)
+        grouped_append=getattr(self.events,'append_grouped',None)
+        if sink is None and callable(grouped_append):
+            ev=await grouped_append(sid,t,p)
+        else:
+            ev=self.events.append(sid,t,p)
         if sink:await sink(t,p)
         return ev
 
