@@ -6,7 +6,8 @@ import threading
 import time
 import weakref
 from dataclasses import dataclass, field
-from typing import Any
+from functools import partial
+from typing import Any, Callable, TypeVar
 
 from ecomevo.models import RuntimeEvent
 
@@ -14,6 +15,7 @@ from .event_store import EventStore
 
 
 _APPEND_GROUP_LIMIT = 64
+_T = TypeVar("_T")
 
 
 @dataclass(slots=True)
@@ -35,8 +37,8 @@ class BundledEventStore(EventStore):
     """Built-in EventStore fast paths that preserve the base persistence contract.
 
     The base ``EventStore`` stays the compatibility surface for plugins and direct
-    callers. This subclass only bundles writes whose ordering and rollback boundary
-    are known by the built-in engine.
+    callers. This subclass only bundles/offloads writes whose ordering and rollback
+    boundary are known by the built-in engine.
     """
 
     def __init__(self, path):
@@ -45,6 +47,30 @@ class BundledEventStore(EventStore):
             asyncio.AbstractEventLoop, _LoopAppendGroup
         ] = weakref.WeakKeyDictionary()
         super().__init__(path)
+
+    @staticmethod
+    async def _await_durable_thread(
+        fn: Callable[..., _T],
+        /,
+        *args: Any,
+        **kwargs: Any,
+    ) -> _T:
+        """Run one existing durable operation off-loop without ambiguous cancellation.
+
+        ``asyncio.to_thread`` cannot stop a function once it has started. Shield the
+        worker task and, if the caller is cancelled, wait until SQLite has committed or
+        rolled back before surfacing ``CancelledError``. This preserves the same
+        durability-before-return boundary as the synchronous methods.
+        """
+        worker = asyncio.create_task(asyncio.to_thread(partial(fn, *args, **kwargs)))
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError as cancelled:
+            try:
+                await asyncio.shield(worker)
+            except Exception:
+                raise
+            raise cancelled
 
     def create_session_events_checkpoint(
         self,
@@ -56,12 +82,7 @@ class BundledEventStore(EventStore):
         parent_session_id: str | None = None,
         parent_seq: int | None = None,
     ) -> tuple[list[RuntimeEvent], dict[str, Any]]:
-        """Atomically persist a new session, ordered events, and initial checkpoint.
-
-        The checkpoint is bound to the final event in ``events``. Any serialization
-        or SQLite failure rolls back the entire bootstrap, so a run can never become
-        visible with only a prefix of its initial durable state.
-        """
+        """Atomically persist a new session, ordered events, and initial checkpoint."""
         if not events:
             raise ValueError("bootstrap bundle requires at least one event")
 
@@ -99,6 +120,46 @@ class BundledEventStore(EventStore):
             )
             return persisted, reference
 
+    async def create_session_events_checkpoint_async(
+        self,
+        session_id: str,
+        events: list[tuple[str, dict[str, Any]]],
+        snapshot: dict[str, Any],
+        *,
+        meta: dict[str, Any] | None = None,
+        parent_session_id: str | None = None,
+        parent_seq: int | None = None,
+    ) -> tuple[list[RuntimeEvent], dict[str, Any]]:
+        """Async scheduling wrapper around the exact bootstrap transaction above."""
+        return await self._await_durable_thread(
+            self.create_session_events_checkpoint,
+            session_id,
+            events,
+            snapshot,
+            meta=meta,
+            parent_session_id=parent_session_id,
+            parent_seq=parent_seq,
+        )
+
+    async def save_checkpoint_and_append_async(
+        self,
+        session_id: str,
+        snapshot: dict[str, Any],
+        event_type: str,
+        event_payload: dict[str, Any] | None = None,
+        *,
+        seq: int | None = None,
+    ) -> tuple[dict[str, Any], RuntimeEvent]:
+        """Off-loop wrapper preserving one-checkpoint/one-transaction semantics."""
+        return await self._await_durable_thread(
+            self.save_checkpoint_and_append,
+            session_id,
+            snapshot,
+            event_type,
+            event_payload,
+            seq=seq,
+        )
+
     async def append_grouped(
         self,
         session_id: str,
@@ -133,8 +194,6 @@ class BundledEventStore(EventStore):
         try:
             return await asyncio.shield(future)
         except asyncio.CancelledError as cancelled:
-            # Once queued, keep the synchronous durability contract: caller cancellation
-            # becomes observable only after this append has committed or failed.
             try:
                 await asyncio.shield(future)
             except Exception:
@@ -158,8 +217,6 @@ class BundledEventStore(EventStore):
     async def _flush_append_group(self, group: _LoopAppendGroup) -> None:
         try:
             while True:
-                # Give peer tasks one turn to join the next bounded batch. There is no
-                # fixed sleep window, so isolated writes do not gain artificial latency.
                 await asyncio.sleep(0)
                 with self._append_group_lock:
                     if not group.queue:
@@ -176,8 +233,6 @@ class BundledEventStore(EventStore):
                 try:
                     persisted = await asyncio.shield(persist_task)
                 except asyncio.CancelledError as cancelled:
-                    # The thread cannot be cancelled once SQLite work has started. Wait
-                    # until its commit/rollback is known, resolve this batch, then stop.
                     worker_cancelled = cancelled
                     try:
                         persisted = await asyncio.shield(persist_task)
@@ -190,8 +245,6 @@ class BundledEventStore(EventStore):
                         )
                         raise cancelled
                 except Exception:
-                    # The shared transaction rolled back. Isolate malformed sessions or
-                    # payloads one by one, also off-loop, so unrelated requests complete.
                     for index, request in enumerate(batch):
                         if request.future.done():
                             continue
@@ -206,8 +259,6 @@ class BundledEventStore(EventStore):
                         try:
                             event = await asyncio.shield(single_task)
                         except asyncio.CancelledError as cancelled:
-                            # This single retry has already entered the thread pool. Its
-                            # durability must also be resolved before worker cancellation.
                             try:
                                 event = await asyncio.shield(single_task)
                             except Exception as exc:
@@ -245,8 +296,6 @@ class BundledEventStore(EventStore):
                     )
                     raise worker_cancelled
         except asyncio.CancelledError:
-            # Cancellation between batches means every item still in the queue is known
-            # to be non-durable. Complete those Futures rather than leaking pending waits.
             queued = self._stop_append_group(group)
             self._fail_requests(
                 queued,
