@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from ecomevo.runtime.bundled_event_store import BundledEventStore
@@ -92,43 +94,45 @@ def test_bootstrap_bundle_rolls_back_session_event_prefix_and_checkpoint(tmp_pat
     assert store.restore_checkpoint("broken") is None
 
 
-@pytest.mark.asyncio
-async def test_engine_uses_bundle_only_without_external_sink(tmp_path):
-    sinkless_store = SpyBundledEventStore(tmp_path / "sinkless.db")
-    sinkless_engine = EcomEvoEngine(
-        tmp_path / "sinkless.db",
-        plugin_overrides={"event.store": sinkless_store},
-    )
-    summary = await sinkless_engine.run(
-        "审核商家并核对主体和授权资料",
-        [],
-        domain_hint="merchant_review",
-    )
-    assert summary.event_chain_valid is True
-    assert sinkless_store.bundle_calls == 1
-    assert sinkless_store.first_event_calls == 0
+def test_engine_uses_bundle_only_without_external_sink(tmp_path):
+    async def exercise():
+        sinkless_store = SpyBundledEventStore(tmp_path / "sinkless.db")
+        sinkless_engine = EcomEvoEngine(
+            tmp_path / "sinkless.db",
+            plugin_overrides={"event.store": sinkless_store},
+        )
+        summary = await sinkless_engine.run(
+            "审核商家并核对主体和授权资料",
+            [],
+            domain_hint="merchant_review",
+        )
+        assert summary.event_chain_valid is True
+        assert sinkless_store.bundle_calls == 1
+        assert sinkless_store.first_event_calls == 0
 
-    streaming_store = SpyBundledEventStore(tmp_path / "streaming.db")
-    streaming_engine = EcomEvoEngine(
-        tmp_path / "streaming.db",
-        plugin_overrides={"event.store": streaming_store},
-    )
-    seen: list[str] = []
+        streaming_store = SpyBundledEventStore(tmp_path / "streaming.db")
+        streaming_engine = EcomEvoEngine(
+            tmp_path / "streaming.db",
+            plugin_overrides={"event.store": streaming_store},
+        )
+        seen: list[str] = []
 
-    async def sink(event_type: str, _payload: dict):
-        seen.append(event_type)
+        async def sink(event_type: str, _payload: dict):
+            seen.append(event_type)
 
-    streamed = await streaming_engine.run(
-        "审核商家并核对主体和授权资料",
-        [],
-        sink=sink,
-        domain_hint="merchant_review",
-    )
-    assert streamed.event_chain_valid is True
-    assert streaming_store.bundle_calls == 0
-    assert streaming_store.first_event_calls == 1
-    assert seen[:3] == [
-        "goal.parsed",
-        "belief.updated",
-        "harness.profile.bound",
-    ]
+        streamed = await streaming_engine.run(
+            "审核商家并核对主体和授权资料",
+            [],
+            sink=sink,
+            domain_hint="merchant_review",
+        )
+        assert streamed.event_chain_valid is True
+        assert streaming_store.bundle_calls == 0
+        assert streaming_store.first_event_calls == 1
+        assert seen[:3] == [
+            "goal.parsed",
+            "belief.updated",
+            "harness.profile.bound",
+        ]
+
+    asyncio.run(exercise())
