@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import json
-import statistics
 import tempfile
 import threading
 import time
@@ -20,12 +19,14 @@ from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
 
 _stage: contextvars.ContextVar[str] = contextvars.ContextVar("writer_profile_stage", default="unattributed")
+_WRITE_PREFIXES = ("INSERT", "UPDATE", "DELETE", "REPLACE")
 
 
 class WriterProfile:
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self._active: dict[int, tuple[str, float]] = {}
+        # connection_id -> (stage, writer-slot-start, is_writer)
+        self._active: dict[int, tuple[str, float, bool]] = {}
         self._transactions: dict[str, int] = defaultdict(int)
         self._hold_ms: dict[str, list[float]] = defaultdict(list)
         self._operation_ms: dict[str, list[float]] = defaultdict(list)
@@ -41,14 +42,31 @@ class WriterProfile:
         normalized = statement.strip().upper()
         now = time.perf_counter()
         with self._lock:
-            if normalized.startswith("BEGIN"):
+            if normalized.startswith("BEGIN IMMEDIATE"):
                 stage = _stage.get()
                 self._transactions[stage] += 1
-                self._active[connection_id] = (stage, now)
-            elif normalized.startswith("COMMIT") or normalized.startswith("ROLLBACK"):
+                self._active[connection_id] = (stage, now, True)
+                return
+            if normalized.startswith("BEGIN"):
+                # Deferred BEGIN is often a deliberate WAL read snapshot. Do not call it
+                # a writer until SQLite actually executes DML in that transaction.
+                self._active[connection_id] = (_stage.get(), now, False)
+                return
+            if normalized.startswith(_WRITE_PREFIXES):
+                active = self._active.get(connection_id)
+                if active is None:
+                    stage = _stage.get()
+                    self._transactions[stage] += 1
+                    self._active[connection_id] = (stage, now, True)
+                elif not active[2]:
+                    stage = _stage.get()
+                    self._transactions[stage] += 1
+                    self._active[connection_id] = (stage, now, True)
+                return
+            if normalized.startswith("COMMIT") or normalized.startswith("ROLLBACK"):
                 active = self._active.pop(connection_id, None)
-                if active:
-                    stage, started = active
+                if active and active[2]:
+                    stage, started, _ = active
                     self._hold_ms[stage].append((now - started) * 1000.0)
 
     def operation(self, stage: str, elapsed_ms: float) -> None:
