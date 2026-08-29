@@ -6,7 +6,6 @@
   <meta name="theme-color" content="#f5f1ec" />
   <meta name="description" content="EcomEvo 业务服务助手：提交问题和相关资料，查看办理进度、判断依据和待确认事项。" />
   <title>EcomEvo 业务服务助手</title>
-  <link rel="stylesheet" href="/assets/fonts/noto-sans-sc/index.css" />
   <link rel="stylesheet" href="/assets/app.css" />
   <link rel="stylesheet" href="/assets/intro.css" />
   <link rel="stylesheet" href="/assets/visual.css" />
@@ -15,6 +14,7 @@
   <link rel="stylesheet" href="/assets/carbon-theme.css" data-ecomevo-theme-base="carbon-operations" />
   <link rel="stylesheet" href="/assets/customer-theme.css" data-ecomevo-customer-theme="1" />
   <link rel="stylesheet" href="/assets/customer-polish.css" data-ecomevo-customer-polish="1" />
+  <link rel="stylesheet" href="/assets/provider-marketplace.css" data-ecomevo-provider-marketplace="1" />
 </head>
 <body>
 <div class="app-shell">
@@ -32,7 +32,6 @@
     <div class="top-actions">
       <button class="top-action" id="productGuideBtn"><span aria-hidden="true">◎</span><em>使用帮助</em></button>
       <button class="top-action" id="assetLibraryBtn"><span aria-hidden="true">▤</span><em>我的资料</em></button>
-      <button class="top-action" id="providerBtn"><span aria-hidden="true">◌</span><em>处理方式</em></button>
       <button class="avatar" aria-label="当前工作区">商</button>
       <button class="mobile-icon" id="detailToggle" aria-label="打开办理详情" aria-expanded="false">⋯</button>
     </div>
@@ -66,7 +65,14 @@
     <header class="task-head">
       <div class="task-head-main">
         <div class="eyebrow"><span id="sceneEyebrow">商品问题</span><i></i><span id="taskConnection">已同步</span></div>
-        <h1 id="conversationTitle">新的业务办理</h1>
+        <div class="task-title-row">
+          <h1 id="conversationTitle">新的业务办理</h1>
+          <button class="ai-provider-trigger" id="providerBtn" type="button" aria-label="选择 AI 服务，当前自动选择">
+            <span class="ai-provider-mark" id="providerTriggerMark" aria-hidden="true">✦</span>
+            <span class="ai-provider-copy"><b id="providerTriggerName">自动选择</b><small id="providerTriggerModel">智能路由</small></span>
+            <span class="ai-provider-chevron" aria-hidden="true">⌄</span>
+          </button>
+        </div>
         <p id="conversationMeta">描述您的问题并添加相关资料，我们会继续帮您处理。</p>
         <div class="task-chips" aria-label="办理摘要">
           <span class="task-chip"><small>资料</small><b id="assetCountChip">0</b></span>
@@ -178,7 +184,7 @@
 
 <div class="modal-backdrop" id="providerModal" hidden role="dialog" aria-modal="true" aria-labelledby="providerModalTitle">
   <div class="modal">
-    <div class="modal-head"><div><small>处理方式</small><h3 id="providerModalTitle">选择处理方式</h3><p>系统会根据当前业务和资料类型选择合适的处理方式。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-head"><div><small>AI 服务</small><h3 id="providerModalTitle">选择处理方式</h3><p>可以自动选择，也可以指定已配置的 AI 服务；每次发送都会使用当前选择。</p></div><button class="modal-close" aria-label="关闭">×</button></div>
     <div id="providerGrid" class="provider-grid"></div>
     <div class="modal-foot"><span>选择外部服务时，当前任务内容会按配置发送到对应服务；本地受控模式不会自动出站。</span></div>
   </div>
@@ -271,6 +277,7 @@
 <script src="/assets/customer-copy.js"></script>
 <script src="/assets/customer-dynamic-copy.js"></script>
 <script src="/assets/customer-polish.js"></script>
+<script src="/assets/provider-marketplace.js"></script>
 <script src="/assets/realtime-reconcile.js"></script>
 <script type="module" src="/assets/app.js"></script>
 <script type="module" src="/assets/intro.js"></script>
