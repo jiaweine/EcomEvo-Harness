@@ -180,13 +180,24 @@ class AdaptiveSkillLibrary:
 
 
     def policy(self, domain: str) -> dict[str, Any]:
-        now=time.time()
-        with self._lock,self._conn() as c:
-            c.execute('BEGIN IMMEDIATE')
-            row=c.execute('SELECT * FROM evolution_policy WHERE domain=?',(domain,)).fetchone()
-            if not row:
-                c.execute('INSERT INTO evolution_policy VALUES(?,?,?,?,?,?)',(domain,.92,.45,.60,0,now))
-                row=c.execute('SELECT * FROM evolution_policy WHERE domain=?',(domain,)).fetchone()
+        # Policy reads sit on the adaptive-routing hot path. In WAL mode an ordinary
+        # reader can run alongside a writer, so do not acquire SQLite's single writer
+        # slot just to read an already-initialized row. Only the rare first read for a
+        # new domain upgrades to an immediate transaction, with INSERT OR IGNORE for
+        # cross-process initialization safety.
+        with self._conn() as c:
+            row = c.execute('SELECT * FROM evolution_policy WHERE domain=?', (domain,)).fetchone()
+        if row is None:
+            now = time.time()
+            with self._lock, self._conn() as c:
+                c.execute('BEGIN IMMEDIATE')
+                c.execute(
+                    'INSERT OR IGNORE INTO evolution_policy VALUES(?,?,?,?,?,?)',
+                    (domain, .92, .45, .60, 0, now),
+                )
+                row = c.execute('SELECT * FROM evolution_policy WHERE domain=?', (domain,)).fetchone()
+        if row is None:  # pragma: no cover - defensive against external database corruption
+            raise RuntimeError(f'failed to initialize evolution policy for {domain}')
         return {
             'domain':domain,
             'promotion_threshold':float(row['promotion_threshold']),
