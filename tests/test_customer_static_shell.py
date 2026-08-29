@@ -38,6 +38,7 @@ def test_static_shell_is_customer_first_before_javascript_polish_runs():
     for expected in (
         "EcomEvo 业务服务助手",
         "您好，今天想处理什么？",
+        "自动选择",
         "处理方式",
         "办理详情",
         "判断依据",
@@ -95,6 +96,7 @@ def test_customer_theme_is_static_before_javascript_enhancement_runs():
         '/assets/carbon-theme.css',
         '/assets/customer-theme.css',
         '/assets/customer-polish.css',
+        '/assets/provider-marketplace.css',
     )
     positions = [HTML.index(f'href="{href}"') for href in stylesheets]
     assert positions == sorted(positions)
@@ -115,6 +117,7 @@ def test_enhancement_bootstrap_is_static_ordered_and_loader_free():
         '/assets/customer-copy.js',
         '/assets/customer-dynamic-copy.js',
         '/assets/customer-polish.js',
+        '/assets/provider-marketplace.js',
         '/assets/realtime-reconcile.js',
         '/assets/app.js',
         '/assets/intro.js',
