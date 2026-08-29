@@ -4,6 +4,8 @@ ROOT = Path(__file__).resolve().parents[1]
 JS = (ROOT / 'frontend/provider-marketplace.js').read_text(encoding='utf-8')
 CSS = (ROOT / 'frontend/provider-marketplace.css').read_text(encoding='utf-8')
 OPS = (ROOT / 'frontend/ops-intelligence.css').read_text(encoding='utf-8')
+POLISH = (ROOT / 'frontend/customer-polish.js').read_text(encoding='utf-8')
+ROUTING = (ROOT / 'frontend/composer-routing.css').read_text(encoding='utf-8')
 
 
 def test_composer_has_first_class_voice_input_with_audio_fallback():
@@ -52,6 +54,21 @@ def test_composer_visual_hierarchy_matches_modern_chat_products():
         assert needle in CSS
 
 
+def test_routing_control_is_semantically_moved_into_composer_bottom_bar():
+    for needle in (
+        "const route = $('#providerBtn')",
+        "const attachRow = $('.composer .attach-row')",
+        "attachment.insertAdjacentElement('afterend', route)",
+        "route.dataset.surface = 'composer'",
+        "选择路由，当前",
+        "link.href = '/assets/composer-routing.css'",
+    ):
+        assert needle in POLISH
+    assert 'html body .composer #providerBtn.ai-provider-trigger' in ROUTING
+    assert 'display:inline-grid!important' in ROUTING
+    assert '@media(max-width:820px)' in ROUTING
+
+
 def test_empty_composer_is_visually_quiet_and_focus_stays_on_outer_shell():
     assert '#messageInput:focus-visible' in CSS
     assert 'outline:none!important' in CSS
@@ -69,3 +86,4 @@ def test_mobile_and_reduced_motion_details_are_explicit():
     assert 'bottom:calc(78px + env(safe-area-inset-bottom))' in CSS
     assert '@media(prefers-reduced-motion:reduce)' in CSS
     assert 'animation:none!important' in CSS
+    assert '@media(prefers-reduced-motion:reduce)' in ROUTING
