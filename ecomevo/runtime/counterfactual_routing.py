@@ -2,15 +2,170 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
-from typing import Any
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import Any, Callable
 
 from .adaptive_routing import AdaptiveDecisionPolicy
 from .autonomy import AutonomousController
 from .delegation import CognitiveDelegator
 
 
+@dataclass(slots=True)
+class _DecisionRoundContext:
+    """Task-local immutable-input snapshot reused only inside one decision round."""
+
+    domain: str
+    skill_policy: dict[str, Any] | None = None
+    routing_prepared: dict[str, Any] | None = None
+    routing_exploration: float | None = None
+
+
+class _DecisionSkillView:
+    """Delegate skill access while memoizing policy metadata for the active task round."""
+
+    def __init__(
+        self,
+        source: Any,
+        decision_round: ContextVar[_DecisionRoundContext | None],
+    ) -> None:
+        self._source = source
+        self._decision_round = decision_round
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._source, name)
+
+    def policy(self, domain: str) -> dict[str, Any]:
+        current = self._decision_round.get()
+        if current is None or current.domain != str(domain):
+            return self._source.policy(domain)
+        if current.skill_policy is None:
+            current.skill_policy = self._source.policy(domain)
+        return current.skill_policy
+
+
+class _DecisionRoutingView:
+    """Reuse one posterior/reliability snapshot until verification can update routing."""
+
+    def __init__(
+        self,
+        source: Any,
+        decision_round: ContextVar[_DecisionRoundContext | None],
+        tool_keys: Callable[[], list[str]],
+    ) -> None:
+        self._source = source
+        self._decision_round = decision_round
+        self._tool_keys = tool_keys
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._source, name)
+
+    def prepare_context(
+        self,
+        domain: str,
+        *,
+        tools: list[str],
+        exploration: float,
+    ) -> dict[str, Any]:
+        current = self._decision_round.get()
+        if current is None or current.domain != str(domain):
+            return self._source.prepare_context(
+                domain,
+                tools=tools,
+                exploration=exploration,
+            )
+
+        explore = max(0.0, min(1.0, float(exploration)))
+        if (
+            current.routing_prepared is not None
+            and current.routing_exploration is not None
+            and abs(current.routing_exploration - explore) <= 1e-12
+        ):
+            return current.routing_prepared
+
+        # Legal candidates must exist in registry.tools. Preparing the small complete
+        # tool set makes the snapshot reusable when a no-op first decision immediately
+        # falls back to planner-generated candidates, without changing any reliability
+        # value used by those candidates.
+        all_tools = list(
+            dict.fromkeys(
+                [str(tool) for tool in self._tool_keys() if str(tool)]
+                + [str(tool) for tool in tools if str(tool)]
+            )
+        )
+        prepared = self._source.prepare_context(
+            domain,
+            tools=all_tools,
+            exploration=explore,
+        )
+        current.routing_prepared = prepared
+        current.routing_exploration = explore
+        return prepared
+
+    def apply_batch(self, *args, **kwargs):
+        # Verification credit changes the posterior. Never allow a snapshot prepared
+        # before that write to leak into the next decision round.
+        self._decision_round.set(None)
+        return self._source.apply_batch(*args, **kwargs)
+
+
 class CounterfactualAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
     """EvoGain-APR trained from verifier leave-one-out difference credit."""
+
+    def __init__(self, planner, registry, sandbox, skills, *, max_calls: int, max_delegations: int):
+        super().__init__(
+            planner,
+            registry,
+            sandbox,
+            skills,
+            max_calls=max_calls,
+            max_delegations=max_delegations,
+        )
+        self._decision_round: ContextVar[_DecisionRoundContext | None] = ContextVar(
+            f"ecomevo-decision-round-{id(self)}",
+            default=None,
+        )
+        self._skill_source = self.skills
+        self._routing_source = self.routing
+        self.skills = _DecisionSkillView(self._skill_source, self._decision_round)
+        self.routing = _DecisionRoutingView(
+            self._routing_source,
+            self._decision_round,
+            lambda: list(self.registry.tools),
+        )
+
+    def rebind_skills(self, skills: Any) -> None:
+        """Keep the task-local policy view intact when the runtime skill plugin changes."""
+        self._decision_round.set(None)
+        self._skill_source = skills
+        self.skills = _DecisionSkillView(skills, self._decision_round)
+
+    def sanitize(
+        self,
+        raw: dict[str, Any] | None,
+        *,
+        goal,
+        remaining_budget: float,
+        previous: list[Any],
+        skills: list[Any],
+        phase: str,
+        missing_evidence: list[str] | None = None,
+    ):
+        # A non-fallback sanitize always starts a fresh decision round. The immediately
+        # nested fallback is allowed to reuse it; the next recovery step starts fresh.
+        current = self._decision_round.get()
+        domain = str(goal.domain.value)
+        if phase != "fallback" or current is None or current.domain != domain:
+            self._decision_round.set(_DecisionRoundContext(domain=domain))
+        return super().sanitize(
+            raw,
+            goal=goal,
+            remaining_budget=remaining_budget,
+            previous=previous,
+            skills=skills,
+            phase=phase,
+            missing_evidence=missing_evidence,
+        )
 
     def learn_marginal(
         self,
@@ -89,6 +244,29 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
             max_delegations=self.max_delegations,
         )
         self.delegator = CognitiveDelegator(reviewer, self.policy)
+
+    def rebind(
+        self,
+        *,
+        planner=None,
+        registry=None,
+        executor=None,
+        sandbox=None,
+        verifier=None,
+        reviewer=None,
+        skills=None,
+    ) -> None:
+        super().rebind(
+            planner=planner,
+            registry=registry,
+            executor=executor,
+            sandbox=sandbox,
+            verifier=verifier,
+            reviewer=reviewer,
+            skills=skills,
+        )
+        if skills is not None:
+            self.policy.rebind_skills(self.skills)
 
     async def run(self, *, goal, belief, assets, text, context, reasoner=None, emit, checkpoint=None, restore=None):
         decisions: dict[int, dict[str, Any]] = {}
