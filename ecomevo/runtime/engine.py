@@ -248,8 +248,22 @@ class EcomEvoEngine:
         memory_payload={'case_count':len(prior_cases),'watch_terms':memory_risks,'usage':'planning_only_not_evidence'} if prior_cases else None
         initial_snapshot={'goal':goal.model_dump(),'belief':belief.model_dump(),'stage':'initial'}
 
+        bootstrap_async=getattr(self.events,'create_session_events_checkpoint_async',None)
         bootstrap_bundle=getattr(self.events,'create_session_events_checkpoint',None)
-        if sink is None and callable(bootstrap_bundle):
+        if sink is None and callable(bootstrap_async):
+            initial_events=[
+                ('goal.parsed',goal_payload),
+                ('belief.updated',belief_payload),
+                ('harness.profile.bound',harness_payload),
+            ]
+            if memory_payload is not None:initial_events.append(('memory.recalled',memory_payload))
+            await bootstrap_async(
+                sid,
+                initial_events,
+                initial_snapshot,
+                meta=session_meta,
+            )
+        elif sink is None and callable(bootstrap_bundle):
             initial_events=[
                 ('goal.parsed',goal_payload),
                 ('belief.updated',belief_payload),
@@ -278,7 +292,13 @@ class EcomEvoEngine:
         ctx={'text':text,'assets':assets,'goal':goal,'belief':belief}
         async def controller_emit(t,p):await self._emit(sid,t,p,sink)
         async def controller_checkpoint(stage,state):
+            checkpoint_async=getattr(self.events,'save_checkpoint_and_append_async',None)
             checkpoint_and_append=getattr(self.events,'save_checkpoint_and_append',None)
+            if sink is None and callable(checkpoint_async):
+                reference,_event=await checkpoint_async(
+                    sid,state,'runtime.checkpointed',{'stage':stage}
+                )
+                return reference
             if callable(checkpoint_and_append):
                 reference,event=checkpoint_and_append(
                     sid,state,'runtime.checkpointed',{'stage':stage}
@@ -418,4 +438,8 @@ class EcomEvoEngine:
         if not outcome.skills_used:self.skills.note_run(goal.domain.value,success=bool(final_verify.passed),skill_used=False)
         if final_verify.passed:self.memory.add({'session_id':sid,'domain':goal.domain.value,'goal':text[:160],'score':final_verify.score,'risks':belief.risks})
         summary=RuntimeSummary(session_id=sid,domain=goal.domain,status='completed' if final_verify.passed else 'needs_evidence',tool_calls=len(tool_results),subagents=len(agents),recovery_events=outcome.recovery_events,verifier_score=final_verify.score,evolved=evolved,event_chain_valid=True,autonomy_steps=outcome.autonomy_steps,delegations=outcome.delegations,evolution_events=evolution_events,skills_used=outcome.skills_used,task_graph=outcome.task_graph,proposed_actions=actions,evidence=evidence,findings=list(dict.fromkeys(findings))[:12],risks=list(dict.fromkeys(risks))[:10],evidence_complete=bool(final_verify.evidence_complete),missing_evidence=list(final_verify.missing_evidence),tool_cost_used=tool_cost_used,tool_cost_budget=tool_cost_budget,tool_cost_remaining=tool_cost_remaining,stop_reason=stop_reason,stop_detail=stop_detail,stagnated=bool(outcome.stagnated),autonomy_mode=autonomy_mode,belief=belief)
-        await self._emit(sid,'run.completed',summary.model_dump(mode='json'),sink);summary.event_chain_valid=self.events.verify_chain(sid);return summary
+        await self._emit(sid,'run.completed',summary.model_dump(mode='json'),sink)
+        verify_async=getattr(self.events,'verify_chain_async',None)
+        if sink is None and callable(verify_async):summary.event_chain_valid=await verify_async(sid)
+        else:summary.event_chain_valid=self.events.verify_chain(sid)
+        return summary
