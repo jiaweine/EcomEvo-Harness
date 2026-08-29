@@ -56,39 +56,56 @@ async def run_mode(
     store.reset_count()
 
     completion_ms: list[float] = []
+    loop_lag_ms: list[float] = []
     failures: list[str] = []
+    stop_heartbeat = asyncio.Event()
+
+    async def heartbeat() -> None:
+        interval = 0.005
+        loop = asyncio.get_running_loop()
+        target = loop.time() + interval
+        while not stop_heartbeat.is_set():
+            await asyncio.sleep(max(0.0, target - loop.time()))
+            now = loop.time()
+            loop_lag_ms.append(max(0.0, now - target) * 1000.0)
+            target = now + interval
+
+    heartbeat_task = asyncio.create_task(heartbeat())
     started = time.perf_counter()
+    try:
+        for event_round in range(event_rounds):
+            release = asyncio.Event()
+            round_started = 0.0
 
-    for event_round in range(event_rounds):
-        release = asyncio.Event()
-        round_started = 0.0
+            async def one(index: int) -> None:
+                nonlocal round_started
+                await release.wait()
+                sid = session_ids[index]
+                try:
+                    if mode == "grouped":
+                        await store.append_grouped(
+                            sid,
+                            "pressure.event",
+                            {"round": event_round, "index": index},
+                        )
+                    else:
+                        store.append(
+                            sid,
+                            "pressure.event",
+                            {"round": event_round, "index": index},
+                        )
+                    completion_ms.append((time.perf_counter() - round_started) * 1000.0)
+                except Exception as exc:
+                    failures.append(f"{sid}/round-{event_round}: {exc!r}")
 
-        async def one(index: int) -> None:
-            nonlocal round_started
-            await release.wait()
-            sid = session_ids[index]
-            try:
-                if mode == "grouped":
-                    await store.append_grouped(
-                        sid,
-                        "pressure.event",
-                        {"round": event_round, "index": index},
-                    )
-                else:
-                    store.append(
-                        sid,
-                        "pressure.event",
-                        {"round": event_round, "index": index},
-                    )
-                completion_ms.append((time.perf_counter() - round_started) * 1000.0)
-            except Exception as exc:
-                failures.append(f"{sid}/round-{event_round}: {exc!r}")
-
-        tasks = [asyncio.create_task(one(index)) for index in range(sessions)]
-        await asyncio.sleep(0)
-        round_started = time.perf_counter()
-        release.set()
-        await asyncio.gather(*tasks)
+            tasks = [asyncio.create_task(one(index)) for index in range(sessions)]
+            await asyncio.sleep(0)
+            round_started = time.perf_counter()
+            release.set()
+            await asyncio.gather(*tasks)
+    finally:
+        stop_heartbeat.set()
+        await heartbeat_task
 
     wall = time.perf_counter() - started
     writer_transactions = store.immediate_begins
@@ -127,6 +144,13 @@ async def run_mode(
             "p95": round(percentile(completion_ms, 0.95), 3),
             "p99": round(percentile(completion_ms, 0.99), 3),
         },
+        "event_loop_lag_ms": {
+            "samples": len(loop_lag_ms),
+            "p50": round(percentile(loop_lag_ms, 0.50), 3),
+            "p95": round(percentile(loop_lag_ms, 0.95), 3),
+            "p99": round(percentile(loop_lag_ms, 0.99), 3),
+            "max": round(max(loop_lag_ms), 3) if loop_lag_ms else 0.0,
+        },
         "failures": failures[:20],
     }
 
@@ -151,11 +175,18 @@ async def main_async() -> dict[str, Any]:
     grouped_wall = statistics.median(row["wall_seconds"] for row in results["grouped"])
     legacy_p99 = statistics.median(row["completion_ms"]["p99"] for row in results["legacy"])
     grouped_p99 = statistics.median(row["completion_ms"]["p99"] for row in results["grouped"])
+    legacy_loop_p99 = statistics.median(
+        row["event_loop_lag_ms"]["p99"] for row in results["legacy"]
+    )
+    grouped_loop_p99 = statistics.median(
+        row["event_loop_lag_ms"]["p99"] for row in results["grouped"]
+    )
     legacy_tx = statistics.median(row["writer_transactions"] for row in results["legacy"])
     grouped_tx = statistics.median(row["writer_transactions"] for row in results["grouped"])
 
     wall_ratio = grouped_wall / legacy_wall if legacy_wall else 1.0
     p99_ratio = grouped_p99 / legacy_p99 if legacy_p99 else 1.0
+    loop_p99_ratio = grouped_loop_p99 / legacy_loop_p99 if legacy_loop_p99 else 1.0
     tx_ratio = grouped_tx / legacy_tx if legacy_tx else 1.0
 
     if tx_ratio > 0.10:
@@ -164,6 +195,19 @@ async def main_async() -> dict[str, Any]:
         failures.append(f"group commit did not reduce same-run wall by 20%: ratio={wall_ratio:.3f}")
     if p99_ratio > 0.90:
         failures.append(f"group commit did not reduce synchronized p99 by 10%: ratio={p99_ratio:.3f}")
+    # On a runner where the legacy sync path visibly starves the loop, the off-loop
+    # grouped path must materially improve that starvation. Very fast baselines skip
+    # the ratio gate because sub-10ms heartbeat noise dominates the measurement.
+    if legacy_loop_p99 >= 10.0 and loop_p99_ratio > 0.80:
+        failures.append(
+            "group commit did not reduce event-loop p99 lag by 20%: "
+            f"ratio={loop_p99_ratio:.3f}"
+        )
+    if grouped_loop_p99 > legacy_loop_p99 * 1.15 + 2.0:
+        failures.append(
+            "group commit regressed event-loop p99 lag beyond noise envelope: "
+            f"legacy={legacy_loop_p99:.3f} grouped={grouped_loop_p99:.3f}"
+        )
 
     return {
         "ok": not failures,
@@ -181,6 +225,9 @@ async def main_async() -> dict[str, Any]:
             "legacy_median_completion_p99_ms": round(legacy_p99, 3),
             "grouped_median_completion_p99_ms": round(grouped_p99, 3),
             "grouped_to_legacy_p99_ratio": round(p99_ratio, 4),
+            "legacy_median_event_loop_p99_ms": round(legacy_loop_p99, 3),
+            "grouped_median_event_loop_p99_ms": round(grouped_loop_p99, 3),
+            "grouped_to_legacy_event_loop_p99_ratio": round(loop_p99_ratio, 4),
         },
         "failures": failures,
     }
