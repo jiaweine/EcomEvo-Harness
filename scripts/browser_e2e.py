@@ -82,40 +82,59 @@ def run() -> None:
             expect(page.locator("#productTour")).to_be_hidden()
             expect(page.locator("body")).not_to_have_class(re.compile(r"\btour-open\b"))
 
-            # Customer landing surface: warm service language, CJK-first type, four
-            # business shortcuts, and no developer-console terminology.
+            # Landing surface follows the shared modern AI-workbench grammar:
+            # native system type, one centered work column, a quiet light sidebar,
+            # a dominant composer, and contextual detail hidden until requested.
             expect(page.locator("#welcomePanel h2")).to_have_text("您好，今天想处理什么？")
             expect(page.locator("#welcomePanel .welcome-copy > p")).to_contain_text("下一步怎么做")
             expect(page.locator(".agent-map-head")).to_contain_text("办理流程")
+            expect(page.locator(".agent-map")).to_be_hidden()
             expect(page.locator(".agent-map")).not_to_contain_text("Event Sourced")
             expect(page.locator(".right-title")).not_to_contain_text("Evidence & Authority")
+            expect(page.locator("#rightbar")).not_to_have_class(re.compile(r"\bopen\b"))
             expect(page.locator(".ops-overview")).to_be_visible(timeout=10_000)
             expect(page.locator(".ops-overview")).to_contain_text("处理服务")
             expect(page.locator(".ops-overview .ops-metric")).to_have_count(4)
-            expect(page.locator(".ops-overview")).to_contain_text("需要确认")
+            expect(page.locator(".ops-overview .ops-metrics")).to_be_hidden()
             design = page.evaluate(
                 """() => {
                     const hero = document.querySelector('#welcomePanel h2');
                     const lead = document.querySelector('#welcomePanel .welcome-copy > p');
                     const cards = [...document.querySelectorAll('.quick-card')].filter(node => !node.hidden);
                     const route = [...document.querySelectorAll('.agent-route .route-node')];
-                    const style = getComputedStyle(hero);
+                    const composer = document.querySelector('.composer');
+                    const sidebar = document.querySelector('.leftbar');
+                    const workspace = document.querySelector('.workspace');
+                    const heroStyle = getComputedStyle(hero);
+                    const bodyStyle = getComputedStyle(document.body);
                     return {
-                        fontFamily: style.fontFamily,
-                        fontSize: parseFloat(style.fontSize),
+                        fontFamily: bodyStyle.fontFamily,
+                        fontSize: parseFloat(heroStyle.fontSize),
                         leadLength: lead.textContent.trim().length,
                         cardCount: cards.length,
                         maxCardCopy: Math.max(...cards.map(node => node.textContent.trim().length)),
                         routeCount: route.length,
+                        heroWidth: hero.getBoundingClientRect().width,
+                        composerWidth: composer.getBoundingClientRect().width,
+                        sidebarBackground: getComputedStyle(sidebar).backgroundColor,
+                        workspaceBackground: getComputedStyle(workspace).backgroundColor,
                     };
                 }"""
             )
-            assert "sans-serif" in design["fontFamily"], design
-            assert design["fontSize"] <= 44, design
+            assert any(
+                marker in design["fontFamily"]
+                for marker in ("ui-sans-serif", "PingFang SC", "Segoe UI", "Microsoft YaHei", "Arial")
+            ), design
+            assert "Noto Sans" not in design["fontFamily"], design
+            assert design["fontSize"] <= 36, design
             assert design["leadLength"] <= 60, design
             assert design["cardCount"] == 4, design
             assert design["maxCardCopy"] <= 32, design
             assert design["routeCount"] == 5, design
+            assert design["heroWidth"] <= 780, design
+            assert design["composerWidth"] <= 800, design
+            assert design["sidebarBackground"] in {"rgb(247, 247, 248)", "rgba(247, 247, 248, 1)"}, design
+            assert design["workspaceBackground"] in {"rgb(255, 255, 255)", "rgba(255, 255, 255, 1)"}, design
             capture(page, "product-overview.png")
 
             page.locator("#providerBtn").click()
@@ -160,6 +179,12 @@ def run() -> None:
             expect(page.locator(".answer-provider").last).to_have_text("由 EcomEvo 完成")
             expect(page.locator("#runtimePulse")).to_be_visible(timeout=10_000)
             expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中")
+
+            # Progress, evidence, and authority remain available like a Codex-style
+            # contextual inspector, but they no longer consume permanent desktop width.
+            page.locator("#detailToggle").click()
+            expect(page.locator("#rightbar")).to_have_class(re.compile(r"\bopen\b"))
+            expect(page.locator("#rightClose")).to_be_focused()
             page.locator("#tab-progress").click()
             expect(page.locator("#panel-progress")).to_be_visible()
             expect(page.locator(".trace-ledger-head")).to_be_visible()
@@ -186,6 +211,10 @@ def run() -> None:
             if action_cards.count():
                 expect(action_cards.first.locator(".action-authority-row")).to_be_visible()
                 expect(action_cards.first.locator(".evidence-audit-cell")).to_have_count(3)
+
+            page.locator("#rightClose").click()
+            expect(page.locator("#rightbar")).not_to_have_class(re.compile(r"\bopen\b"))
+            expect(page.locator("#detailToggle")).to_be_focused()
 
             page.keyboard.press("Control+K")
             expect(page.locator("#commandModal")).to_be_visible()
