@@ -60,7 +60,7 @@ def test_empty_composer_is_visually_quiet_and_focus_stays_on_outer_shell():
 
 
 def test_new_task_composer_is_lower_than_previous_upper_third_layout():
-    assert 'padding:clamp(126px,19vh,228px) 0 22px!important' in OPS
+    assert 'padding:clamp(150px,23vh,276px) 0 22px!important' in OPS
     assert 'the lower-middle focal zone' in OPS
 
 
