@@ -47,6 +47,39 @@ def test_scanned_pdf_auto_routes_to_document_provider(monkeypatch):
     assert chosen is not None and chosen.info.key=='gemini' and chosen.info.supports_document
 
 
+def test_routing_normalizes_mime_and_malformed_document_metadata(monkeypatch):
+    monkeypatch.setenv('GEMINI_API_KEY','x')
+    monkeypatch.setenv('GEMINI_MODEL','gemini-test')
+    registry=ProviderRegistry()
+    weird_audio={'mime':'Audio/MPEG; codecs=mp3','path':'/tmp/a.mp3'}
+    assert registry.choose('auto',[weird_audio]).info.key=='gemini'
+    weird_pdf={'mime':'APPLICATION/PDF; charset=binary','path':'/tmp/a.pdf','meta':'broken'}
+    assert registry.choose('auto',[weird_pdf]).info.key=='gemini'
+    bad_density={'mime':'application/pdf','path':'/tmp/b.pdf','meta':{'text':'','text_density':'not-a-number'}}
+    assert registry.choose('auto',[bad_density]).info.key=='gemini'
+
+
+def test_video_prefers_native_video_provider_over_image_keyframe_fallback(monkeypatch):
+    monkeypatch.setenv('GEMINI_API_KEY','x')
+    monkeypatch.setenv('GEMINI_MODEL','gemini-test')
+    monkeypatch.setenv('DASHSCOPE_API_KEY','x')
+    monkeypatch.setenv('QWEN_MODEL','qwen-test')
+    registry=ProviderRegistry()
+    video={'mime':'video/mp4','path':'/tmp/v.mp4'}
+    chosen=registry.choose('auto',[video])
+    assert chosen is not None and chosen.info.key=='gemini' and chosen.info.supports_video
+
+
+def test_custom_private_provider_participates_in_auto_text_routing(monkeypatch):
+    monkeypatch.setenv('CUSTOM_BASE_URL','https://private.example/v1')
+    monkeypatch.setenv('CUSTOM_API_KEY','x')
+    monkeypatch.setenv('CUSTOM_MODEL','private-model')
+    monkeypatch.delenv('OPEN_MODEL_BASE_URL', raising=False)
+    registry=ProviderRegistry()
+    chosen=registry.choose('auto',[])
+    assert chosen is not None and chosen.info.key=='custom'
+
+
 def test_gemini_small_pdf_is_sent_as_document_inline(tmp_path):
     import asyncio, json, httpx
     from ecomevo.providers.gemini import GeminiProvider

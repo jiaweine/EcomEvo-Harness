@@ -13,6 +13,8 @@ from types import SimpleNamespace
 from typing import Any
 
 from ecomevo.models import ToolCall
+from ecomevo.providers.base import BaseProvider, ProviderInfo
+from ecomevo.providers.registry import ProviderRegistry
 from ecomevo.runtime import EcomEvoEngine
 from ecomevo.runtime.resilient_executor import ResilientPTCExecutor
 from ecomevo.runtime.skills import AdaptiveSkillLibrary
@@ -94,6 +96,116 @@ async def run_backpressure_probe(tasks: int = 64) -> dict[str, Any]:
         "duration_ms_p99": round(percentile(durations, 0.99), 3),
         "peak_active": tool.peak,
         "failures": failures,
+    }
+
+
+class _RoutingProvider(BaseProvider):
+    def __init__(
+        self,
+        key: str,
+        *,
+        multimodal: bool = False,
+        supports_video: bool = False,
+        supports_audio: bool = False,
+        supports_document: bool = False,
+    ):
+        self.info = ProviderInfo(
+            key=key,
+            name=key,
+            vendor="pressure",
+            model="pressure-model",
+            configured=True,
+            multimodal=multimodal,
+            supports_video=supports_video,
+            supports_audio=supports_audio,
+            note="pressure fixture",
+            supports_document=supports_document,
+        )
+
+    async def chat(self, **_kwargs):
+        return "ok"
+
+
+def _routing_pressure_registry() -> ProviderRegistry:
+    registry = ProviderRegistry()
+    registry.providers = {
+        "open_model": _RoutingProvider("open_model", multimodal=True),
+        "custom": _RoutingProvider("custom", multimodal=True),
+        "deepseek": _RoutingProvider("deepseek"),
+        "qwen": _RoutingProvider("qwen", multimodal=True, supports_document=True),
+        "doubao": _RoutingProvider("doubao", multimodal=True),
+        "gemini": _RoutingProvider(
+            "gemini",
+            multimodal=True,
+            supports_video=True,
+            supports_audio=True,
+            supports_document=True,
+        ),
+    }
+    return registry
+
+
+async def run_routing_pressure_probe(tasks: int = 6000) -> dict[str, Any]:
+    registry = _routing_pressure_registry()
+    cases: list[tuple[list[Any], str | None]] = [
+        ([], "open_model"),
+        ([{"mime": "image/png"}], "open_model"),
+        ([{"mime": "video/mp4"}], "gemini"),
+        ([{"mime": "Audio/MPEG; codecs=mp3"}], "gemini"),
+        ([{"mime": "application/pdf", "meta": {"text": "", "text_density": "not-a-number"}}], "gemini"),
+        ([{"mime": "image/webp"}, {"mime": "audio/webm"}], "gemini"),
+        ([{"mime": "APPLICATION/PDF; charset=binary", "meta": "corrupt"}], "gemini"),
+        (["bad-asset-shape"], "open_model"),
+    ]
+    latencies_ms: list[float] = []
+    failures: list[str] = []
+
+    async def one(index: int) -> None:
+        assets, expected = cases[index % len(cases)]
+        await asyncio.sleep(0)
+        t0 = time.perf_counter()
+        chosen = registry.choose("auto", assets)  # type: ignore[arg-type]
+        latency = (time.perf_counter() - t0) * 1000
+        latencies_ms.append(latency)
+        await asyncio.sleep(0)
+        current = registry.current_provider()
+        key = chosen.info.key if chosen else None
+        current_key = current.info.key if current else None
+        if key != expected:
+            failures.append(f"case={index % len(cases)} expected={expected} got={key}")
+        if current_key != key:
+            failures.append(f"context leak at task={index}: selected={key} current={current_key}")
+
+    started = time.perf_counter()
+    await asyncio.gather(*(one(index) for index in range(tasks)))
+    wall = time.perf_counter() - started
+
+    # Explicit provider choices must never silently cross a capability boundary.
+    explicit = registry.choose("deepseek", [{"mime": "image/png"}])
+    if explicit is not None:
+        failures.append("explicit text-only provider accepted a visual asset")
+    # The routing hot path should remain effectively constant-time even under a
+    # large task fan-out. The envelope is intentionally generous for hosted CI.
+    p99 = percentile(latencies_ms, 0.99)
+    if p99 >= 5.0:
+        failures.append(f"routing p99 exceeded 5ms envelope: {p99:.3f}ms")
+    if wall >= 5.0:
+        failures.append(f"routing pressure wall time exceeded 5s envelope: {wall:.3f}s")
+
+    return {
+        "name": "multimodal_provider_routing",
+        "tasks": tasks,
+        "cases": len(cases),
+        "wall_seconds": round(wall, 4),
+        "throughput_routes_per_second": round(tasks / wall, 1) if wall else 0.0,
+        "latency_ms": {
+            "p50": round(percentile(latencies_ms, 0.50), 4),
+            "p95": round(percentile(latencies_ms, 0.95), 4),
+            "p99": round(p99, 4),
+            "mean": round(statistics.fmean(latencies_ms), 4) if latencies_ms else 0.0,
+        },
+        "failures": failures[:20],
+        "failure_count": len(failures),
     }
 
 
@@ -205,6 +317,7 @@ async def main_async(levels: list[int]) -> dict[str, Any]:
         root = Path(tmp)
         probes = [
             await run_backpressure_probe(),
+            await run_routing_pressure_probe(),
             await asyncio.to_thread(run_policy_contention_probe, root),
         ]
         results = []

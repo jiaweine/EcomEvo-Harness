@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "frontend/provider-marketplace.css").read_text(encoding="utf-8")
 JS = (ROOT / "frontend/provider-marketplace.js").read_text(encoding="utf-8")
+POLISH = (ROOT / "frontend/customer-polish.js").read_text(encoding="utf-8")
 
 
 def test_provider_registry_exposes_major_ai_brands():
@@ -51,16 +52,18 @@ def test_new_openai_compatible_provider_defaults_are_current(monkeypatch):
         assert registry.choose(key, []) is registry.providers[key]
 
 
-def test_ai_picker_is_static_and_primary_in_the_task_header():
+def test_ai_picker_bootstraps_once_then_moves_to_the_composer():
     assert '/assets/provider-marketplace.css' in HTML
     assert '/assets/provider-marketplace.js' in HTML
     assert '/assets/fonts/noto-sans-sc/index.css' not in HTML
-    title_row = HTML.index('class="task-title-row"')
-    provider_button = HTML.index('id="providerBtn"')
-    task_actions = HTML.index('class="task-head-actions"')
-    assert title_row < provider_button < task_actions
+    # Keep one authoritative provider trigger in static HTML for bootstrap
+    # resilience; customer-polish moves that same node into the live composer.
+    assert HTML.count('id="providerBtn"') == 1
     assert 'id="providerTriggerName">自动选择<' in HTML
-    assert 'id="providerTriggerModel">智能路由<' in HTML
+    assert "attachment.insertAdjacentElement('afterend', route)" in POLISH
+    assert "route.dataset.surface = 'composer'" in POLISH
+    assert "document.createElement('link')" not in POLISH
+    assert "routeMaxWidth()" in POLISH
 
 
 def test_picker_controls_the_existing_authoritative_provider_value():
@@ -80,3 +83,5 @@ def test_picker_keeps_the_workbench_compact_and_responsive():
     assert "grid-template-columns:1fr" in CSS
     assert "max-width:260px" in CSS
     assert "width:min(860px,94vw)" in CSS
+    assert "if (window.innerWidth <= 820) return '132px'" in POLISH
+    assert "if (window.innerWidth <= 520) return '116px'" in POLISH

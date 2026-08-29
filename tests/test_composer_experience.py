@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[1]
 JS = (ROOT / 'frontend/provider-marketplace.js').read_text(encoding='utf-8')
 CSS = (ROOT / 'frontend/provider-marketplace.css').read_text(encoding='utf-8')
 OPS = (ROOT / 'frontend/ops-intelligence.css').read_text(encoding='utf-8')
+POLISH = (ROOT / 'frontend/customer-polish.js').read_text(encoding='utf-8')
 
 
 def test_composer_has_first_class_voice_input_with_audio_fallback():
@@ -52,6 +53,24 @@ def test_composer_visual_hierarchy_matches_modern_chat_products():
         assert needle in CSS
 
 
+def test_routing_control_is_semantically_moved_into_composer_bottom_bar():
+    for needle in (
+        "const route = $('#providerBtn')",
+        "const attachRow = $('.composer .attach-row')",
+        "const attachment = $('.composer .composer-attach-wrap')",
+        "if (!route || !attachRow || !attachment || attachment.parentElement !== attachRow) return",
+        "attachment.insertAdjacentElement('afterend', route)",
+        "route.dataset.surface = 'composer'",
+        "选择路由，当前",
+        "routeMaxWidth()",
+        "style.setProperty(name, value, 'important')",
+        "window.addEventListener('resize', polishRoutingControl",
+    ):
+        assert needle in POLISH
+    assert "document.createElement('link')" not in POLISH
+    assert "composer-routing.css" not in POLISH
+
+
 def test_empty_composer_is_visually_quiet_and_focus_stays_on_outer_shell():
     assert '#messageInput:focus-visible' in CSS
     assert 'outline:none!important' in CSS
@@ -69,3 +88,6 @@ def test_mobile_and_reduced_motion_details_are_explicit():
     assert 'bottom:calc(78px + env(safe-area-inset-bottom))' in CSS
     assert '@media(prefers-reduced-motion:reduce)' in CSS
     assert 'animation:none!important' in CSS
+    assert "if (window.innerWidth <= 390) return '104px'" in POLISH
+    assert "if (window.innerWidth <= 520) return '116px'" in POLISH
+    assert "if (window.innerWidth <= 820) return '132px'" in POLISH
