@@ -65,6 +65,7 @@ jobs:
               'customer-copy.js',
               'customer-dynamic-copy.js',
               'customer-polish.js',
+              'provider-marketplace.js',
               'realtime-reconcile.js',
               'app.js',
               'intro.js',
@@ -73,7 +74,7 @@ jobs:
           for script in scripts:
               assert (frontend / script).is_file(), f'missing static script: {script}'
           assert not (frontend / 'enhancements.js').exists(), 'legacy dynamic enhancement loader must stay removed'
-          for css_path in ('frontend/visual.css', 'frontend/product-polish.css', 'frontend/intro.css', 'frontend/lifecycle.css'):
+          for css_path in ('frontend/visual.css', 'frontend/product-polish.css', 'frontend/intro.css', 'frontend/lifecycle.css', 'frontend/provider-marketplace.css'):
               css = Path(css_path).read_text(encoding='utf-8')
               assert css.count('{') == css.count('}'), f'unbalanced {css_path}'
           print('frontend static checks ok')
