@@ -26,6 +26,54 @@ class ProviderRegistry:
             return default
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
+    @staticmethod
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return default
+        if number != number or number in {float('inf'), float('-inf')}:
+            return default
+        return number
+
+    @staticmethod
+    def _asset_mime(asset: Any) -> str:
+        if not isinstance(asset, dict):
+            return ''
+        # MIME parameters and case differences must not change routing semantics.
+        return str(asset.get('mime') or '').split(';', 1)[0].strip().lower()
+
+    @classmethod
+    def _routing_requirements(cls, assets: list[dict[str, Any]] | None) -> dict[str, bool]:
+        needs_audio = False
+        needs_image = False
+        needs_video = False
+        needs_document = False
+        for asset in assets or []:
+            mime = cls._asset_mime(asset)
+            if mime.startswith('audio/'):
+                needs_audio = True
+            elif mime.startswith('image/'):
+                needs_image = True
+            elif mime.startswith('video/'):
+                needs_video = True
+
+            if mime == 'application/pdf' and isinstance(asset, dict):
+                raw_meta = asset.get('meta')
+                meta = raw_meta if isinstance(raw_meta, dict) else {}
+                text = str(meta.get('text') or '').strip()
+                density = cls._safe_float(meta.get('text_density'), 0.0)
+                # Native-text PDFs are parsed locally. Image-only/scanned PDFs need a
+                # provider that explicitly supports document vision.
+                if not text or density < 40:
+                    needs_document = True
+        return {
+            'audio': needs_audio,
+            'image': needs_image,
+            'video': needs_video,
+            'document': needs_document,
+        }
+
     def _load(self):
         e = os.environ
         self.providers = {
@@ -108,17 +156,12 @@ class ProviderRegistry:
     def choose(self, preferred: str | None, assets: list[dict[str, Any]]) -> BaseProvider | None:
         if preferred == 'demo':
             return self._select(None)
-        needs_audio = any(str(a.get('mime', '')).startswith('audio/') for a in assets)
-        needs_visual = any(str(a.get('mime', '')).startswith(('image/', 'video/')) for a in assets)
-        # Native-text PDFs can already be parsed locally. Image-only/scanned PDFs require
-        # a provider that explicitly advertises document-vision support.
-        needs_document = any(
-            str(a.get('mime', '')) == 'application/pdf' and (
-                not str((a.get('meta') or {}).get('text') or '').strip()
-                or float((a.get('meta') or {}).get('text_density') or 0) < 40
-            )
-            for a in assets
-        )
+
+        requirements = self._routing_requirements(assets)
+        needs_audio = requirements['audio']
+        needs_image = requirements['image']
+        needs_video = requirements['video']
+        needs_document = requirements['document']
 
         def compatible(p: BaseProvider | None) -> bool:
             if not (p and p.info.configured):
@@ -127,8 +170,11 @@ class ProviderRegistry:
                 return False
             if needs_document and not p.info.supports_document:
                 return False
-            # Video can be represented by verified keyframes, so image multimodality is sufficient.
-            if needs_visual and not p.info.multimodal:
+            if needs_image and not p.info.multimodal:
+                return False
+            # Native video support is preferred, but verified keyframes remain a safe
+            # fallback for multimodal image providers.
+            if needs_video and not (p.info.supports_video or p.info.multimodal):
                 return False
             return True
 
@@ -136,15 +182,19 @@ class ProviderRegistry:
             p = self.providers.get(preferred)
             return self._select(p if compatible(p) else None)
 
-        open_first = ['open_model'] if 'open_model' in self.providers else []
+        private_first = [key for key in ('open_model', 'custom') if key in self.providers]
         if needs_audio or needs_document:
-            order = ['gemini', 'qwen', 'doubao', 'openai', 'anthropic', 'kimi', 'hunyuan', 'deepseek', 'zhipu', 'qianfan'] + open_first
-        elif needs_visual:
-            order = open_first + ['qwen', 'doubao', 'gemini', 'openai', 'anthropic', 'kimi', 'hunyuan', 'deepseek', 'zhipu', 'qianfan']
+            order = ['gemini', 'qwen', 'doubao', 'openai', 'anthropic', 'kimi', 'hunyuan', 'deepseek', 'zhipu', 'qianfan'] + private_first
+        elif needs_video:
+            # Prefer a provider that can consume real video before falling back to
+            # providers that only see extracted keyframes.
+            order = ['gemini'] + private_first + ['qwen', 'doubao', 'openai', 'anthropic', 'kimi', 'hunyuan', 'deepseek', 'zhipu', 'qianfan']
+        elif needs_image:
+            order = private_first + ['qwen', 'doubao', 'gemini', 'openai', 'anthropic', 'kimi', 'hunyuan', 'deepseek', 'zhipu', 'qianfan']
         else:
             # Routine text planning/tool coordination can preferentially use an operator-provided
-            # current open-weight model; deterministic EvoGain + verifier boundaries remain authoritative.
-            order = open_first + ['deepseek', 'qwen', 'doubao', 'kimi', 'zhipu', 'hunyuan', 'qianfan', 'openai', 'anthropic', 'gemini']
+            # private/open-weight model; deterministic EvoGain + verifier boundaries remain authoritative.
+            order = private_first + ['deepseek', 'qwen', 'doubao', 'kimi', 'zhipu', 'hunyuan', 'qianfan', 'openai', 'anthropic', 'gemini']
         for key in order:
             p = self.providers.get(key)
             if compatible(p):
