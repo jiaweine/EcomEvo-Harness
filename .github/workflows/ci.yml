@@ -119,6 +119,8 @@ jobs:
           python -m pip install -e .
       - name: Bootstrap persistence A/B gate
         run: python scripts/bootstrap_pressure_gate.py
+      - name: Runtime method profile
+        run: python scripts/runtime_stage_profile.py --tasks 120
       - name: Current-head concurrency gate
         run: python scripts/pressure_gate.py
 
