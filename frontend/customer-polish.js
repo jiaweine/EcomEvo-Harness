@@ -3,7 +3,6 @@
 
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
-  const ROUTING_STYLE_ID = 'composerRoutingStyles';
 
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
@@ -21,13 +20,16 @@
     }
   }
 
-  function ensureRoutingStyles() {
-    if (document.getElementById(ROUTING_STYLE_ID)) return;
-    const link = document.createElement('link');
-    link.id = ROUTING_STYLE_ID;
-    link.rel = 'stylesheet';
-    link.href = '/assets/composer-routing.css';
-    document.head.appendChild(link);
+  function importantStyle(node, properties) {
+    if (!node) return;
+    Object.entries(properties).forEach(([name, value]) => node.style.setProperty(name, value, 'important'));
+  }
+
+  function routeMaxWidth() {
+    if (window.innerWidth <= 390) return '104px';
+    if (window.innerWidth <= 520) return '116px';
+    if (window.innerWidth <= 820) return '132px';
+    return '154px';
   }
 
   function polishRoutingControl() {
@@ -41,6 +43,33 @@
     if (route.parentElement !== attachRow) attachment.insertAdjacentElement('afterend', route);
     route.classList.add('composer-route-control');
     route.dataset.surface = 'composer';
+
+    // The provider trigger already has static marketplace CSS. These small
+    // geometry overrides only adapt that same control to the tighter composer
+    // toolbar without introducing another stylesheet or another source of truth.
+    importantStyle(route, {
+      width: 'auto',
+      'min-width': '0',
+      'max-width': routeMaxWidth(),
+      height: '32px',
+      margin: '0 0 0 1px',
+      padding: '2px 7px 2px 4px',
+      display: 'inline-grid',
+      'grid-template-columns': '24px minmax(0,1fr) 11px',
+      gap: '5px',
+      'flex': '0 1 auto',
+    });
+    importantStyle(route.querySelector('.ai-provider-mark'), {
+      width: '24px', height: '24px', border: '0', 'border-radius': '7px',
+      background: '#f1f1f2', color: '#4f4f4f', 'font-size': '8px',
+    });
+    importantStyle(route.querySelector('.ai-provider-copy'), { display: 'block' });
+    importantStyle(route.querySelector('.ai-provider-copy b'), {
+      display: 'block', 'font-size': '10.5px', 'line-height': '1.2',
+      'font-weight': '550', color: '#555',
+    });
+    importantStyle(route.querySelector('.ai-provider-copy small'), { display: 'none' });
+    importantStyle(route.querySelector('.ai-provider-chevron'), { 'font-size': '9px' });
 
     const name = route.querySelector('#providerTriggerName');
     if (name?.textContent.trim() === '自动选择') setText(name, '自动路由');
@@ -240,7 +269,6 @@
   }
 
   function boot() {
-    ensureRoutingStyles();
     apply();
     let queued = false;
     const observer = new MutationObserver(() => {
@@ -252,6 +280,7 @@
       });
     });
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    window.addEventListener('resize', polishRoutingControl, { passive: true });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
