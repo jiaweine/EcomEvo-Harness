@@ -116,6 +116,10 @@ html body #messageInput{
   font-size:14px!important;
   line-height:1.58!important;
 }
+html body #messageInput:focus-visible{
+  outline:none!important;
+  outline-offset:0!important;
+}
 html body #messageInput::placeholder{color:#909090!important}
 html body .composer-bottom{
   min-height:47px!important;
@@ -280,6 +284,16 @@ html body .send-btn{
   width:36px!important;
   min-width:36px!important;
   height:36px!important;
+}
+@supports selector(.composer:has(.pending-asset)){
+  html body .composer:has(#messageInput:placeholder-shown):not(:has(.pending-asset)) .send-btn{
+    background:#e1e1e1!important;
+    color:#fff!important;
+    box-shadow:none!important;
+  }
+  html body .composer:has(#messageInput:placeholder-shown):not(:has(.pending-asset)) .send-btn:hover{
+    background:#dadada!important;
+  }
 }
 html body .send-btn:disabled{
   background:#d8d8d8!important;
