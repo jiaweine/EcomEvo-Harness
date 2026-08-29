@@ -92,10 +92,8 @@ def run() -> None:
             expect(page.locator(".agent-map")).not_to_contain_text("Event Sourced")
             expect(page.locator(".right-title")).not_to_contain_text("Evidence & Authority")
             expect(page.locator("#rightbar")).not_to_have_class(re.compile(r"\bopen\b"))
-            expect(page.locator(".ops-overview")).to_be_visible(timeout=10_000)
-            expect(page.locator(".ops-overview")).to_contain_text("处理服务")
+            expect(page.locator(".ops-overview")).to_be_hidden(timeout=10_000)
             expect(page.locator(".ops-overview .ops-metric")).to_have_count(4)
-            expect(page.locator(".ops-overview .ops-metrics")).to_be_hidden()
             design = page.evaluate(
                 """() => {
                     const hero = document.querySelector('#welcomePanel h2');
@@ -105,6 +103,7 @@ def run() -> None:
                     const composer = document.querySelector('.composer');
                     const sidebar = document.querySelector('.leftbar');
                     const workspace = document.querySelector('.workspace');
+                    const hiddenBridge = document.querySelector('.quick-card[hidden]');
                     const heroStyle = getComputedStyle(hero);
                     const bodyStyle = getComputedStyle(document.body);
                     return {
@@ -118,6 +117,7 @@ def run() -> None:
                         composerWidth: composer.getBoundingClientRect().width,
                         sidebarBackground: getComputedStyle(sidebar).backgroundColor,
                         workspaceBackground: getComputedStyle(workspace).backgroundColor,
+                        hiddenBridgeDisplay: hiddenBridge ? getComputedStyle(hiddenBridge).display : 'none',
                     };
                 }"""
             )
@@ -135,6 +135,7 @@ def run() -> None:
             assert design["composerWidth"] <= 800, design
             assert design["sidebarBackground"] in {"rgb(247, 247, 248)", "rgba(247, 247, 248, 1)"}, design
             assert design["workspaceBackground"] in {"rgb(255, 255, 255)", "rgba(255, 255, 255, 1)"}, design
+            assert design["hiddenBridgeDisplay"] == "none", design
             capture(page, "product-overview.png")
 
             page.locator("#providerBtn").click()
