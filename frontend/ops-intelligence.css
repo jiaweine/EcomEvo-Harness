@@ -1,148 +1,58 @@
-/* EcomEvo contextual operations layer.
-   This stylesheet is loaded by ops-intelligence.js and therefore must agree
-   with the final customer visual system rather than reintroduce console chrome. */
+/* EcomEvo contextual operations layer — Unified AI Workbench v4.
+   This stylesheet is loaded after the base customer styles. Runtime and audit
+   detail remain available on demand, but must never turn the landing surface
+   back into a dashboard. */
 
-.welcome h2{
-  font-size:clamp(38px,3.1vw,44px)!important;
-  line-height:1.06!important;
-  letter-spacing:-.052em!important;
-}
+/* Internal scene bridges stay in the DOM for behavior only. Author-level
+   display rules must never override the semantic `hidden` attribute. */
+.quick-card[hidden]{display:none!important}
 
-/* A compact service-context ribbon, not a KPI dashboard. */
-.ops-overview{
-  margin:24px 0 22px!important;
-  border:1px solid var(--customer-line)!important;
-  border-radius:13px!important;
-  overflow:hidden!important;
-  background:rgba(255,255,255,.78)!important;
-  box-shadow:var(--customer-shadow-xs)!important;
-}
-.ops-overview-head{
-  min-height:42px!important;
-  padding:9px 13px!important;
-  display:flex!important;
-  align-items:center!important;
-  justify-content:space-between!important;
-  gap:16px!important;
-  border:0!important;
-  border-bottom:1px solid var(--customer-line-soft)!important;
-  background:#fafafd!important;
-}
-.ops-overview-head>div{display:flex!important;align-items:baseline!important;gap:8px!important}
-.ops-overview-head small,
-.ops-recent-head small,
-.evidence-audit-cell small,
-.trace-ledger-title small,
-.evidence-summary-stat small{
-  font-family:var(--font-ui)!important;
-  font-size:9.5px!important;
-  line-height:1.35!important;
-  letter-spacing:0!important;
-  color:var(--customer-subtle)!important;
-}
-.ops-overview-head b{
-  font-size:11.5px!important;
-  font-weight:620!important;
-  color:var(--customer-ink)!important;
-}
-.ops-live-label{
+/* The processing selector remains in the DOM/API surface but the visible
+   entry point is the compact top-bar control, matching modern AI products. */
+.provider-control{display:none!important}
+#providerBtn,#productGuideBtn{
   display:inline-flex!important;
+  width:32px!important;
+  min-width:32px!important;
+  height:32px!important;
+  padding:0!important;
   align-items:center!important;
-  gap:6px!important;
-  font-size:9.5px!important;
-  color:var(--customer-muted)!important;
+  justify-content:center!important;
+  border-radius:9px!important;
+  color:#666!important;
 }
-.ops-live-label::before{
-  content:"";
-  width:6px!important;
-  height:6px!important;
-  border-radius:50%!important;
-  background:var(--customer-success)!important;
-  box-shadow:0 0 0 3px rgba(35,132,91,.08)!important;
-}
-.ops-metrics{
-  display:grid!important;
-  grid-template-columns:1.15fr repeat(3,minmax(0,1fr))!important;
-}
-.ops-metric{
-  min-width:0!important;
-  min-height:72px!important;
-  padding:11px 12px!important;
-  border:0!important;
-  border-right:1px solid var(--customer-line-soft)!important;
-  background:rgba(255,255,255,.72)!important;
-  box-shadow:none!important;
-}
-.ops-metric:last-child{border-right:0!important}
-.ops-metric small{
-  display:block!important;
-  font-family:var(--font-ui)!important;
-  font-size:9px!important;
-  letter-spacing:0!important;
-  color:var(--customer-subtle)!important;
-}
-.ops-metric strong{
-  display:block!important;
-  margin-top:5px!important;
-  font-size:14px!important;
-  font-weight:650!important;
-  line-height:1.2!important;
-  color:var(--customer-ink)!important;
-}
-.ops-metric span{
-  display:block!important;
-  margin-top:4px!important;
-  font-size:9.5px!important;
-  line-height:1.4!important;
-  color:var(--customer-muted)!important;
-}
-.ops-metric.ok{box-shadow:inset 2px 0 0 var(--customer-success)!important}
-.ops-metric.warn{box-shadow:inset 2px 0 0 var(--customer-warning)!important}
-.ops-metric.neutral{box-shadow:inset 2px 0 0 #a3a6ae!important}
-.ops-metric.authority{box-shadow:inset 2px 0 0 var(--customer-accent)!important}
+#providerBtn:hover,#productGuideBtn:hover{background:#f2f2f2!important;color:#222!important}
+#providerBtn em,#productGuideBtn em{display:none!important}
+#assetLibraryBtn{display:none!important}
 
-.ops-recent{
-  border:0!important;
-  border-top:1px solid var(--customer-line-soft)!important;
-  background:#fff!important;
-}
-.ops-recent-head{
-  min-height:38px!important;
-  padding:8px 12px!important;
-  display:flex!important;
-  align-items:center!important;
-  justify-content:space-between!important;
-  gap:12px!important;
-  background:#fafafd!important;
-  border:0!important;
-  border-bottom:1px solid var(--customer-line-soft)!important;
-}
-.ops-recent-head b{font-size:11px!important;font-weight:620!important;color:var(--customer-ink)!important}
-.ops-recent-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
-.ops-recent-item{
-  min-width:0!important;
-  min-height:58px!important;
-  padding:9px 11px!important;
-  display:grid!important;
-  grid-template-columns:22px minmax(0,1fr) auto!important;
-  align-items:center!important;
-  gap:9px!important;
-  text-align:left!important;
-  border:0!important;
-  border-right:1px solid var(--customer-line-soft)!important;
-  border-bottom:1px solid var(--customer-line-soft)!important;
-  background:#fff!important;
-  transition:background .15s ease!important;
-}
-.ops-recent-item:nth-child(even){border-right:0!important}
-.ops-recent-item:hover{background:#f7f7fa!important}
-.ops-recent-index{font-family:var(--font-ui)!important;font-size:9px!important;color:var(--customer-subtle)!important}
-.ops-recent-copy{min-width:0!important}
-.ops-recent-copy b,.ops-recent-copy small{display:block!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important}
-.ops-recent-copy b{font-size:11.5px!important;font-weight:600!important;color:var(--customer-ink)!important}
-.ops-recent-copy small{margin-top:2px!important;font-size:9.5px!important;color:var(--customer-muted)!important}
-.ops-recent-open{font-size:9.5px!important;color:var(--customer-accent)!important}
+/* New-task landing: one focused column. Runtime telemetry still exists and is
+   tested, but it is not part of the visual hierarchy until the user asks for
+   detail. */
+html body #welcomePanel .ops-overview{display:none!important}
 
+@supports selector(.workspace:has(#welcomePanel:not([hidden]))){
+  .workspace:has(#welcomePanel:not([hidden])){
+    grid-template-rows:auto auto auto minmax(0,1fr)!important;
+  }
+  .workspace:has(#welcomePanel:not([hidden])) .chat-scroll{
+    grid-row:3!important;
+    min-height:0!important;
+    overflow:visible!important;
+    padding-bottom:0!important;
+  }
+  .workspace:has(#welcomePanel:not([hidden])) .welcome{
+    padding:clamp(70px,10vh,104px) 0 18px!important;
+  }
+  .workspace:has(#welcomePanel:not([hidden])) .composer-zone{
+    grid-row:4!important;
+    align-self:start!important;
+    padding:0 24px 18px!important;
+    border-top:0!important;
+    background:#fff!important;
+  }
+}
+
+/* Detail-tab counts stay neutral. */
 .ops-tab-count{
   min-width:18px!important;
   height:18px!important;
@@ -150,60 +60,70 @@
   padding:0 5px!important;
   display:inline-grid!important;
   place-items:center!important;
-  border:1px solid var(--customer-line)!important;
+  border:1px solid #dedede!important;
   border-radius:999px!important;
-  background:#f2f3f6!important;
+  background:#f5f5f5!important;
   font-family:var(--font-ui)!important;
   font-size:9px!important;
   font-style:normal!important;
   line-height:1!important;
-  color:var(--customer-muted)!important;
+  color:#666!important;
 }
 .right-tab.active .ops-tab-count{
-  border-color:var(--customer-accent-line)!important;
-  background:var(--customer-accent-soft)!important;
-  color:var(--customer-accent)!important;
+  border-color:#d2d2d2!important;
+  background:#efefef!important;
+  color:#222!important;
 }
 
+/* Progress ledger — compact, editorial, and suitable for a contextual drawer. */
 .trace-ledger-head{
-  min-height:42px!important;
-  margin-top:14px!important;
-  padding:8px 0!important;
+  min-height:40px!important;
+  margin-top:12px!important;
+  padding:7px 0!important;
   display:flex!important;
   align-items:end!important;
   justify-content:space-between!important;
   gap:12px!important;
-  border-bottom:1px solid var(--customer-line-soft)!important;
+  border-bottom:1px solid #ededed!important;
 }
 .trace-ledger-title{display:grid!important;gap:1px!important}
-.trace-ledger-title b{font-size:12px!important;font-weight:620!important;color:var(--customer-ink)!important}
-.trace-ledger-meta{font-family:var(--font-ui)!important;font-size:9.5px!important;color:var(--customer-subtle)!important}
+.trace-ledger-title b{font-size:11.5px!important;font-weight:600!important;color:#282828!important}
+.trace-ledger-title small,.trace-ledger-meta{
+  font-family:var(--font-ui)!important;
+  font-size:9px!important;
+  letter-spacing:0!important;
+  color:#8a8a8a!important;
+}
 
-/* Evidence is dense; source identity lives in a small icon and metadata, not
-   a repeated brand-colored rail on every row. */
+/* Evidence summary and provenance remain auditable without colored rails. */
 .evidence-summary{
   display:grid!important;
   grid-template-columns:repeat(3,minmax(0,1fr))!important;
-  border-bottom:1px solid var(--customer-line-soft)!important;
-  background:#f7f7f9!important;
+  border-bottom:1px solid #ededed!important;
+  background:#fafafa!important;
 }
 .evidence-summary-stat{
   min-width:0!important;
   padding:9px 8px 8px!important;
-  border-right:1px solid var(--customer-line-soft)!important;
-  box-shadow:inset 0 2px 0 transparent!important;
+  border-right:1px solid #ededed!important;
+  box-shadow:none!important;
 }
 .evidence-summary-stat:last-child{border-right:0!important}
+.evidence-summary-stat small{
+  display:block!important;
+  font-family:var(--font-ui)!important;
+  font-size:8.5px!important;
+  letter-spacing:0!important;
+  color:#929292!important;
+}
 .evidence-summary-stat b{
   display:block!important;
   margin-top:3px!important;
   font-family:var(--font-ui)!important;
   font-size:11px!important;
-  font-weight:650!important;
-  color:var(--customer-ink)!important;
+  font-weight:600!important;
+  color:#2e2e2e!important;
 }
-.evidence-summary-stat.original{box-shadow:inset 0 2px 0 var(--customer-success)!important}
-.evidence-summary-stat.derived{box-shadow:inset 0 2px 0 var(--customer-accent)!important}
 
 .evidence-provenance-line{
   margin-top:8px!important;
@@ -212,8 +132,8 @@
   align-items:center!important;
   gap:4px!important;
   min-width:0!important;
-  border-top:1px solid var(--customer-line-soft)!important;
-  color:var(--customer-muted)!important;
+  border-top:1px solid #ededed!important;
+  color:#777!important;
 }
 .evidence-meta-item{
   position:relative!important;
@@ -224,7 +144,7 @@
   align-items:center!important;
   gap:4px!important;
   font-size:9px!important;
-  color:var(--customer-muted)!important;
+  color:#777!important;
 }
 .evidence-meta-item:first-child{padding-left:0!important}
 .evidence-meta-item:not(:first-child)::before{
@@ -234,7 +154,7 @@
   top:2px!important;
   bottom:2px!important;
   width:1px!important;
-  background:var(--customer-line-soft)!important;
+  background:#e6e6e6!important;
 }
 .evidence-meta-item::after{
   content:attr(data-label);
@@ -243,7 +163,7 @@
   font-family:var(--font-ui)!important;
   font-size:7.5px!important;
   letter-spacing:0!important;
-  color:var(--customer-subtle)!important;
+  color:#999!important;
 }
 .evidence-meta-item b{
   min-width:0!important;
@@ -252,31 +172,29 @@
   white-space:nowrap!important;
   font-size:9.5px!important;
   font-weight:500!important;
-  color:var(--customer-muted)!important;
+  color:#666!important;
 }
 .evidence-meta-item.original b{color:var(--customer-success)!important}
-.evidence-meta-item.derived b{color:var(--customer-accent)!important}
-.evidence-original,
-.evidence-derived{
-  box-shadow:none!important;
-}
+.evidence-meta-item.derived b{color:#555!important}
+.evidence-original,.evidence-derived{box-shadow:none!important}
 .evidence-original .evidence-icon{
   border-color:#cfe9dc!important;
   background:#f0f8f4!important;
   color:var(--customer-success)!important;
 }
 .evidence-derived .evidence-icon{
-  border-color:#ddddff!important;
-  background:#f3f3ff!important;
-  color:var(--customer-accent)!important;
+  border-color:#dedede!important;
+  background:#f7f7f7!important;
+  color:#4a4a4a!important;
 }
 
-/* Authority remains explicit because these actions change real business state. */
+/* High-impact actions keep explicit authority metadata, but the container is
+   neutral and belongs only in the detail drawer. */
 .action-authority-row{
   display:grid!important;
   grid-template-columns:repeat(3,minmax(0,1fr))!important;
   margin:12px 0!important;
-  border:1px solid var(--customer-line-soft)!important;
+  border:1px solid #e7e7e7!important;
   border-radius:9px!important;
   overflow:hidden!important;
 }
@@ -284,10 +202,18 @@
   min-width:0!important;
   padding:8px 9px!important;
   border:0!important;
-  border-right:1px solid var(--customer-line-soft)!important;
-  background:#f8f8fa!important;
+  border-right:1px solid #e7e7e7!important;
+  background:#fafafa!important;
+  box-shadow:none!important;
 }
 .evidence-audit-cell:last-child{border-right:0!important}
+.evidence-audit-cell small{
+  display:block!important;
+  font-family:var(--font-ui)!important;
+  font-size:8.5px!important;
+  letter-spacing:0!important;
+  color:#929292!important;
+}
 .evidence-audit-cell b{
   display:block!important;
   margin-top:3px!important;
@@ -296,38 +222,26 @@
   white-space:nowrap!important;
   font-size:10px!important;
   font-weight:600!important;
-  color:var(--customer-ink-2)!important;
+  color:#3a3a3a!important;
 }
-.evidence-audit-cell.authority{box-shadow:inset 2px 0 0 var(--customer-accent)!important}
 .evidence-audit-cell.impact{box-shadow:inset 2px 0 0 var(--customer-warning)!important}
 
-@media(max-width:1360px){
-  .ops-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}
-  .ops-metric:nth-child(2){border-right:0!important}
-  .ops-metric:nth-child(-n+2){border-bottom:1px solid var(--customer-line-soft)!important}
-  .ops-recent-list{grid-template-columns:1fr!important}
-  .ops-recent-item{border-right:0!important}
-}
-
 @media(max-width:820px){
-  .welcome h2{font-size:35px!important}
-  .ops-overview{margin:20px 0!important}
-  .ops-overview-head{padding:8px 10px!important}
-  .ops-metric{min-height:72px!important;padding:10px!important}
-  .ops-metric strong{font-size:13px!important}
+  #providerBtn,#productGuideBtn{display:none!important}
   .evidence-provenance-line{flex-wrap:wrap!important;row-gap:6px!important}
   .evidence-meta-item{max-width:100%!important;flex:1 1 auto!important}
   .action-authority-row{grid-template-columns:1fr!important}
-  .evidence-audit-cell{border-right:0!important;border-bottom:1px solid var(--customer-line-soft)!important}
+  .evidence-audit-cell{border-right:0!important;border-bottom:1px solid #e7e7e7!important}
   .evidence-audit-cell:last-child{border-bottom:0!important}
+  @supports selector(.workspace:has(#welcomePanel:not([hidden]))){
+    .workspace:has(#welcomePanel:not([hidden])) .welcome{padding:48px 0 14px!important}
+    .workspace:has(#welcomePanel:not([hidden])) .composer-zone{
+      padding:0 9px calc(10px + env(safe-area-inset-bottom))!important;
+    }
+  }
 }
 
 @media(max-width:520px){
-  .welcome h2{font-size:31px!important}
-  .ops-metrics{grid-template-columns:1fr!important}
-  .ops-metric{border-right:0!important;border-bottom:1px solid var(--customer-line-soft)!important}
-  .ops-metric:last-child{border-bottom:0!important}
-  .ops-live-label{display:none!important}
   .evidence-summary-stat{padding-inline:6px!important}
   .evidence-meta-item::after{display:none!important}
 }
