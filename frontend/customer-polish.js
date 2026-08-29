@@ -4,15 +4,6 @@
   const $ = selector => document.querySelector(selector);
   const $$ = selector => [...document.querySelectorAll(selector)];
 
-  function installStylesheet() {
-    if (document.querySelector('link[data-ecomevo-customer-polish]')) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = '/assets/customer-polish.css';
-    link.dataset.ecomevoCustomerPolish = '1';
-    document.head.appendChild(link);
-  }
-
   function setText(node, value) {
     if (node && node.textContent !== value) node.textContent = value;
   }
@@ -219,7 +210,6 @@
   }
 
   function boot() {
-    installStylesheet();
     apply();
     let queued = false;
     const observer = new MutationObserver(() => {
@@ -233,7 +223,6 @@
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   }
 
-  installStylesheet();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })();

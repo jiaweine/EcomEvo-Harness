@@ -12,17 +12,6 @@
     setNodeText($(selector), value);
   }
 
-  function installTheme() {
-    const themeColor = document.querySelector('meta[name="theme-color"]');
-    if (themeColor) themeColor.setAttribute('content', '#f5f1ec');
-    if (document.querySelector('link[data-ecomevo-customer-theme]')) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = '/assets/customer-theme.css';
-    link.dataset.ecomevoCustomerTheme = '1';
-    document.head.appendChild(link);
-  }
-
   function replaceExact(root, from, to) {
     if (!root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -127,7 +116,6 @@
   }
 
   function boot() {
-    installTheme();
     applyDynamicCopy();
     let queued = false;
     const observer = new MutationObserver(() => {
@@ -141,7 +129,6 @@
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
   }
 
-  installTheme();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
 })();

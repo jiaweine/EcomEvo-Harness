@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "frontend/index.html").read_text(encoding="utf-8")
 CUSTOMER_COPY = (ROOT / "frontend/customer-copy.js").read_text(encoding="utf-8")
+CUSTOMER_POLISH = (ROOT / "frontend/customer-polish.js").read_text(encoding="utf-8")
 
 
 class CustomerVisibleTextParser(HTMLParser):
@@ -84,6 +85,44 @@ def test_customer_copy_enhancer_does_not_rewrite_static_shell_language():
         "#providerModal .modal-foot span",
     ):
         assert static_selector not in CUSTOMER_COPY
+
+
+def test_customer_theme_is_static_before_javascript_enhancement_runs():
+    assert '<html lang="zh-CN" data-ecomevo-theme="customer-service">' in HTML
+    assert '<meta name="theme-color" content="#f5f1ec" />' in HTML
+    stylesheets = (
+        '/assets/plugin-control.css',
+        '/assets/carbon-theme.css',
+        '/assets/customer-theme.css',
+        '/assets/customer-polish.css',
+    )
+    positions = [HTML.index(f'href="{href}"') for href in stylesheets]
+    assert positions == sorted(positions)
+    assert "customer-theme.css" not in CUSTOMER_COPY
+    assert "customer-polish.css" not in CUSTOMER_POLISH
+    assert "document.createElement('link')" not in CUSTOMER_COPY
+    assert "document.createElement('link')" not in CUSTOMER_POLISH
+
+
+def test_enhancement_bootstrap_is_static_ordered_and_loader_free():
+    scripts = (
+        '/assets/safety-guards.js',
+        '/assets/privacy-sanitize.js',
+        '/assets/drawer-a11y.js',
+        '/assets/enhancements-core.js',
+        '/assets/ops-intelligence.js',
+        '/assets/plugin-control.js',
+        '/assets/customer-copy.js',
+        '/assets/customer-dynamic-copy.js',
+        '/assets/customer-polish.js',
+        '/assets/realtime-reconcile.js',
+        '/assets/app.js',
+        '/assets/intro.js',
+    )
+    positions = [HTML.index(f'src="{src}"') for src in scripts]
+    assert positions == sorted(positions)
+    assert '/assets/enhancements.js' not in HTML
+    assert not (ROOT / "frontend/enhancements.js").exists()
 
 
 def test_external_service_disclosure_survives_customer_enhancement():

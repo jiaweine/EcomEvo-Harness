@@ -2,7 +2,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "frontend/app.js").read_text(encoding="utf-8")
-LOADER = (ROOT / "frontend/enhancements.js").read_text(encoding="utf-8")
 CORE = (ROOT / "frontend/enhancements-core.js").read_text(encoding="utf-8")
 REALTIME = (ROOT / "frontend/realtime-reconcile.js").read_text(encoding="utf-8")
 PLUGIN_CONTROL = (ROOT / "frontend/plugin-control.js").read_text(encoding="utf-8")
@@ -12,14 +11,14 @@ CSS = (ROOT / "frontend/product-polish.css").read_text(encoding="utf-8")
 PLUGIN_CSS = (ROOT / "frontend/plugin-control.css").read_text(encoding="utf-8")
 
 
-def test_enhancement_loader_runs_safety_before_upload_bookkeeping_and_realtime():
-    assert "/assets/enhancements-core.js" in LOADER
-    assert "/assets/realtime-reconcile.js" in LOADER
-    assert "/assets/safety-guards.js" in LOADER
-    assert LOADER.index("/assets/safety-guards.js") < LOADER.index("/assets/enhancements-core.js") < LOADER.index("/assets/plugin-control.js") < LOADER.index("/assets/realtime-reconcile.js")
+def test_static_bootstrap_runs_safety_before_upload_bookkeeping_and_realtime():
+    assert "/assets/enhancements-core.js" in HTML
+    assert "/assets/realtime-reconcile.js" in HTML
+    assert "/assets/safety-guards.js" in HTML
+    assert HTML.index("/assets/safety-guards.js") < HTML.index("/assets/enhancements-core.js") < HTML.index("/assets/plugin-control.js") < HTML.index("/assets/realtime-reconcile.js")
     for name in ("enhancements-core.js", "plugin-control.js", "realtime-reconcile.js", "safety-guards.js"):
         assert (ROOT / "frontend" / name).is_file()
-    assert 'document.readyState === \'loading\'' in LOADER
+    assert "/assets/enhancements.js" not in HTML
 
 
 def test_runtime_pulse_mounts_into_existing_progress_panel():
