@@ -7,10 +7,10 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from .adaptive_routing import AdaptiveDecisionPolicy
 from .autonomy import AutonomousController
 from .delegation import CognitiveDelegator
 from .factorized_routing import FactorizedAdaptiveRoutingStore
+from .precomputed_ranking import PrecomputedAdaptiveDecisionPolicy
 
 
 @dataclass(slots=True)
@@ -157,7 +157,7 @@ class _DecisionRoutingView:
         return self._source.apply_batch(*args, **kwargs)
 
 
-class CounterfactualAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
+class CounterfactualAdaptiveDecisionPolicy(PrecomputedAdaptiveDecisionPolicy):
     """EvoGain-APR trained from verifier leave-one-out difference credit."""
 
     def __init__(self, planner, registry, sandbox, skills, *, max_calls: int, max_delegations: int):
