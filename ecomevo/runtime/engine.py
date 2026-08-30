@@ -8,11 +8,11 @@ from typing import Any, Awaitable, Callable
 
 from ecomevo.models import EvolutionPatch, RuntimeSummary
 from .bundled_event_store import BundledEventStore
+from .bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
 from .counterfactual_routing import CounterfactualAdaptiveAutonomousController
 from .evolver import FailureDrivenEvolver
 from .governance import GovernanceBoundary
 from .harness_context import bind_harness_profile, reset_harness_profile
-from .harness_evolution import HarnessEvolutionOptimizer
 from .memory import RuntimeMemory
 from .planner import AdaptivePlanner
 from .plugins import (
@@ -52,7 +52,7 @@ class EcomEvoEngine:
         self.events = component('event.store', lambda: BundledEventStore(db_path))
         self.skills = component('memory.skills', lambda: AdaptiveSkillLibrary(db_path))
         self.sandbox = component('sandbox.action', ActionSandbox)
-        self.harness = component('evolver.harness', lambda: HarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
+        self.harness = component('evolver.harness', lambda: BundledHarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
         self.planner = component('planner.adaptive', AdaptivePlanner)
         self.mcp = overrides.get('mcp.remote', mcp)
         self.model_gateway = overrides.get('model.gateway', model_gateway)
@@ -365,19 +365,30 @@ class EcomEvoEngine:
             stop_reason=outcome.stop_reason or 'evidence_incomplete'
             stop_detail=outcome.stop_detail or '当前证据仍不足以完成最终验证'
 
-        harness_transitions=self.harness.record_outcome(
-            goal.domain.value,
-            harness_profile.get('component_ids') or [],
-            verifier_score=final_verify.score,
-            evidence_complete=bool(final_verify.evidence_complete),
-            session_id=sid,
-            meta={
+        harness_outcome_async=getattr(self.harness,'record_outcome_async',None)
+        harness_outcome_kwargs={
+            'verifier_score':final_verify.score,
+            'evidence_complete':bool(final_verify.evidence_complete),
+            'session_id':sid,
+            'meta':{
                 'stop_reason':stop_reason,
                 'tool_cost_used':tool_cost_used,
                 'recovery_events':outcome.recovery_events,
                 'autonomy_steps':outcome.autonomy_steps,
             },
-        )
+        }
+        if sink is None and callable(harness_outcome_async):
+            harness_transitions=await harness_outcome_async(
+                goal.domain.value,
+                harness_profile.get('component_ids') or [],
+                **harness_outcome_kwargs,
+            )
+        else:
+            harness_transitions=self.harness.record_outcome(
+                goal.domain.value,
+                harness_profile.get('component_ids') or [],
+                **harness_outcome_kwargs,
+            )
         if harness_transitions:
             evolution_events+=len(harness_transitions)
             evolved=evolved or any(row.get('transition')=='promoted' for row in harness_transitions)
@@ -417,19 +428,27 @@ class EcomEvoEngine:
         except Exception:
             pass
         try:
-            harness_snapshot=self.harness.snapshot(goal.domain.value)
-            belief.facts['harness_evolution']={
-                'active':{
-                    row['kind']:row['generation']
-                    for row in harness_snapshot.get('components',[])
-                    if row.get('status')=='active'
-                },
-                'shadow':[
-                    {'kind':row['kind'],'generation':row['generation']}
-                    for row in harness_snapshot.get('components',[])
-                    if row.get('status')=='shadow'
-                ],
-            }
+            harness_state_async=getattr(self.harness,'state_summary_async',None)
+            harness_state_sync=getattr(self.harness,'state_summary',None)
+            if sink is None and callable(harness_state_async):
+                harness_state=await harness_state_async(goal.domain.value)
+            elif callable(harness_state_sync):
+                harness_state=harness_state_sync(goal.domain.value)
+            else:
+                harness_snapshot=self.harness.snapshot(goal.domain.value)
+                harness_state={
+                    'active':{
+                        row['kind']:row['generation']
+                        for row in harness_snapshot.get('components',[])
+                        if row.get('status')=='active'
+                    },
+                    'shadow':[
+                        {'kind':row['kind'],'generation':row['generation']}
+                        for row in harness_snapshot.get('components',[])
+                        if row.get('status')=='shadow'
+                    ],
+                }
+            belief.facts['harness_evolution']=harness_state
         except Exception:
             pass
         belief.facts['runtime_elapsed_ms']=round((time.perf_counter()-started)*1000.0,2)
