@@ -52,34 +52,39 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
                     raise
                 raise cancelled
 
-    def _relevant_with_policy(
+    @staticmethod
+    def _policy_payload(domain: str, policy_row: Any | None) -> dict[str, Any] | None:
+        if policy_row is None:
+            return None
+        return {
+            "domain": domain,
+            "promotion_threshold": float(policy_row["promotion_threshold"]),
+            "retirement_threshold": float(policy_row["retirement_threshold"]),
+            "exploration": float(policy_row["exploration"]),
+            "updates": int(policy_row["updates"]),
+            "updated_at": float(policy_row["updated_at"]),
+        }
+
+    def _relevant_with_policy_from_connection(
         self,
+        connection,
         domain: str,
         *,
         query: str = "",
         missing: Iterable[str] = (),
         limit: int = 6,
     ) -> tuple[list[Any], dict[str, Any] | None]:
-        """Read active skills and an existing evolution policy from one SQLite snapshot.
-
-        Missing-policy bootstrap deliberately remains on the existing ``policy`` write path;
-        steady-state decision reads stay read-only and avoid a second connection.
-        """
+        """Read the skill/policy portion of a caller-owned read snapshot."""
         haystack = (str(query) + " " + " ".join(str(x) for x in missing)).lower()
-        with self._conn() as connection:
-            # A deferred read transaction pins both SELECTs to one WAL snapshot without
-            # taking the SQLite writer lock. Writer-stage profiling counts deferred BEGIN
-            # as a writer only if DML follows, so this stays a read-only boundary.
-            connection.execute("BEGIN")
-            rows = connection.execute(
-                "SELECT * FROM runtime_skills WHERE domain=? AND status='active' "
-                "ORDER BY updated_at DESC LIMIT 100",
-                (domain,),
-            ).fetchall()
-            policy_row = connection.execute(
-                "SELECT * FROM evolution_policy WHERE domain=?",
-                (domain,),
-            ).fetchone()
+        rows = connection.execute(
+            "SELECT * FROM runtime_skills WHERE domain=? AND status='active' "
+            "ORDER BY updated_at DESC LIMIT 100",
+            (domain,),
+        ).fetchall()
+        policy_row = connection.execute(
+            "SELECT * FROM evolution_policy WHERE domain=?",
+            (domain,),
+        ).fetchone()
 
         candidates = [self._decode(row) for row in rows]
         scored: list[tuple[float, Any]] = []
@@ -96,18 +101,83 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
             scored.append((score, skill))
         scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
         selected = [skill for _, skill in scored[: max(1, int(limit))]]
+        return selected, self._policy_payload(domain, policy_row)
 
-        policy = None
-        if policy_row is not None:
-            policy = {
-                "domain": domain,
-                "promotion_threshold": float(policy_row["promotion_threshold"]),
-                "retirement_threshold": float(policy_row["retirement_threshold"]),
-                "exploration": float(policy_row["exploration"]),
-                "updates": int(policy_row["updates"]),
-                "updated_at": float(policy_row["updated_at"]),
-            }
-        return selected, policy
+    def _relevant_with_policy(
+        self,
+        domain: str,
+        *,
+        query: str = "",
+        missing: Iterable[str] = (),
+        limit: int = 6,
+    ) -> tuple[list[Any], dict[str, Any] | None]:
+        """Read active skills and an existing evolution policy from one SQLite snapshot.
+
+        Missing-policy bootstrap deliberately remains on the existing ``policy`` write path;
+        steady-state decision reads stay read-only and avoid a second connection.
+        """
+        with self._conn() as connection:
+            # A deferred read transaction pins both SELECTs to one WAL snapshot without
+            # taking the SQLite writer lock. Writer-stage profiling counts deferred BEGIN
+            # as a writer only if DML follows, so this stays a read-only boundary.
+            connection.execute("BEGIN")
+            return self._relevant_with_policy_from_connection(
+                connection,
+                domain,
+                query=query,
+                missing=missing,
+                limit=limit,
+            )
+
+    def prepare_decision_snapshot(
+        self,
+        routing: Any,
+        domain: str,
+        *,
+        query: str = "",
+        missing: Iterable[str] = (),
+        tools: Iterable[str] = (),
+        limit: int = 6,
+    ) -> dict[str, Any] | None:
+        """Fuse built-in skill and routing reads into one short coherent snapshot.
+
+        The connection and deferred transaction are closed before this method returns;
+        callers may safely await the model afterwards without pinning SQLite state. Custom
+        routing implementations simply do not expose the optional connection-aware hook.
+        """
+        prepare_routing = getattr(routing, "prepare_context_from_connection", None)
+        if not callable(prepare_routing) or str(getattr(routing, "path", "")) != str(self.path):
+            return None
+
+        # A normal initial ``relevant`` call can leave #53's one-shot policy snapshot in
+        # this task. A fused round owns its policy explicitly, so discard any older copy.
+        self._invalidate_decision_policy_snapshot()
+        with self._conn() as connection:
+            connection.execute("BEGIN")
+            selected, policy = self._relevant_with_policy_from_connection(
+                connection,
+                domain,
+                query=query,
+                missing=missing,
+                limit=limit,
+            )
+            if policy is None:
+                # Preserve cold-start bootstrap semantics: close the read snapshot and let
+                # the existing policy() path perform its guarded write before retrying.
+                return None
+            exploration = max(0.0, min(1.0, float(policy.get("exploration", 0.6))))
+            prepared = prepare_routing(
+                connection,
+                domain,
+                tools=[str(tool) for tool in tools if str(tool)],
+                exploration=exploration,
+            )
+        return {
+            "skills": selected,
+            "policy": policy,
+            "routing": prepared,
+            "exploration": exploration,
+        }
 
     def relevant(
         self,
