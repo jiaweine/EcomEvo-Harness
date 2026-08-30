@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import threading
 import weakref
-from typing import Callable, TypeVar
+from contextvars import ContextVar
+from typing import Any, Callable, TypeVar
 
 from .skills import AdaptiveSkillLibrary
 
@@ -12,13 +13,19 @@ _T = TypeVar("_T")
 
 
 class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
-    """Built-in skill-library finalization fast path without changing the base contract."""
+    """Built-in skill fast paths without changing the base plugin contract."""
 
     def __init__(self, db_path):
         self._async_gate_lock = threading.RLock()
         self._async_gates: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
         ] = weakref.WeakKeyDictionary()
+        self._decision_policy_snapshot: ContextVar[
+            tuple[str, dict[str, Any]] | None
+        ] = ContextVar(
+            f"ecomevo-skill-policy-snapshot-{id(self)}",
+            default=None,
+        )
         super().__init__(db_path)
 
     def _async_gate(self, loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
@@ -43,6 +50,83 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
                 except Exception:
                     raise
                 raise cancelled
+
+    def _relevant_with_policy(
+        self,
+        domain: str,
+        *,
+        query: str = "",
+        missing: list[str] | None = None,
+        limit: int = 6,
+    ) -> tuple[list[Any], dict[str, Any] | None]:
+        """Read active skills and an existing evolution policy from one SQLite snapshot.
+
+        Missing-policy bootstrap deliberately remains on the existing ``policy`` write path;
+        steady-state decision reads stay read-only and avoid a second connection.
+        """
+        haystack = f"{query} {' '.join(missing or [])}".lower()
+        with self._conn() as connection:
+            rows = connection.execute(
+                "SELECT * FROM skills WHERE domain=? AND status='active' "
+                "ORDER BY updated_at DESC LIMIT 100",
+                (domain,),
+            ).fetchall()
+            policy_row = connection.execute(
+                "SELECT * FROM evolution_policy WHERE domain=?",
+                (domain,),
+            ).fetchone()
+
+        candidates = [self._decode(row) for row in rows]
+        scored: list[tuple[float, Any]] = []
+        for skill in candidates:
+            posterior = skill.alpha / max(1e-9, skill.alpha + skill.beta)
+            term_hits = sum(1 for term in skill.trigger_terms if term.lower() in haystack)
+            score = 0.46 * posterior + 0.34 * skill.shadow_score + min(0.20, term_hits * 0.05)
+            scored.append((score, skill))
+        scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
+        selected = [skill for _, skill in scored[: max(1, int(limit))]]
+
+        policy = None
+        if policy_row is not None:
+            policy = {
+                "domain": domain,
+                "exploration": float(policy_row["exploration"]),
+                "updates": int(policy_row["updates"]),
+                "last_reward": float(policy_row["last_reward"]),
+            }
+        return selected, policy
+
+    def relevant(
+        self,
+        domain: str,
+        *,
+        query: str = "",
+        missing: list[str] | None = None,
+        limit: int = 6,
+    ) -> list[Any]:
+        selected, policy = self._relevant_with_policy(
+            domain,
+            query=query,
+            missing=missing,
+            limit=limit,
+        )
+        if policy is None:
+            self._decision_policy_snapshot.set(None)
+        else:
+            self._decision_policy_snapshot.set((str(domain), policy))
+        return selected
+
+    def policy(self, domain: str) -> dict[str, Any]:
+        prepared = self._decision_policy_snapshot.get()
+        if prepared is not None and prepared[0] == str(domain):
+            self._decision_policy_snapshot.set(None)
+            return dict(prepared[1])
+        return super().policy(domain)
+
+    def _adapt_policy(self, *args, **kwargs):
+        # Any evolution-policy write invalidates a not-yet-consumed read snapshot.
+        self._decision_policy_snapshot.set(None)
+        return super()._adapt_policy(*args, **kwargs)
 
     async def note_run_async(
         self,
