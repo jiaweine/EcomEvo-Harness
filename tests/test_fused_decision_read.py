@@ -147,7 +147,7 @@ def _call_shape(calls):
     ]
 
 
-def _recovery(policy, goal, belief, active):
+def _recovery_and_fallback(policy, goal, belief, active):
     decision = policy.sanitize(
         None,
         goal=goal,
@@ -157,8 +157,10 @@ def _recovery(policy, goal, belief, active):
         phase="recovery",
         missing_evidence=list(belief.missing_evidence),
     )
-    assert decision.calls == []
-    return policy.fallback_calls(
+    # Exercise the immediately nested fallback explicitly even when a seeded active skill
+    # already yields calls. The contract under test is that both ranking passes observe the
+    # same decision-round snapshot; production invokes fallback only when the first is empty.
+    fallback = policy.fallback_calls(
         goal,
         belief,
         [],
@@ -166,6 +168,7 @@ def _recovery(policy, goal, belief, active):
         previous=[],
         skills=active,
     )
+    return decision.calls, fallback
 
 
 def test_fused_snapshot_halves_physical_connections_and_matches_legacy(tmp_path):
@@ -212,7 +215,9 @@ def test_preloaded_round_preserves_recovery_and_fallback_selection(tmp_path):
         query=legacy_goal.primary,
         missing=legacy_belief.missing_evidence,
     )
-    legacy_calls = _recovery(legacy, legacy_goal, legacy_belief, legacy_active)
+    legacy_decision, legacy_fallback = _recovery_and_fallback(
+        legacy, legacy_goal, legacy_belief, legacy_active
+    )
     legacy_connections = legacy_skills.connections + legacy._routing_source.connections
     assert legacy_connections == 2
 
@@ -225,10 +230,13 @@ def test_preloaded_round_preserves_recovery_and_fallback_selection(tmp_path):
         missing=fused_belief.missing_evidence,
     )
     assert fused_active is not None
-    fused_calls = _recovery(fused, fused_goal, fused_belief, fused_active)
+    fused_decision, fused_fallback = _recovery_and_fallback(
+        fused, fused_goal, fused_belief, fused_active
+    )
 
     assert list(legacy_registry.tools) == list(fused_registry.tools)
-    assert _call_shape(fused_calls) == _call_shape(legacy_calls)
+    assert _call_shape(fused_decision) == _call_shape(legacy_decision)
+    assert _call_shape(fused_fallback) == _call_shape(legacy_fallback)
     assert fused_skills.connections + fused._routing_source.connections == 1
     assert fused_skills.policy_calls == 0
     assert fused._routing_source.connections == 0
@@ -273,7 +281,8 @@ def test_fused_round_is_task_local(tmp_path):
         )
         assert active is not None
         await asyncio.sleep(0)
-        return _call_shape(_recovery(policy, goal, belief, active))
+        decision, fallback = _recovery_and_fallback(policy, goal, belief, active)
+        return _call_shape(decision), _call_shape(fallback)
 
     async def exercise():
         return await asyncio.gather(one(), one())
@@ -299,5 +308,6 @@ def test_custom_skill_plugin_falls_back_without_fused_api(tmp_path):
         query=goal.primary,
         missing=belief.missing_evidence,
     )
-    calls = _recovery(policy, goal, belief, active)
-    assert isinstance(calls, list)
+    decision, fallback = _recovery_and_fallback(policy, goal, belief, active)
+    assert isinstance(decision, list)
+    assert isinstance(fallback, list)
