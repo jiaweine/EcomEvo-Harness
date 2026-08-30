@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import time
 from typing import Any
 
 from .adaptive_routing import AdaptiveRoutingStore
@@ -107,6 +108,68 @@ class FactorizedAdaptiveRoutingStore(AdaptiveRoutingStore):
             raise ValueError("routing posterior has neither factor nor inverse")
         projected = self._matvec(inverse, vector)
         return max(0.0, self._dot(vector, projected))
+
+    def prepare_context_from_connection(
+        self,
+        connection,
+        domain: str,
+        *,
+        tools: list[str],
+        exploration: float,
+    ) -> dict[str, Any]:
+        """Prepare the built-in routing snapshot from a caller-owned read transaction.
+
+        This is intentionally an optional fast-path API on the factorized store only.
+        The base/public ``AdaptiveRoutingStore`` contract remains unchanged.
+        """
+        started = time.perf_counter()
+        global_key = self._key("*", "global")
+        domain_key = self._key(domain, "domain")
+        with self._lock:
+            rows = connection.execute(
+                "SELECT * FROM routing_policy WHERE policy_key IN (?,?)",
+                (global_key, domain_key),
+            ).fetchall()
+            indexed = {str(row["policy_key"]): row for row in rows}
+            reliability = self._reliability_map(connection, domain, tools)
+
+        global_p = self._posterior_from_row(
+            self._decode_row(indexed.get(global_key), self._default_row("*", "global"))
+        )
+        domain_p = self._posterior_from_row(
+            self._decode_row(indexed.get(domain_key), self._default_row(domain, "domain"))
+        )
+        n = int(domain_p["samples"])
+        global_n = int(global_p["samples"])
+        tau = n / (n + self.DOMAIN_SHRINKAGE)
+        residual = max(float(global_p["residual_ewma"]), float(domain_p["residual_ewma"]))
+        confidence = max(0.30, min(1.0, 1.0 / (1.0 + 1.8 * residual)))
+        if n < self.SHADOW_MIN_SAMPLES:
+            if global_n >= 48:
+                activation = min(0.18, (global_n / (global_n + 180.0)) * confidence)
+                mode = "global_transfer"
+            else:
+                activation = 0.0
+                mode = "shadow"
+        else:
+            sample_factor = (n - self.SHADOW_MIN_SAMPLES + 1.0) / (n + 28.0)
+            activation = min(self.MAX_ACTIVATION, sample_factor * confidence)
+            mode = "adaptive"
+        explore = max(0.0, min(1.0, float(exploration)))
+        beta = (0.12 + 0.42 * explore) * (1.0 + min(1.0, residual))
+        return {
+            "global": global_p,
+            "domain": domain_p,
+            "tau": tau,
+            "residual": residual,
+            "activation": activation,
+            "mode": mode,
+            "beta": beta,
+            "samples": n,
+            "global_samples": global_n,
+            "reliability": reliability,
+            "prepare_ms": (time.perf_counter() - started) * 1000.0,
+        }
 
     def score_prepared(
         self,
