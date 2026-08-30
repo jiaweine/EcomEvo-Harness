@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ecomevo.runtime import EcomEvoEngine
-from scripts.runtime_stage_profile import MethodProfiler, attach_profiler, percentile
+from runtime_stage_profile import MethodProfiler, attach_profiler, percentile
 
 
 async def run_profile(tasks: int) -> dict[str, Any]:
