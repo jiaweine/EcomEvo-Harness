@@ -127,15 +127,28 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
 
     def policy(self, domain: str) -> dict[str, Any]:
         prepared = self._decision_policy_snapshot.get()
-        if prepared is not None and prepared[0] == str(domain):
+        if prepared is not None:
+            # The fused snapshot is deliberately one-shot. A policy lookup for another
+            # domain is a broken adjacency, so discard rather than leaving stale state
+            # available for a later lookup in this task.
             self._decision_policy_snapshot.set(None)
-            return dict(prepared[1])
+            if prepared[0] == str(domain):
+                return dict(prepared[1])
         return super().policy(domain)
 
-    def _adapt_policy(self, *args, **kwargs):
-        # Any evolution-policy write invalidates a not-yet-consumed read snapshot.
+    def _invalidate_decision_policy_snapshot(self) -> None:
         self._decision_policy_snapshot.set(None)
+
+    def _adapt_policy(self, *args, **kwargs):
+        # Synchronous evolution-policy writes invalidate a not-yet-consumed read snapshot.
+        self._invalidate_decision_policy_snapshot()
         return super()._adapt_policy(*args, **kwargs)
+
+    def record_outcome(self, *args, **kwargs):
+        # ``record_outcome`` updates evolution_policy inside its own transaction rather
+        # than calling ``_adapt_policy``; invalidate before entering that write boundary.
+        self._invalidate_decision_policy_snapshot()
+        return super().record_outcome(*args, **kwargs)
 
     async def note_run_async(
         self,
@@ -144,6 +157,9 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         success: bool,
         skill_used: bool = False,
     ) -> None:
+        # ContextVar updates made inside ``asyncio.to_thread`` do not propagate back to
+        # the event-loop task. Clear in the caller context before offloading the write.
+        self._invalidate_decision_policy_snapshot()
         await self._run_io(
             self.note_run,
             domain,
