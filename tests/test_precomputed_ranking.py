@@ -90,6 +90,37 @@ def _trace_shape(trace):
     ]
 
 
+def _operation_counts(policy, candidates, goal, active, previous):
+    counts = {"terms": 0, "describe": 0}
+    original_terms = policy._terms
+    original_describe = policy.registry.describe
+
+    def terms(value):
+        counts["terms"] += 1
+        return original_terms(value)
+
+    def describe():
+        counts["describe"] += 1
+        return original_describe()
+
+    policy._terms = terms
+    policy.registry.describe = describe
+    try:
+        policy._rank_candidates(
+            candidates,
+            goal=goal,
+            missing=MISSING,
+            previous=previous,
+            skills=active,
+            budget=8.0,
+            limit=4,
+        )
+    finally:
+        policy._terms = original_terms
+        policy.registry.describe = original_describe
+    return counts
+
+
 def test_precomputed_features_match_legacy_exactly(tmp_path):
     legacy, goal, active, previous, candidates = _inputs(tmp_path, AdaptiveDecisionPolicy, "legacy-features")
     optimized, _, optimized_active, optimized_previous, optimized_candidates = _inputs(
@@ -168,41 +199,32 @@ def test_precomputed_rank_eliminates_repeated_term_and_registry_scans(tmp_path):
         tmp_path, PrecomputedAdaptiveDecisionPolicy, "optimized-count"
     )
 
-    def counted(policy, candidates, active, previous):
-        counts = {"terms": 0, "describe": 0}
-        original_terms = policy._terms
-        original_describe = policy.registry.describe
-
-        def terms(value):
-            counts["terms"] += 1
-            return original_terms(value)
-
-        def describe():
-            counts["describe"] += 1
-            return original_describe()
-
-        policy._terms = terms
-        policy.registry.describe = describe
-        try:
-            policy._rank_candidates(
-                candidates,
-                goal=goal,
-                missing=MISSING,
-                previous=previous,
-                skills=active,
-                budget=8.0,
-                limit=4,
-            )
-        finally:
-            policy._terms = original_terms
-            policy.registry.describe = original_describe
-        return counts
-
-    legacy_counts = counted(legacy, candidates, active, previous)
-    optimized_counts = counted(optimized, optimized_candidates, optimized_active, optimized_previous)
+    legacy_counts = _operation_counts(legacy, candidates, goal, active, previous)
+    optimized_counts = _operation_counts(
+        optimized, optimized_candidates, goal, optimized_active, optimized_previous
+    )
 
     assert legacy_counts == {"terms": len(TOOLS) * (len(MISSING) + 1), "describe": len(TOOLS)}
     assert optimized_counts == {"terms": len(MISSING) + len(TOOLS), "describe": 1}
+
+
+def test_zero_and_single_candidate_ranks_keep_legacy_operation_shape(tmp_path):
+    legacy, goal, active, previous, candidates = _inputs(tmp_path, AdaptiveDecisionPolicy, "legacy-small")
+    optimized, _, optimized_active, optimized_previous, optimized_candidates = _inputs(
+        tmp_path, PrecomputedAdaptiveDecisionPolicy, "optimized-small"
+    )
+
+    for size in (0, 1):
+        expected = _operation_counts(legacy, candidates[:size], goal, active, previous)
+        actual = _operation_counts(
+            optimized,
+            optimized_candidates[:size],
+            goal,
+            optimized_active,
+            optimized_previous,
+        )
+        assert actual == expected
+    assert _operation_counts(optimized, [], goal, optimized_active, optimized_previous)["describe"] == 0
 
 
 def test_default_runtime_uses_precomputed_ranking_policy(tmp_path):
