@@ -24,10 +24,11 @@ async def run_profile(tasks: int) -> dict[str, Any]:
         for name in ("_rank_candidates", "_base_features", "_tool_meta", "_terms"):
             profiler.wrap(policy, name, f"decision.{name.lstrip('_')}")
 
-        routing = getattr(policy, "routing", None)
-        if routing is not None:
-            for name in ("_posterior_from_row", "_inverse", "_reliability_map"):
-                profiler.wrap(routing, name, f"routing.{name.lstrip('_')}")
+        routing_view = getattr(policy, "routing", None)
+        routing_source = getattr(policy, "_routing_source", routing_view)
+        if routing_source is not None:
+            for name in ("prepare_context", "_posterior_from_row", "_inverse", "_reliability_map"):
+                profiler.wrap(routing_source, name, f"routing_source.{name.lstrip('_')}")
 
         failures: list[str] = []
         latencies: list[float] = []
@@ -67,7 +68,7 @@ async def run_profile(tasks: int) -> dict[str, Any]:
         rows = profiler.report(tasks=tasks, wall_seconds=wall)
         decision_rows = [
             row for row in rows
-            if row["method"].startswith(("decision.", "routing.", "tools.describe", "skills."))
+            if row["method"].startswith(("decision.", "routing.", "routing_source.", "tools.describe", "skills."))
         ]
         return {
             "ok": not failures,
