@@ -9,6 +9,7 @@ from typing import Any, Callable
 from .adaptive_routing import AdaptiveDecisionPolicy
 from .autonomy import AutonomousController
 from .delegation import CognitiveDelegator
+from .factorized_routing import FactorizedAdaptiveRoutingStore
 
 
 @dataclass(slots=True)
@@ -120,6 +121,11 @@ class CounterfactualAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
             skills,
             max_calls=max_calls,
             max_delegations=max_delegations,
+        )
+        # Keep the base/public AdaptiveRoutingStore unchanged. The production
+        # Counterfactual policy opts into a scoring-compatible factorized store only.
+        self.routing = FactorizedAdaptiveRoutingStore(
+            getattr(skills, "path", "outputs/runtime.db")
         )
         self._decision_round: ContextVar[_DecisionRoundContext | None] = ContextVar(
             f"ecomevo-decision-round-{id(self)}",
