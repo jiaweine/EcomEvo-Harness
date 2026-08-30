@@ -168,6 +168,20 @@ class PrecomputedAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
         budget: float,
         limit: int,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        # For zero/one candidate there is no repeated feature work to amortize. Keep the
+        # legacy path so empty/no-op decision rounds do not pay a registry scan merely to
+        # build a snapshot that cannot save work.
+        if len(candidates) <= 1:
+            return super()._rank_candidates(
+                candidates,
+                goal=goal,
+                missing=missing,
+                previous=previous,
+                skills=skills,
+                budget=budget,
+                limit=limit,
+            )
+
         snapshot = self._prepare_rank_feature_snapshot(
             tools=[str(candidate.get("tool") or "") for candidate in candidates],
             goal=goal,
