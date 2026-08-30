@@ -1,0 +1,24 @@
+name: Decision Leaf Profile
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  decision-leaf-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade "pip==26.2.1"
+          python -m pip install -e .
+      - name: Decision leaf profile
+        run: python scripts/decision_leaf_profile.py --tasks 120
