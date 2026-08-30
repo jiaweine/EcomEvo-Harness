@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
+from collections.abc import Iterable
 from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -20,6 +21,7 @@ class _DecisionRoundContext:
     skill_policy: dict[str, Any] | None = None
     routing_prepared: dict[str, Any] | None = None
     routing_exploration: float | None = None
+    preloaded: bool = False
 
 
 class _DecisionSkillView:
@@ -43,6 +45,51 @@ class _DecisionSkillView:
         if current.skill_policy is None:
             current.skill_policy = self._source.policy(domain)
         return current.skill_policy
+
+
+class _ControllerDecisionSkillView:
+    """Fuse built-in decision reads only when this run is about to rank candidates."""
+
+    def __init__(
+        self,
+        source: Any,
+        policy: "CounterfactualAdaptiveDecisionPolicy",
+        fuse_next: ContextVar[bool],
+    ) -> None:
+        self._source = source
+        self._policy = policy
+        self._fuse_next = fuse_next
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._source, name)
+
+    def relevant(
+        self,
+        domain: str,
+        *,
+        query: str = "",
+        missing: Iterable[str] = (),
+        limit: int = 6,
+    ) -> list[Any]:
+        if self._fuse_next.get():
+            prepared = self._policy.prepare_round_skills(
+                domain,
+                query=query,
+                missing=missing,
+                limit=limit,
+            )
+            if prepared is not None:
+                return prepared
+
+        # The first no-reasoner call is the initial planner-only round and must stay cheap.
+        # Every later ``relevant`` call belongs to recovery and will rank candidates.
+        self._fuse_next.set(True)
+        return self._source.relevant(
+            domain,
+            query=query,
+            missing=missing,
+            limit=limit,
+        )
 
 
 class _DecisionRoutingView:
@@ -146,6 +193,51 @@ class CounterfactualAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
         self._skill_source = skills
         self.skills = _DecisionSkillView(skills, self._decision_round)
 
+    def prepare_round_skills(
+        self,
+        domain: str,
+        *,
+        query: str = "",
+        missing: Iterable[str] = (),
+        limit: int = 6,
+    ) -> list[Any] | None:
+        """Optionally preload built-in skills/policy/routing from one SQLite snapshot."""
+        prepare = getattr(self._skill_source, "prepare_decision_snapshot", None)
+        if not callable(prepare):
+            self._decision_round.set(None)
+            return None
+        tools = list(dict.fromkeys(str(tool) for tool in self.registry.tools if str(tool)))
+        snapshot = prepare(
+            self._routing_source,
+            str(domain),
+            query=query,
+            missing=missing,
+            tools=tools,
+            limit=limit,
+        )
+        if not isinstance(snapshot, dict):
+            self._decision_round.set(None)
+            return None
+        policy = snapshot.get("policy")
+        routing = snapshot.get("routing")
+        if not isinstance(policy, dict) or not isinstance(routing, dict):
+            self._decision_round.set(None)
+            return None
+        exploration = max(
+            0.0,
+            min(1.0, float(snapshot.get("exploration", policy.get("exploration", 0.6)))),
+        )
+        self._decision_round.set(
+            _DecisionRoundContext(
+                domain=str(domain),
+                skill_policy=dict(policy),
+                routing_prepared=routing,
+                routing_exploration=exploration,
+                preloaded=True,
+            )
+        )
+        return list(snapshot.get("skills") or [])
+
     def sanitize(
         self,
         raw: dict[str, Any] | None,
@@ -157,11 +249,17 @@ class CounterfactualAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
         phase: str,
         missing_evidence: list[str] | None = None,
     ):
-        # A non-fallback sanitize always starts a fresh decision round. The immediately
-        # nested fallback is allowed to reuse it; the next recovery step starts fresh.
+        # A non-fallback sanitize normally starts a fresh decision round. A preloaded
+        # fused snapshot already represents this exact round, so consume that marker and
+        # retain its coherent policy/routing values. The nested fallback may reuse them.
         current = self._decision_round.get()
         domain = str(goal.domain.value)
-        if phase != "fallback" or current is None or current.domain != domain:
+        if phase != "fallback":
+            if current is None or current.domain != domain or not current.preloaded:
+                self._decision_round.set(_DecisionRoundContext(domain=domain))
+            else:
+                current.preloaded = False
+        elif current is None or current.domain != domain:
             self._decision_round.set(_DecisionRoundContext(domain=domain))
         return super().sanitize(
             raw,
@@ -250,6 +348,16 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
             max_delegations=self.max_delegations,
         )
         self.delegator = CognitiveDelegator(reviewer, self.policy)
+        self._decision_read_fusion: ContextVar[bool] = ContextVar(
+            f"ecomevo-decision-read-fusion-{id(self)}",
+            default=False,
+        )
+        self._controller_skill_source = skills
+        self.skills = _ControllerDecisionSkillView(
+            skills,
+            self.policy,
+            self._decision_read_fusion,
+        )
 
     def rebind(
         self,
@@ -262,6 +370,7 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
         reviewer=None,
         skills=None,
     ) -> None:
+        source = skills if skills is not None else self._controller_skill_source
         super().rebind(
             planner=planner,
             registry=registry,
@@ -269,10 +378,15 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
             sandbox=sandbox,
             verifier=verifier,
             reviewer=reviewer,
-            skills=skills,
+            skills=source,
         )
-        if skills is not None:
-            self.policy.rebind_skills(self.skills)
+        self._controller_skill_source = source
+        self.policy.rebind_skills(source)
+        self.skills = _ControllerDecisionSkillView(
+            source,
+            self.policy,
+            self._decision_read_fusion,
+        )
 
     async def run(self, *, goal, belief, assets, text, context, reasoner=None, emit, checkpoint=None, restore=None):
         decisions: dict[int, dict[str, Any]] = {}
@@ -375,14 +489,18 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
                     {"error": type(exc).__name__, "authority": "read-only-routing-only"},
                 )
 
-        return await super().run(
-            goal=goal,
-            belief=belief,
-            assets=assets,
-            text=text,
-            context=context,
-            reasoner=reasoner,
-            emit=learning_emit,
-            checkpoint=checkpoint,
-            restore=restore,
-        )
+        token = self._decision_read_fusion.set(reasoner is not None)
+        try:
+            return await super().run(
+                goal=goal,
+                belief=belief,
+                assets=assets,
+                text=text,
+                context=context,
+                reasoner=reasoner,
+                emit=learning_emit,
+                checkpoint=checkpoint,
+                restore=restore,
+            )
+        finally:
+            self._decision_read_fusion.reset(token)
