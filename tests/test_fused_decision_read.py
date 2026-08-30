@@ -121,6 +121,10 @@ def _policy_inputs(path: Path, skills_type=CountingBundledSkills):
         max_calls=4,
         max_delegations=3,
     )
+    if isinstance(skills, CountingBundledSkills):
+        routing = CountingRouting(path)
+        policy._routing_source = routing
+        policy.routing._source = routing
     goal = planner.parse_goal(
         "审核商家并核对主体、授权和历史风险",
         [],
