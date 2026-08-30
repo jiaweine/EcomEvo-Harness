@@ -3,16 +3,16 @@ from __future__ import annotations
 import asyncio
 import threading
 import weakref
-from typing import Callable, Iterable, TypeVar
+from typing import Callable, TypeVar
 
-from .skills import AdaptiveSkillLibrary, RuntimeSkill
+from .skills import AdaptiveSkillLibrary
 
 
 _T = TypeVar("_T")
 
 
 class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
-    """Built-in skill-library async finalization without changing the base contract."""
+    """Built-in skill-library finalization fast path without changing the base contract."""
 
     def __init__(self, db_path):
         self._async_gate_lock = threading.RLock()
@@ -30,6 +30,7 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
             return gate
 
     async def _run_io(self, call: Callable[..., _T], /, *args, **kwargs) -> _T:
+        """Run one skill-library SQLite operation off-loop with clear cancellation."""
         loop = asyncio.get_running_loop()
         gate = self._async_gate(loop)
         async with gate:
@@ -55,25 +56,4 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
             domain,
             success=success,
             skill_used=skill_used,
-        )
-
-    async def record_outcome_async(
-        self,
-        skill_ids: Iterable[str],
-        *,
-        success: bool,
-        score: float,
-        session_id: str | None = None,
-        context: dict | None = None,
-    ) -> list[RuntimeSkill]:
-        ids = list(dict.fromkeys(str(x) for x in skill_ids if str(x)))
-        if not ids:
-            return []
-        return await self._run_io(
-            self.record_outcome,
-            ids,
-            success=success,
-            score=score,
-            session_id=session_id,
-            context=context,
         )
