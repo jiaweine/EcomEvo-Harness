@@ -9,6 +9,7 @@ from typing import Any, Awaitable, Callable
 from ecomevo.models import EvolutionPatch, RuntimeSummary
 from .bundled_event_store import BundledEventStore
 from .bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
+from .bundled_skills import BundledAdaptiveSkillLibrary
 from .counterfactual_routing import CounterfactualAdaptiveAutonomousController
 from .evolver import FailureDrivenEvolver
 from .governance import GovernanceBoundary
@@ -25,7 +26,6 @@ from .plugins import (
 from .recursive import RecursiveCoordinator
 from .resilient_executor import ResilientPTCExecutor
 from .sandbox import ActionSandbox
-from .skills import AdaptiveSkillLibrary
 from .tools import ToolRegistry, _query_terms
 from .verifier import DecisionVerifier
 
@@ -50,7 +50,7 @@ class EcomEvoEngine:
             return overrides[key] if key in overrides else factory()
 
         self.events = component('event.store', lambda: BundledEventStore(db_path))
-        self.skills = component('memory.skills', lambda: AdaptiveSkillLibrary(db_path))
+        self.skills = component('memory.skills', lambda: BundledAdaptiveSkillLibrary(db_path))
         self.sandbox = component('sandbox.action', ActionSandbox)
         self.harness = component('evolver.harness', lambda: BundledHarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
         self.planner = component('planner.adaptive', AdaptivePlanner)
@@ -454,7 +454,20 @@ class EcomEvoEngine:
         belief.facts['runtime_elapsed_ms']=round((time.perf_counter()-started)*1000.0,2)
         belief.risks=list(dict.fromkeys(risks))[:10];belief.uncertainties=final_verify.missing_evidence;belief.missing_evidence=final_verify.missing_evidence;belief.confidence=round(final_verify.score,3)
         self.skills.record_outcome(outcome.skills_used,success=bool(final_verify.passed),score=final_verify.score,session_id=sid,context={'domain':goal.domain.value,'missing':final_verify.missing_evidence,'recovery_events':outcome.recovery_events,'stop_reason':stop_reason})
-        if not outcome.skills_used:self.skills.note_run(goal.domain.value,success=bool(final_verify.passed),skill_used=False)
+        if not outcome.skills_used:
+            note_run_async=getattr(self.skills,'note_run_async',None)
+            if sink is None and callable(note_run_async):
+                await note_run_async(
+                    goal.domain.value,
+                    success=bool(final_verify.passed),
+                    skill_used=False,
+                )
+            else:
+                self.skills.note_run(
+                    goal.domain.value,
+                    success=bool(final_verify.passed),
+                    skill_used=False,
+                )
         if final_verify.passed:self.memory.add({'session_id':sid,'domain':goal.domain.value,'goal':text[:160],'score':final_verify.score,'risks':belief.risks})
         summary=RuntimeSummary(session_id=sid,domain=goal.domain,status='completed' if final_verify.passed else 'needs_evidence',tool_calls=len(tool_results),subagents=len(agents),recovery_events=outcome.recovery_events,verifier_score=final_verify.score,evolved=evolved,event_chain_valid=True,autonomy_steps=outcome.autonomy_steps,delegations=outcome.delegations,evolution_events=evolution_events,skills_used=outcome.skills_used,task_graph=outcome.task_graph,proposed_actions=actions,evidence=evidence,findings=list(dict.fromkeys(findings))[:12],risks=list(dict.fromkeys(risks))[:10],evidence_complete=bool(final_verify.evidence_complete),missing_evidence=list(final_verify.missing_evidence),tool_cost_used=tool_cost_used,tool_cost_budget=tool_cost_budget,tool_cost_remaining=tool_cost_remaining,stop_reason=stop_reason,stop_detail=stop_detail,stagnated=bool(outcome.stagnated),autonomy_mode=autonomy_mode,belief=belief)
         await self._emit(sid,'run.completed',summary.model_dump(mode='json'),sink)
