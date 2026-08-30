@@ -67,6 +67,10 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         """
         haystack = (str(query) + " " + " ".join(str(x) for x in missing)).lower()
         with self._conn() as connection:
+            # A deferred read transaction pins both SELECTs to one WAL snapshot without
+            # taking the SQLite writer lock. Writer-stage profiling counts deferred BEGIN
+            # as a writer only if DML follows, so this stays a read-only boundary.
+            connection.execute("BEGIN")
             rows = connection.execute(
                 "SELECT * FROM runtime_skills WHERE domain=? AND status='active' "
                 "ORDER BY updated_at DESC LIMIT 100",
