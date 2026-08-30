@@ -6,7 +6,7 @@ import threading
 import time
 import weakref
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from ecomevo.models import RuntimeEvent
 
@@ -14,6 +14,7 @@ from .event_store import EventStore
 
 
 _APPEND_GROUP_LIMIT = 64
+_T = TypeVar("_T")
 
 
 @dataclass(slots=True)
@@ -35,8 +36,8 @@ class BundledEventStore(EventStore):
     """Built-in EventStore fast paths that preserve the base persistence contract.
 
     The base ``EventStore`` stays the compatibility surface for plugins and direct
-    callers. This subclass only bundles writes whose ordering and rollback boundary
-    are known by the built-in engine.
+    callers. This subclass only bundles or offloads writes whose ordering and rollback
+    boundary are already known by the built-in engine.
     """
 
     def __init__(self, path):
@@ -44,7 +45,42 @@ class BundledEventStore(EventStore):
         self._append_groups: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, _LoopAppendGroup
         ] = weakref.WeakKeyDictionary()
+        # SQLite writes are already serialized by EventStore._lock. Queueing before
+        # entering the executor prevents a burst of coroutines from occupying the
+        # default thread pool with workers that can do nothing except wait on that lock.
+        self._io_gates: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, asyncio.Lock
+        ] = weakref.WeakKeyDictionary()
         super().__init__(path)
+
+    def _io_gate(self, loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
+        with self._append_group_lock:
+            gate = self._io_gates.get(loop)
+            if gate is None:
+                gate = asyncio.Lock()
+                self._io_gates[loop] = gate
+            return gate
+
+    async def _run_io(self, call: Callable[..., _T], /, *args, **kwargs) -> _T:
+        """Run one built-in EventStore operation off-loop without changing durability.
+
+        Cancellation while waiting for the async gate is safe to propagate immediately:
+        no SQLite operation has started. Once submitted to a worker, cancellation is
+        delayed until commit/rollback is known so callers never observe an ambiguous
+        late durable write.
+        """
+        loop = asyncio.get_running_loop()
+        gate = self._io_gate(loop)
+        async with gate:
+            task = asyncio.create_task(asyncio.to_thread(call, *args, **kwargs))
+            try:
+                return await asyncio.shield(task)
+            except asyncio.CancelledError as cancelled:
+                try:
+                    await asyncio.shield(task)
+                except Exception:
+                    raise
+                raise cancelled
 
     def create_session_events_checkpoint(
         self,
@@ -99,6 +135,47 @@ class BundledEventStore(EventStore):
             )
             return persisted, reference
 
+    async def create_session_events_checkpoint_async(
+        self,
+        session_id: str,
+        events: list[tuple[str, dict[str, Any]]],
+        snapshot: dict[str, Any],
+        *,
+        meta: dict[str, Any] | None = None,
+        parent_session_id: str | None = None,
+        parent_seq: int | None = None,
+    ) -> tuple[list[RuntimeEvent], dict[str, Any]]:
+        return await self._run_io(
+            self.create_session_events_checkpoint,
+            session_id,
+            events,
+            snapshot,
+            meta=meta,
+            parent_session_id=parent_session_id,
+            parent_seq=parent_seq,
+        )
+
+    async def save_checkpoint_and_append_async(
+        self,
+        session_id: str,
+        snapshot: dict[str, Any],
+        event_type: str,
+        event_payload: dict[str, Any] | None = None,
+        *,
+        seq: int | None = None,
+    ) -> tuple[dict[str, Any], RuntimeEvent]:
+        return await self._run_io(
+            self.save_checkpoint_and_append,
+            session_id,
+            snapshot,
+            event_type,
+            event_payload,
+            seq=seq,
+        )
+
+    async def verify_chain_async(self, session_id: str) -> bool:
+        return await self._run_io(self.verify_chain, session_id)
+
     async def append_grouped(
         self,
         session_id: str,
@@ -109,8 +186,8 @@ class BundledEventStore(EventStore):
 
         One loop-local worker preserves enqueue order and drains bounded batches. Each
         caller waits until its SQLite transaction has committed before returning. The
-        actual SQLite work runs in a worker thread so short durable writes do not freeze
-        unrelated async tool/reasoning tasks on the main loop.
+        actual SQLite work uses the same loop-local I/O gate as bootstrap/checkpoints,
+        so executor workers never pile up behind EventStore._lock.
         """
         loop = asyncio.get_running_loop()
         future: asyncio.Future[RuntimeEvent] = loop.create_future()
@@ -170,14 +247,15 @@ class BundledEventStore(EventStore):
                     del group.queue[: len(batch)]
 
                 persist_task = asyncio.create_task(
-                    asyncio.to_thread(self._persist_append_group, batch)
+                    self._run_io(self._persist_append_group, batch)
                 )
                 worker_cancelled: asyncio.CancelledError | None = None
                 try:
                     persisted = await asyncio.shield(persist_task)
                 except asyncio.CancelledError as cancelled:
-                    # The thread cannot be cancelled once SQLite work has started. Wait
-                    # until its commit/rollback is known, resolve this batch, then stop.
+                    # The persistence task is shielded. Even when it is only waiting for
+                    # the shared async I/O gate, resolve whether this queued batch became
+                    # durable before propagating worker cancellation.
                     worker_cancelled = cancelled
                     try:
                         persisted = await asyncio.shield(persist_task)
@@ -191,12 +269,13 @@ class BundledEventStore(EventStore):
                         raise cancelled
                 except Exception:
                     # The shared transaction rolled back. Isolate malformed sessions or
-                    # payloads one by one, also off-loop, so unrelated requests complete.
+                    # payloads one by one, through the same gate, so unrelated requests
+                    # complete without occupying idle executor workers.
                     for index, request in enumerate(batch):
                         if request.future.done():
                             continue
                         single_task = asyncio.create_task(
-                            asyncio.to_thread(
+                            self._run_io(
                                 self.append,
                                 request.session_id,
                                 request.event_type,
@@ -206,8 +285,6 @@ class BundledEventStore(EventStore):
                         try:
                             event = await asyncio.shield(single_task)
                         except asyncio.CancelledError as cancelled:
-                            # This single retry has already entered the thread pool. Its
-                            # durability must also be resolved before worker cancellation.
                             try:
                                 event = await asyncio.shield(single_task)
                             except Exception as exc:
