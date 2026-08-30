@@ -1,0 +1,35 @@
+name: Skill Finalization Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: skill-finalization-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_VERSION: '26.2.1'
+
+jobs:
+  skill-finalization:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade "pip==${PIP_VERSION}"
+          python -m pip install -e '.[dev]'
+      - name: Skill async correctness
+        run: pytest -q tests/test_skill_async_offload.py
+      - name: Skill finalization A/B
+        run: python scripts/skill_finalization_gate.py
