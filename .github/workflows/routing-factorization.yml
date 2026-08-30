@@ -1,0 +1,33 @@
+name: Routing Factorization Gate
+
+on:
+  pull_request:
+    paths:
+      - "ecomevo/runtime/adaptive_routing.py"
+      - "ecomevo/runtime/counterfactual_routing.py"
+      - "ecomevo/runtime/factorized_routing.py"
+      - "tests/test_factorized_routing.py"
+      - "scripts/routing_factor_gate.py"
+      - ".github/workflows/routing-factorization.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  routing-factorization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade "pip==26.2.1"
+          python -m pip install -e . pytest
+      - name: Factorized routing correctness
+        run: python -m pytest -q tests/test_factorized_routing.py
+      - name: Factorized routing A/B
+        run: python scripts/routing_factor_gate.py
