@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "scripts/post_factor_decision_profile.py"
+      - "scripts/decision_read_fusion_probe.py"
       - ".github/workflows/post-factor-decision-profile.yml"
 
 permissions:
@@ -25,3 +26,5 @@ jobs:
           python -m pip install -e .
       - name: Post-factor decision leaf profile
         run: python scripts/post_factor_decision_profile.py --tasks 120
+      - name: Decision read fusion probe
+        run: python scripts/decision_read_fusion_probe.py
