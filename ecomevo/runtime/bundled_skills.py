@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import weakref
+from collections.abc import Iterable
 from contextvars import ContextVar
 from typing import Any, Callable, TypeVar
 
@@ -56,7 +57,7 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         domain: str,
         *,
         query: str = "",
-        missing: list[str] | None = None,
+        missing: Iterable[str] = (),
         limit: int = 6,
     ) -> tuple[list[Any], dict[str, Any] | None]:
         """Read active skills and an existing evolution policy from one SQLite snapshot.
@@ -64,10 +65,10 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         Missing-policy bootstrap deliberately remains on the existing ``policy`` write path;
         steady-state decision reads stay read-only and avoid a second connection.
         """
-        haystack = f"{query} {' '.join(missing or [])}".lower()
+        haystack = (str(query) + " " + " ".join(str(x) for x in missing)).lower()
         with self._conn() as connection:
             rows = connection.execute(
-                "SELECT * FROM skills WHERE domain=? AND status='active' "
+                "SELECT * FROM runtime_skills WHERE domain=? AND status='active' "
                 "ORDER BY updated_at DESC LIMIT 100",
                 (domain,),
             ).fetchall()
@@ -79,9 +80,15 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         candidates = [self._decode(row) for row in rows]
         scored: list[tuple[float, Any]] = []
         for skill in candidates:
-            posterior = skill.alpha / max(1e-9, skill.alpha + skill.beta)
-            term_hits = sum(1 for term in skill.trigger_terms if term.lower() in haystack)
-            score = 0.46 * posterior + 0.34 * skill.shadow_score + min(0.20, term_hits * 0.05)
+            term_hits = sum(
+                1 for term in skill.trigger_terms
+                if term and term.lower() in haystack
+            )
+            score = (
+                0.46 * skill.posterior_mean
+                + 0.34 * skill.shadow_score
+                + min(0.20, 0.05 * term_hits)
+            )
             scored.append((score, skill))
         scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
         selected = [skill for _, skill in scored[: max(1, int(limit))]]
@@ -90,9 +97,11 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         if policy_row is not None:
             policy = {
                 "domain": domain,
+                "promotion_threshold": float(policy_row["promotion_threshold"]),
+                "retirement_threshold": float(policy_row["retirement_threshold"]),
                 "exploration": float(policy_row["exploration"]),
                 "updates": int(policy_row["updates"]),
-                "last_reward": float(policy_row["last_reward"]),
+                "updated_at": float(policy_row["updated_at"]),
             }
         return selected, policy
 
@@ -101,7 +110,7 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         domain: str,
         *,
         query: str = "",
-        missing: list[str] | None = None,
+        missing: Iterable[str] = (),
         limit: int = 6,
     ) -> list[Any]:
         selected, policy = self._relevant_with_policy(
