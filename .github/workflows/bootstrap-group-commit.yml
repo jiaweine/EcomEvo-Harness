@@ -1,0 +1,33 @@
+name: Bootstrap Group Commit Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecomevo-bootstrap-group-commit-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_VERSION: '26.2.1'
+
+jobs:
+  bootstrap-group-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade "pip==${PIP_VERSION}"
+          python -m pip install -e '.[dev]'
+      - name: Bootstrap group-commit A/B
+        run: python scripts/bootstrap_group_commit_gate.py
+      - name: Bootstrap group semantics
+        run: pytest -q tests/test_bootstrap_group_commit.py tests/test_eventstore_async_offload.py
