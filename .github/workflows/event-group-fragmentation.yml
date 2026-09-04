@@ -1,0 +1,31 @@
+name: Event Group Fragmentation Probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecomevo-event-group-fragmentation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_VERSION: '26.2.1'
+
+jobs:
+  event-group-fragmentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade "pip==${PIP_VERSION}"
+          python -m pip install -e .
+      - name: Event group fragmentation profile
+        run: python scripts/event_group_fragmentation_probe.py
