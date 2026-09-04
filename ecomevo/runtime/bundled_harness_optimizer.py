@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 import weakref
+from contextvars import ContextVar
 from typing import Any, Callable, TypeVar
 
 from .harness_optimizer import HarnessEvolutionOptimizer
@@ -16,8 +17,8 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
 
     The public ``HarnessEvolutionOptimizer`` remains the compatibility surface. This
     subclass only adds optional methods used by the built-in Engine to keep phase-aligned
-    SQLite work off the asyncio thread and to avoid decoding a full optimizer snapshot
-    when the runtime needs only active/shadow generations.
+    SQLite work off the asyncio thread and to avoid unnecessary writer-slot acquisition
+    and full optimizer snapshots on steady-state paths.
     """
 
     def __init__(self, db_path, *, sandbox=None):
@@ -25,6 +26,10 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         self._async_gates: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
         ] = weakref.WeakKeyDictionary()
+        self._skip_replay_record: ContextVar[bool] = ContextVar(
+            f"bundled_harness_skip_replay_record_{id(self)}",
+            default=False,
+        )
         super().__init__(db_path, sandbox=sandbox)
 
     def _async_gate(self, loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
@@ -57,6 +62,50 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
 
     async def record_outcome_async(self, *args, **kwargs) -> list[dict[str, Any]]:
         return await self._run_io(self.record_outcome, *args, **kwargs)
+
+    def _record_replay_case(self, *args, **kwargs) -> None:
+        if self._skip_replay_record.get():
+            return
+        super()._record_replay_case(*args, **kwargs)
+
+    async def propose(
+        self,
+        domain: str,
+        *,
+        trajectory: dict[str, Any],
+        tool_catalog: list[dict[str, Any]],
+        reasoner=None,
+    ) -> dict[str, Any] | None:
+        """Avoid taking the writer slot when an established domain already has a shadow.
+
+        The base optimizer records the replay case and then opens ``BEGIN IMMEDIATE``
+        before checking whether another coordinate is already under validation. In the
+        steady-state one-shadow-at-a-time path that transaction is read-only but still
+        serializes with every SQLite writer. Record the replay case exactly once, inspect
+        established shadow state on a deferred WAL snapshot, and return immediately when
+        a shadow is already present.
+
+        If no shadow is visible, delegate to the base implementation. It retains the
+        original writer transaction and, before inserting a candidate, performs its second
+        shadow/current-component recheck, so concurrent proposal races keep the same
+        mutation semantics. Cold domains also stay on the base bootstrap path.
+        """
+        self._record_replay_case(domain, trajectory)
+        with self._conn() as connection:
+            connection.execute("BEGIN")
+            if self._domain_initialized(connection, domain) and self._has_shadow(connection, domain):
+                return None
+
+        token = self._skip_replay_record.set(True)
+        try:
+            return await super().propose(
+                domain,
+                trajectory=trajectory,
+                tool_catalog=tool_catalog,
+                reasoner=reasoner,
+            )
+        finally:
+            self._skip_replay_record.reset(token)
 
     def state_summary(self, domain: str) -> dict[str, Any]:
         """Return the post-proposal state required by RuntimeSummary in one small read.
