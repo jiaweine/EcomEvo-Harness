@@ -43,6 +43,26 @@ class FragmentationEventStore(writer_profile.ProfiledEventStore):
         return super()._persist_append_group(batch)
 
 
+def _build_fragmentation_engine(
+    db: Path, profile: writer_profile.WriterProfile
+) -> writer_profile.EcomEvoEngine:
+    sandbox = writer_profile.ActionSandbox()
+    events = FragmentationEventStore(db, profile)
+    skills = writer_profile.ProfiledSkills(db, profile)
+    harness = writer_profile.ProfiledHarness(db, profile, sandbox=sandbox)
+    engine = writer_profile.EcomEvoEngine(
+        db,
+        plugin_overrides={
+            "event.store": events,
+            "memory.skills": skills,
+            "evolver.harness": harness,
+            "sandbox.action": sandbox,
+        },
+    )
+    engine.autonomy.policy.routing = writer_profile.ProfiledRouting(db, profile)
+    return engine
+
+
 def percentile(values: list[int], q: float) -> int:
     if not values:
         return 0
@@ -84,61 +104,56 @@ def summarize_batches(batches: list[dict[str, Any]]) -> dict[str, Any]:
 async def main_async() -> dict[str, Any]:
     profile = writer_profile.WriterProfile()
     failures: list[str] = []
-    original_event_store = writer_profile.ProfiledEventStore
-    writer_profile.ProfiledEventStore = FragmentationEventStore
-    try:
-        with tempfile.TemporaryDirectory(prefix="ecomevo-event-fragmentation-") as tmp:
-            db = Path(tmp) / "event-fragmentation.db"
-            engine = writer_profile._build_engine(db, profile)
-            if not isinstance(engine.events, FragmentationEventStore):
-                raise AssertionError("diagnostic engine did not bind FragmentationEventStore")
+    with tempfile.TemporaryDirectory(prefix="ecomevo-event-fragmentation-") as tmp:
+        db = Path(tmp) / "event-fragmentation.db"
+        engine = _build_fragmentation_engine(db, profile)
+        if not isinstance(engine.events, FragmentationEventStore):
+            raise AssertionError("diagnostic engine did not bind FragmentationEventStore")
 
-            warm = await writer_profile._run_batch(engine, 1)
-            if not warm[0].event_chain_valid:
-                failures.append("warm-up run produced an invalid event chain")
+        warm = await writer_profile._run_batch(engine, 1)
+        if not warm[0].event_chain_valid:
+            failures.append("warm-up run produced an invalid event chain")
 
-            profile.reset()
-            engine.events.reset_append_batches()
-            summaries = await writer_profile._run_batch(engine, TASKS)
-            if any(not summary.event_chain_valid for summary in summaries):
-                failures.append("profiled run produced an invalid event chain")
+        profile.reset()
+        engine.events.reset_append_batches()
+        summaries = await writer_profile._run_batch(engine, TASKS)
+        if any(not summary.event_chain_valid for summary in summaries):
+            failures.append("profiled run produced an invalid event chain")
 
-            report = profile.report(TASKS)
-            batches = engine.events.append_batches()
-            fragmentation = summarize_batches(batches)
-            group_stage = next(
-                (row for row in report["stages"] if row["stage"] == "event.group_commit"),
-                None,
+        report = profile.report(TASKS)
+        batches = engine.events.append_batches()
+        fragmentation = summarize_batches(batches)
+        group_stage = next(
+            (row for row in report["stages"] if row["stage"] == "event.group_commit"),
+            None,
+        )
+        writer_transactions = int(group_stage["transactions"]) if group_stage else 0
+
+        if report["unattributed_transactions"]:
+            failures.append(
+                "event fragmentation probe lost writer attribution: "
+                f"{report['unattributed_transactions']} transactions"
             )
-            writer_transactions = int(group_stage["transactions"]) if group_stage else 0
+        if fragmentation["batches"] != writer_transactions:
+            failures.append(
+                "append persistence batch count did not match grouped writer transactions: "
+                f"{fragmentation['batches']} != {writer_transactions}"
+            )
+        if fragmentation["requests"] < TASKS:
+            failures.append(
+                "event fragmentation probe observed implausibly few grouped requests: "
+                f"{fragmentation['requests']} < {TASKS}"
+            )
 
-            if report["unattributed_transactions"]:
-                failures.append(
-                    "event fragmentation probe lost writer attribution: "
-                    f"{report['unattributed_transactions']} transactions"
-                )
-            if fragmentation["batches"] != writer_transactions:
-                failures.append(
-                    "append persistence batch count did not match grouped writer transactions: "
-                    f"{fragmentation['batches']} != {writer_transactions}"
-                )
-            if fragmentation["requests"] < TASKS:
-                failures.append(
-                    "event fragmentation probe observed implausibly few grouped requests: "
-                    f"{fragmentation['requests']} < {TASKS}"
-                )
-
-            return {
-                "ok": not failures,
-                "tasks": TASKS,
-                "group_writer_transactions": writer_transactions,
-                "group_transactions_per_task": round(writer_transactions / TASKS, 3),
-                "fragmentation": fragmentation,
-                "unattributed_transactions": int(report["unattributed_transactions"]),
-                "failures": failures,
-            }
-    finally:
-        writer_profile.ProfiledEventStore = original_event_store
+        return {
+            "ok": not failures,
+            "tasks": TASKS,
+            "group_writer_transactions": writer_transactions,
+            "group_transactions_per_task": round(writer_transactions / TASKS, 3),
+            "fragmentation": fragmentation,
+            "unattributed_transactions": int(report["unattributed_transactions"]),
+            "failures": failures,
+        }
 
 
 def main() -> int:
