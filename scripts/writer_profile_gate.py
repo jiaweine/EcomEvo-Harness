@@ -12,8 +12,8 @@ from typing import Any, Callable
 
 from ecomevo.runtime.adaptive_routing import AdaptiveRoutingStore
 from ecomevo.runtime.bundled_event_store import BundledEventStore
+from ecomevo.runtime.bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
 from ecomevo.runtime.engine import EcomEvoEngine
-from ecomevo.runtime.harness_optimizer import HarnessEvolutionOptimizer
 from ecomevo.runtime.sandbox import ActionSandbox
 from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
@@ -242,7 +242,7 @@ class ProfiledSkills(AdaptiveSkillLibrary):
         )
 
 
-class ProfiledHarness(HarnessEvolutionOptimizer):
+class ProfiledHarness(BundledHarnessEvolutionOptimizer):
     def __init__(self, path: Path, profile: WriterProfile, *, sandbox=None):
         self._writer_profile = profile
         super().__init__(path, sandbox=sandbox)
@@ -274,6 +274,13 @@ class ProfiledHarness(HarnessEvolutionOptimizer):
             self._writer_profile,
             "harness.replay_case",
             lambda: super(ProfiledHarness, self)._record_replay_case(*args, **kwargs),
+        )
+
+    def _persist_replay_group(self, *args, **kwargs):
+        return _timed(
+            self._writer_profile,
+            "harness.replay_case",
+            lambda: super(ProfiledHarness, self)._persist_replay_group(*args, **kwargs),
         )
 
     def _record_rejection(self, *args, **kwargs):
