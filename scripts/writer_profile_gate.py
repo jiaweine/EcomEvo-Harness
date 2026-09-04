@@ -352,6 +352,45 @@ async def _run_batch(engine: EcomEvoEngine, tasks: int) -> list[Any]:
     return await asyncio.gather(*(one(index) for index in range(tasks)))
 
 
+async def _profile_metadata_note_runs(
+    skills: ProfiledSkills,
+    profile: WriterProfile,
+    *,
+    tasks: int = 32,
+    domain: str = "merchant_review",
+) -> dict[str, Any]:
+    before = skills.policy(domain)
+    profile.reset()
+    started = time.perf_counter()
+    await asyncio.gather(
+        *(
+            skills.note_run_async(domain, success=True, skill_used=False)
+            for _ in range(tasks)
+        )
+    )
+    wall = time.perf_counter() - started
+    after = skills.policy(domain)
+    report = profile.report(tasks)
+    stage = next(
+        (row for row in report["stages"] if row["stage"] == "skills.note_run"),
+        None,
+    )
+    strategy_keys = ("promotion_threshold", "retirement_threshold", "exploration")
+    return {
+        "tasks": tasks,
+        "writer_transactions": int(stage["transactions"]) if stage else 0,
+        "transactions_per_task": round(
+            (int(stage["transactions"]) if stage else 0) / max(1, tasks), 3
+        ),
+        "updates_delta": int(after["updates"]) - int(before["updates"]),
+        "strategy_parameters_unchanged": all(
+            float(after[key]) == float(before[key]) for key in strategy_keys
+        ),
+        "wall_seconds": round(wall, 4),
+        "unattributed_transactions": int(report["unattributed_transactions"]),
+    }
+
+
 async def main_async() -> dict[str, Any]:
     tasks = 32
     profile = WriterProfile()
@@ -405,6 +444,29 @@ async def main_async() -> dict[str, Any]:
         ]
         components.sort(key=lambda row: (row["transactions"], row["writer_hold_ms_total"]), reverse=True)
 
+        metadata_note_run_probe = await _profile_metadata_note_runs(
+            engine.skills,
+            profile,
+            tasks=tasks,
+        )
+        if metadata_note_run_probe["updates_delta"] != tasks:
+            failures.append(
+                "metadata-only skill note-run probe lost policy updates: "
+                f"{metadata_note_run_probe['updates_delta']} != {tasks}"
+            )
+        if not metadata_note_run_probe["strategy_parameters_unchanged"]:
+            failures.append("metadata-only skill note-run probe changed strategy parameters")
+        if metadata_note_run_probe["unattributed_transactions"]:
+            failures.append(
+                "metadata-only skill note-run probe lost writer attribution: "
+                f"{metadata_note_run_probe['unattributed_transactions']} transactions"
+            )
+        if metadata_note_run_probe["writer_transactions"] >= tasks:
+            failures.append(
+                "metadata-only skill note-run grouping was not observed: "
+                f"{metadata_note_run_probe['writer_transactions']} >= {tasks} transactions"
+            )
+
         return {
             "ok": not failures,
             "tasks": tasks,
@@ -412,6 +474,7 @@ async def main_async() -> dict[str, Any]:
             "throughput_tasks_per_second": round(tasks / wall, 3) if wall else 0.0,
             "profile": report,
             "components": components,
+            "metadata_note_run_probe": metadata_note_run_probe,
             "failures": failures,
         }
 
