@@ -5,6 +5,7 @@ import json
 import statistics
 import tempfile
 import threading
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -43,11 +44,22 @@ class FragmentationEventStore(writer_profile.ProfiledEventStore):
         return super()._persist_append_group(batch)
 
 
+class IdleExtraTurnEventStore(FragmentationEventStore):
+    async def _flush_append_group(self, group) -> None:
+        # Diagnostic only: when a group worker is first created from idle, give peer
+        # coroutines one additional scheduler turn to enqueue. The production worker
+        # still owns all subsequent batching, persistence, cancellation and fallback.
+        await asyncio.sleep(0)
+        await super()._flush_append_group(group)
+
+
 def _build_fragmentation_engine(
-    db: Path, profile: writer_profile.WriterProfile
+    db: Path,
+    profile: writer_profile.WriterProfile,
+    store_type: type[FragmentationEventStore],
 ) -> writer_profile.EcomEvoEngine:
     sandbox = writer_profile.ActionSandbox()
-    events = FragmentationEventStore(db, profile)
+    events = store_type(db, profile)
     skills = writer_profile.ProfiledSkills(db, profile)
     harness = writer_profile.ProfiledHarness(db, profile, sandbox=sandbox)
     engine = writer_profile.EcomEvoEngine(
@@ -101,59 +113,101 @@ def summarize_batches(batches: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-async def main_async() -> dict[str, Any]:
+async def measure(
+    root: Path,
+    mode: str,
+    store_type: type[FragmentationEventStore],
+) -> dict[str, Any]:
     profile = writer_profile.WriterProfile()
     failures: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="ecomevo-event-fragmentation-") as tmp:
-        db = Path(tmp) / "event-fragmentation.db"
-        engine = _build_fragmentation_engine(db, profile)
-        if not isinstance(engine.events, FragmentationEventStore):
-            raise AssertionError("diagnostic engine did not bind FragmentationEventStore")
+    db = root / f"{mode}.db"
+    engine = _build_fragmentation_engine(db, profile, store_type)
+    if not isinstance(engine.events, FragmentationEventStore):
+        raise AssertionError("diagnostic engine did not bind FragmentationEventStore")
 
-        warm = await writer_profile._run_batch(engine, 1)
-        if not warm[0].event_chain_valid:
-            failures.append("warm-up run produced an invalid event chain")
+    warm = await writer_profile._run_batch(engine, 1)
+    if not warm[0].event_chain_valid:
+        failures.append("warm-up run produced an invalid event chain")
 
-        profile.reset()
-        engine.events.reset_append_batches()
-        summaries = await writer_profile._run_batch(engine, TASKS)
-        if any(not summary.event_chain_valid for summary in summaries):
-            failures.append("profiled run produced an invalid event chain")
+    profile.reset()
+    engine.events.reset_append_batches()
+    started = time.perf_counter()
+    summaries = await writer_profile._run_batch(engine, TASKS)
+    wall = time.perf_counter() - started
+    if any(not summary.event_chain_valid for summary in summaries):
+        failures.append("profiled run produced an invalid event chain")
 
-        report = profile.report(TASKS)
-        batches = engine.events.append_batches()
-        fragmentation = summarize_batches(batches)
-        group_stage = next(
-            (row for row in report["stages"] if row["stage"] == "event.group_commit"),
-            None,
+    report = profile.report(TASKS)
+    batches = engine.events.append_batches()
+    fragmentation = summarize_batches(batches)
+    group_stage = next(
+        (row for row in report["stages"] if row["stage"] == "event.group_commit"),
+        None,
+    )
+    writer_transactions = int(group_stage["transactions"]) if group_stage else 0
+
+    if report["unattributed_transactions"]:
+        failures.append(
+            "event fragmentation probe lost writer attribution: "
+            f"{report['unattributed_transactions']} transactions"
         )
-        writer_transactions = int(group_stage["transactions"]) if group_stage else 0
+    if fragmentation["batches"] != writer_transactions:
+        failures.append(
+            "append persistence batch count did not match grouped writer transactions: "
+            f"{fragmentation['batches']} != {writer_transactions}"
+        )
+    if fragmentation["requests"] < TASKS:
+        failures.append(
+            "event fragmentation probe observed implausibly few grouped requests: "
+            f"{fragmentation['requests']} < {TASKS}"
+        )
 
-        if report["unattributed_transactions"]:
-            failures.append(
-                "event fragmentation probe lost writer attribution: "
-                f"{report['unattributed_transactions']} transactions"
-            )
-        if fragmentation["batches"] != writer_transactions:
-            failures.append(
-                "append persistence batch count did not match grouped writer transactions: "
-                f"{fragmentation['batches']} != {writer_transactions}"
-            )
-        if fragmentation["requests"] < TASKS:
-            failures.append(
-                "event fragmentation probe observed implausibly few grouped requests: "
-                f"{fragmentation['requests']} < {TASKS}"
-            )
+    return {
+        "mode": mode,
+        "ok": not failures,
+        "tasks": TASKS,
+        "wall_seconds": round(wall, 4),
+        "group_writer_transactions": writer_transactions,
+        "group_transactions_per_task": round(writer_transactions / TASKS, 3),
+        "fragmentation": fragmentation,
+        "unattributed_transactions": int(report["unattributed_transactions"]),
+        "failures": failures,
+    }
 
-        return {
-            "ok": not failures,
-            "tasks": TASKS,
-            "group_writer_transactions": writer_transactions,
-            "group_transactions_per_task": round(writer_transactions / TASKS, 3),
-            "fragmentation": fragmentation,
-            "unattributed_transactions": int(report["unattributed_transactions"]),
-            "failures": failures,
-        }
+
+async def main_async() -> dict[str, Any]:
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="ecomevo-event-fragmentation-") as tmp:
+        root = Path(tmp)
+        baseline = await measure(root, "baseline", FragmentationEventStore)
+        idle_extra_turn = await measure(root, "idle_extra_turn", IdleExtraTurnEventStore)
+
+    failures.extend(baseline["failures"])
+    failures.extend(idle_extra_turn["failures"])
+    baseline_tx = int(baseline["group_writer_transactions"])
+    extra_tx = int(idle_extra_turn["group_writer_transactions"])
+    baseline_wall = float(baseline["wall_seconds"])
+    extra_wall = float(idle_extra_turn["wall_seconds"])
+
+    return {
+        "ok": not failures,
+        "tasks": TASKS,
+        "baseline": baseline,
+        "idle_extra_turn": idle_extra_turn,
+        "comparison": {
+            "writer_transaction_ratio": round(extra_tx / max(1, baseline_tx), 4),
+            "writer_transactions_saved": baseline_tx - extra_tx,
+            "wall_ratio": round(extra_wall / max(0.0001, baseline_wall), 4),
+            "singleton_batches_saved": int(baseline["fragmentation"]["single_request_batches"])
+            - int(idle_extra_turn["fragmentation"]["single_request_batches"]),
+            "average_batch_size_ratio": round(
+                float(idle_extra_turn["fragmentation"]["average_batch_size"])
+                / max(0.001, float(baseline["fragmentation"]["average_batch_size"])),
+                4,
+            ),
+        },
+        "failures": failures,
+    }
 
 
 def main() -> int:
