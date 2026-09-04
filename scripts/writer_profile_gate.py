@@ -13,9 +13,9 @@ from typing import Any, Callable
 from ecomevo.runtime.adaptive_routing import AdaptiveRoutingStore
 from ecomevo.runtime.bundled_event_store import BundledEventStore
 from ecomevo.runtime.bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
+from ecomevo.runtime.bundled_skills import BundledAdaptiveSkillLibrary
 from ecomevo.runtime.engine import EcomEvoEngine
 from ecomevo.runtime.sandbox import ActionSandbox
-from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
 
 _stage: contextvars.ContextVar[str] = contextvars.ContextVar("writer_profile_stage", default="unattributed")
@@ -200,7 +200,7 @@ class ProfiledEventStore(BundledEventStore):
         )
 
 
-class ProfiledSkills(AdaptiveSkillLibrary):
+class ProfiledSkills(BundledAdaptiveSkillLibrary):
     def __init__(self, path: Path, profile: WriterProfile):
         self._writer_profile = profile
         super().__init__(path)
@@ -220,11 +220,11 @@ class ProfiledSkills(AdaptiveSkillLibrary):
             lambda: super(ProfiledSkills, self).policy(*args, **kwargs),
         )
 
-    def note_run(self, *args, **kwargs):
+    def _persist_note_run_group(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
             "skills.note_run",
-            lambda: super(ProfiledSkills, self).note_run(*args, **kwargs),
+            lambda: super(ProfiledSkills, self)._persist_note_run_group(*args, **kwargs),
         )
 
     def record_outcome(self, *args, **kwargs):
