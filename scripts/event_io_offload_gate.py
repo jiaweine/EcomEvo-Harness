@@ -15,6 +15,7 @@ from ecomevo.runtime.bundled_event_store import BundledEventStore
 SESSIONS = 64
 CHECKPOINT_ROUNDS = 3
 HEARTBEAT_INTERVAL = 0.002
+CHECKPOINT_TRANSACTION_RATIO_LIMIT = 0.10
 
 
 def percentile(values: list[float], q: float) -> float:
@@ -111,11 +112,12 @@ async def measure(mode: str, root: Path) -> dict[str, Any]:
         await heartbeat_task
 
     failures: list[str] = []
-    expected_transactions = SESSIONS * (1 + CHECKPOINT_ROUNDS)
-    if store.immediate_begins != expected_transactions:
-        failures.append(
-            f"writer transactions changed: {store.immediate_begins} != {expected_transactions}"
-        )
+    if mode == "sync":
+        expected_transactions = SESSIONS * (1 + CHECKPOINT_ROUNDS)
+        if store.immediate_begins != expected_transactions:
+            failures.append(
+                f"writer transactions changed: {store.immediate_begins} != {expected_transactions}"
+            )
     expected_events = 3 + CHECKPOINT_ROUNDS
     for index in range(SESSIONS):
         sid = f"{mode}-{index}"
@@ -158,17 +160,32 @@ async def main_async() -> dict[str, Any]:
 
     failures.extend(sync["failures"])
     failures.extend(async_result["failures"])
-    if sync["writer_transactions"] != async_result["writer_transactions"]:
-        failures.append("async offload changed writer transaction count")
+
+    bootstrap_transactions = SESSIONS
+    sync_checkpoint_transactions = int(sync["writer_transactions"]) - bootstrap_transactions
+    async_checkpoint_transactions = int(async_result["writer_transactions"]) - bootstrap_transactions
+    if async_checkpoint_transactions < 0:
+        failures.append(
+            "async writer transactions dropped below the one-transaction-per-bootstrap floor"
+        )
+    checkpoint_transaction_ratio = async_checkpoint_transactions / max(
+        1, sync_checkpoint_transactions
+    )
+    if checkpoint_transaction_ratio > CHECKPOINT_TRANSACTION_RATIO_LIMIT:
+        failures.append(
+            "async checkpoint writer reduction too small: "
+            f"ratio={checkpoint_transaction_ratio:.4f} > {CHECKPOINT_TRANSACTION_RATIO_LIMIT:.2f}"
+        )
 
     sync_max = float(sync["heartbeat_ms"]["max"])
     async_max = float(async_result["heartbeat_ms"]["max"])
     lag_ratio = async_max / max(0.001, sync_max)
     wall_ratio = float(async_result["wall_seconds"]) / max(0.0001, float(sync["wall_seconds"]))
 
-    # Fixed before observing CI: this optimization is worthwhile only if moving these
-    # phase-aligned calls off-loop cuts worst heartbeat starvation by at least 60%, while
-    # keeping total completion time within a modest executor-scheduling budget.
+    # The async arm now combines the original I/O offload with checkpoint group commit.
+    # Preserve the original loop-lag and wall guards, while requiring the grouped checkpoint
+    # writer amplification to stay within the same <=10% gate predeclared by the checkpoint
+    # A/B probe. Bootstrap creation remains one transaction per session in both arms.
     if lag_ratio > 0.40:
         failures.append(f"event-loop max lag reduction too small: ratio={lag_ratio:.4f} > 0.40")
     if wall_ratio > 1.50:
@@ -181,7 +198,12 @@ async def main_async() -> dict[str, Any]:
         "comparison": {
             "async_to_sync_max_lag_ratio": round(lag_ratio, 4),
             "async_to_sync_wall_ratio": round(wall_ratio, 4),
-            "writer_transactions_equal": sync["writer_transactions"] == async_result["writer_transactions"],
+            "bootstrap_writer_transactions": bootstrap_transactions,
+            "sync_checkpoint_writer_transactions": sync_checkpoint_transactions,
+            "async_checkpoint_writer_transactions": async_checkpoint_transactions,
+            "async_to_sync_checkpoint_transaction_ratio": round(
+                checkpoint_transaction_ratio, 4
+            ),
         },
         "failures": failures,
     }
