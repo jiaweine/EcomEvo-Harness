@@ -1,15 +1,34 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
+import time
 import weakref
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 
 from .harness_optimizer import HarnessEvolutionOptimizer
 
 
+_REPLAY_GROUP_LIMIT = 64
 _T = TypeVar("_T")
+
+
+@dataclass(slots=True)
+class _GroupedReplayCase:
+    domain: str
+    trajectory_json: str
+    created_at: float
+    future: asyncio.Future[None]
+
+
+@dataclass(slots=True)
+class _LoopReplayGroup:
+    queue: list[_GroupedReplayCase] = field(default_factory=list)
+    scheduled: bool = False
+    worker: asyncio.Task[None] | None = None
 
 
 class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
@@ -25,6 +44,9 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         self._async_gate_lock = threading.RLock()
         self._async_gates: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
+        ] = weakref.WeakKeyDictionary()
+        self._replay_groups: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, _LoopReplayGroup
         ] = weakref.WeakKeyDictionary()
         self._skip_replay_record: ContextVar[bool] = ContextVar(
             f"bundled_harness_skip_replay_record_{id(self)}",
@@ -68,6 +90,156 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
             return
         super()._record_replay_case(*args, **kwargs)
 
+    async def _record_replay_case_grouped(
+        self,
+        domain: str,
+        trajectory: dict[str, Any],
+    ) -> None:
+        """Durably coalesce phase-aligned replay evidence without blocking the loop."""
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+        request = _GroupedReplayCase(
+            domain=str(domain),
+            trajectory_json=json.dumps(trajectory, ensure_ascii=False, default=str)[:24000],
+            created_at=time.time(),
+            future=future,
+        )
+        with self._async_gate_lock:
+            group = self._replay_groups.get(loop)
+            if group is None:
+                group = _LoopReplayGroup()
+                self._replay_groups[loop] = group
+            group.queue.append(request)
+            if not group.scheduled:
+                group.scheduled = True
+                group.worker = loop.create_task(self._flush_replay_group(group))
+
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError as cancelled:
+            # Once queued, preserve the synchronous evidence contract: cancellation is
+            # observable only after this replay case has committed or failed.
+            try:
+                await asyncio.shield(future)
+            except Exception:
+                raise
+            raise cancelled
+
+    @staticmethod
+    def _fail_replay_requests(
+        requests: list[_GroupedReplayCase],
+        error: BaseException,
+    ) -> None:
+        for request in requests:
+            if not request.future.done():
+                request.future.set_exception(error)
+
+    def _stop_replay_group(self, group: _LoopReplayGroup) -> list[_GroupedReplayCase]:
+        with self._async_gate_lock:
+            queued = list(group.queue)
+            group.queue.clear()
+            group.scheduled = False
+            group.worker = None
+        return queued
+
+    async def _flush_replay_group(self, group: _LoopReplayGroup) -> None:
+        try:
+            while True:
+                # One scheduler turn lets phase-aligned proposals join the bounded batch
+                # without adding a fixed latency window to isolated proposals.
+                await asyncio.sleep(0)
+                with self._async_gate_lock:
+                    if not group.queue:
+                        group.scheduled = False
+                        group.worker = None
+                        return
+                    batch = list(group.queue[:_REPLAY_GROUP_LIMIT])
+                    del group.queue[: len(batch)]
+
+                persist_task = asyncio.create_task(
+                    self._run_io(self._persist_replay_group, batch)
+                )
+                worker_cancelled: asyncio.CancelledError | None = None
+                try:
+                    await asyncio.shield(persist_task)
+                except asyncio.CancelledError as cancelled:
+                    worker_cancelled = cancelled
+                    try:
+                        await asyncio.shield(persist_task)
+                    except Exception as exc:
+                        self._fail_replay_requests(batch, exc)
+                        queued = self._stop_replay_group(group)
+                        self._fail_replay_requests(
+                            queued,
+                            RuntimeError("harness replay worker cancelled before persistence"),
+                        )
+                        raise cancelled
+                except Exception:
+                    # A shared transaction must roll back as a unit. Retry requests one by
+                    # one so an isolated SQLite/row failure does not poison valid peers.
+                    for index, request in enumerate(batch):
+                        if request.future.done():
+                            continue
+                        single_task = asyncio.create_task(
+                            self._run_io(self._persist_replay_group, [request])
+                        )
+                        try:
+                            await asyncio.shield(single_task)
+                        except asyncio.CancelledError as cancelled:
+                            try:
+                                await asyncio.shield(single_task)
+                            except Exception as exc:
+                                request.future.set_exception(exc)
+                            else:
+                                request.future.set_result(None)
+                            self._fail_replay_requests(
+                                batch[index + 1 :],
+                                RuntimeError(
+                                    "harness replay worker cancelled before isolated persistence"
+                                ),
+                            )
+                            queued = self._stop_replay_group(group)
+                            self._fail_replay_requests(
+                                queued,
+                                RuntimeError("harness replay worker cancelled before persistence"),
+                            )
+                            raise cancelled
+                        except Exception as exc:
+                            request.future.set_exception(exc)
+                        else:
+                            request.future.set_result(None)
+                    continue
+
+                for request in batch:
+                    if not request.future.done():
+                        request.future.set_result(None)
+
+                if worker_cancelled is not None:
+                    queued = self._stop_replay_group(group)
+                    self._fail_replay_requests(
+                        queued,
+                        RuntimeError("harness replay worker cancelled before persistence"),
+                    )
+                    raise worker_cancelled
+        except asyncio.CancelledError:
+            queued = self._stop_replay_group(group)
+            self._fail_replay_requests(
+                queued,
+                RuntimeError("harness replay worker cancelled before persistence"),
+            )
+            raise
+
+    def _persist_replay_group(self, batch: list[_GroupedReplayCase]) -> None:
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.executemany(
+                "INSERT INTO harness_replay_cases(domain,trajectory_json,created_at) VALUES(?,?,?)",
+                [
+                    (request.domain, request.trajectory_json, request.created_at)
+                    for request in batch
+                ],
+            )
+
     async def propose(
         self,
         domain: str,
@@ -76,21 +248,19 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         tool_catalog: list[dict[str, Any]],
         reasoner=None,
     ) -> dict[str, Any] | None:
-        """Avoid taking the writer slot when an established domain already has a shadow.
+        """Persist replay evidence cheaply and avoid read-only writer reservations.
 
-        The base optimizer records the replay case and then opens ``BEGIN IMMEDIATE``
-        before checking whether another coordinate is already under validation. In the
-        steady-state one-shadow-at-a-time path that transaction is read-only but still
-        serializes with every SQLite writer. Record the replay case exactly once, inspect
-        established shadow state on a deferred WAL snapshot, and return immediately when
-        a shadow is already present.
+        Built-in replay evidence is phase-aligned across concurrent runs, so persist it
+        through the loop-local group-commit queue before inspecting optimizer state. Each
+        caller still waits for durable evidence before continuing, but SQLite work stays
+        off-loop and up to 64 replay cases share one writer transaction.
 
-        If no shadow is visible, delegate to the base implementation. It retains the
-        original writer transaction and, before inserting a candidate, performs its second
-        shadow/current-component recheck, so concurrent proposal races keep the same
-        mutation semantics. Cold domains also stay on the base bootstrap path.
+        The base optimizer then remains the mutation authority. Existing-shadow proposals
+        return from a deferred WAL read snapshot. If no shadow is visible, delegation to
+        the base implementation retains its original bootstrap transaction, replay gate,
+        and final shadow/current-component rechecks before candidate insertion.
         """
-        self._record_replay_case(domain, trajectory)
+        await self._record_replay_case_grouped(domain, trajectory)
         with self._conn() as connection:
             connection.execute("BEGIN")
             if self._domain_initialized(connection, domain) and self._has_shadow(connection, domain):
