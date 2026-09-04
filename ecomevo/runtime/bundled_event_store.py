@@ -14,6 +14,7 @@ from .event_store import EventStore
 
 
 _APPEND_GROUP_LIMIT = 64
+_BOOTSTRAP_GROUP_LIMIT = 64
 _CHECKPOINT_GROUP_LIMIT = 64
 _T = TypeVar("_T")
 
@@ -29,6 +30,24 @@ class _GroupedAppend:
 @dataclass(slots=True)
 class _LoopAppendGroup:
     queue: list[_GroupedAppend] = field(default_factory=list)
+    scheduled: bool = False
+    worker: asyncio.Task[None] | None = None
+
+
+@dataclass(slots=True)
+class _GroupedBootstrap:
+    session_id: str
+    events: list[tuple[str, dict[str, Any]]]
+    snapshot: dict[str, Any]
+    meta: dict[str, Any] | None
+    parent_session_id: str | None
+    parent_seq: int | None
+    future: asyncio.Future[tuple[list[RuntimeEvent], dict[str, Any]]]
+
+
+@dataclass(slots=True)
+class _LoopBootstrapGroup:
+    queue: list[_GroupedBootstrap] = field(default_factory=list)
     scheduled: bool = False
     worker: asyncio.Task[None] | None = None
 
@@ -62,6 +81,10 @@ class BundledEventStore(EventStore):
         self._append_group_lock = threading.RLock()
         self._append_groups: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, _LoopAppendGroup
+        ] = weakref.WeakKeyDictionary()
+        self._bootstrap_group_lock = threading.RLock()
+        self._bootstrap_groups: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, _LoopBootstrapGroup
         ] = weakref.WeakKeyDictionary()
         self._checkpoint_group_lock = threading.RLock()
         self._checkpoint_groups: weakref.WeakKeyDictionary[
@@ -167,8 +190,23 @@ class BundledEventStore(EventStore):
         parent_session_id: str | None = None,
         parent_seq: int | None = None,
     ) -> tuple[list[RuntimeEvent], dict[str, Any]]:
-        return await self._run_io(
-            self.create_session_events_checkpoint,
+        # A subclass may deliberately instrument or alter the synchronous bootstrap
+        # boundary. Preserve that observable compatibility contract instead of silently
+        # bypassing the override through the built-in group-commit worker.
+        if (
+            type(self).create_session_events_checkpoint
+            is not BundledEventStore.create_session_events_checkpoint
+        ):
+            return await self._run_io(
+                self.create_session_events_checkpoint,
+                session_id,
+                events,
+                snapshot,
+                meta=meta,
+                parent_session_id=parent_session_id,
+                parent_seq=parent_seq,
+            )
+        return await self.create_session_events_checkpoint_grouped(
             session_id,
             events,
             snapshot,
@@ -176,6 +214,54 @@ class BundledEventStore(EventStore):
             parent_session_id=parent_session_id,
             parent_seq=parent_seq,
         )
+
+    async def create_session_events_checkpoint_grouped(
+        self,
+        session_id: str,
+        events: list[tuple[str, dict[str, Any]]],
+        snapshot: dict[str, Any],
+        *,
+        meta: dict[str, Any] | None = None,
+        parent_session_id: str | None = None,
+        parent_seq: int | None = None,
+    ) -> tuple[list[RuntimeEvent], dict[str, Any]]:
+        """Coalesce independent sinkless session bootstraps into durable transactions."""
+        if not events:
+            raise ValueError("bootstrap bundle requires at least one event")
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[tuple[list[RuntimeEvent], dict[str, Any]]] = (
+            loop.create_future()
+        )
+        request = _GroupedBootstrap(
+            session_id=str(session_id),
+            events=list(events),
+            snapshot=snapshot,
+            meta=dict(meta) if meta is not None else None,
+            parent_session_id=parent_session_id,
+            parent_seq=parent_seq,
+            future=future,
+        )
+        with self._bootstrap_group_lock:
+            group = self._bootstrap_groups.get(loop)
+            if group is None:
+                group = _LoopBootstrapGroup()
+                self._bootstrap_groups[loop] = group
+            group.queue.append(request)
+            if not group.scheduled:
+                group.scheduled = True
+                group.worker = loop.create_task(self._flush_bootstrap_group(group))
+
+        try:
+            return await asyncio.shield(future)
+        except asyncio.CancelledError as cancelled:
+            # Once queued, retain the synchronous durability contract. Do not expose
+            # cancellation until this session is known to be committed or rolled back.
+            try:
+                await asyncio.shield(future)
+            except Exception:
+                raise
+            raise cancelled
 
     async def save_checkpoint_and_append_async(
         self,
@@ -292,6 +378,14 @@ class BundledEventStore(EventStore):
                 request.future.set_exception(error)
 
     @staticmethod
+    def _fail_bootstrap_requests(
+        requests: list[_GroupedBootstrap], error: BaseException
+    ) -> None:
+        for request in requests:
+            if not request.future.done():
+                request.future.set_exception(error)
+
+    @staticmethod
     def _fail_checkpoint_requests(
         requests: list[_GroupedCheckpoint], error: BaseException
     ) -> None:
@@ -301,6 +395,16 @@ class BundledEventStore(EventStore):
 
     def _stop_append_group(self, group: _LoopAppendGroup) -> list[_GroupedAppend]:
         with self._append_group_lock:
+            queued = list(group.queue)
+            group.queue.clear()
+            group.scheduled = False
+            group.worker = None
+        return queued
+
+    def _stop_bootstrap_group(
+        self, group: _LoopBootstrapGroup
+    ) -> list[_GroupedBootstrap]:
+        with self._bootstrap_group_lock:
             queued = list(group.queue)
             group.queue.clear()
             group.scheduled = False
@@ -413,6 +517,105 @@ class BundledEventStore(EventStore):
             self._fail_requests(
                 queued,
                 RuntimeError("event append worker cancelled before persistence"),
+            )
+            raise
+
+    async def _flush_bootstrap_group(self, group: _LoopBootstrapGroup) -> None:
+        try:
+            while True:
+                await asyncio.sleep(0)
+                with self._bootstrap_group_lock:
+                    if not group.queue:
+                        group.scheduled = False
+                        group.worker = None
+                        return
+                    batch = list(group.queue[:_BOOTSTRAP_GROUP_LIMIT])
+                    del group.queue[: len(batch)]
+
+                persist_task = asyncio.create_task(
+                    self._run_io(self._persist_bootstrap_group, batch)
+                )
+                worker_cancelled: asyncio.CancelledError | None = None
+                try:
+                    persisted = await asyncio.shield(persist_task)
+                except asyncio.CancelledError as cancelled:
+                    worker_cancelled = cancelled
+                    try:
+                        persisted = await asyncio.shield(persist_task)
+                    except Exception as exc:
+                        self._fail_bootstrap_requests(batch, exc)
+                        queued = self._stop_bootstrap_group(group)
+                        self._fail_bootstrap_requests(
+                            queued,
+                            RuntimeError(
+                                "bootstrap group worker cancelled before persistence"
+                            ),
+                        )
+                        raise cancelled
+                except Exception:
+                    # Roll the failed shared transaction back, then isolate requests
+                    # through the original atomic bootstrap operation so one duplicate or
+                    # malformed session cannot poison unrelated peers.
+                    for index, request in enumerate(batch):
+                        if request.future.done():
+                            continue
+                        single_task = asyncio.create_task(
+                            self._run_io(
+                                self.create_session_events_checkpoint,
+                                request.session_id,
+                                request.events,
+                                request.snapshot,
+                                meta=request.meta,
+                                parent_session_id=request.parent_session_id,
+                                parent_seq=request.parent_seq,
+                            )
+                        )
+                        try:
+                            result = await asyncio.shield(single_task)
+                        except asyncio.CancelledError as cancelled:
+                            try:
+                                result = await asyncio.shield(single_task)
+                            except Exception as exc:
+                                request.future.set_exception(exc)
+                            else:
+                                request.future.set_result(result)
+                            pending = batch[index + 1 :]
+                            self._fail_bootstrap_requests(
+                                pending,
+                                RuntimeError(
+                                    "bootstrap group worker cancelled before isolated persistence"
+                                ),
+                            )
+                            queued = self._stop_bootstrap_group(group)
+                            self._fail_bootstrap_requests(
+                                queued,
+                                RuntimeError(
+                                    "bootstrap group worker cancelled before persistence"
+                                ),
+                            )
+                            raise cancelled
+                        except Exception as exc:
+                            request.future.set_exception(exc)
+                        else:
+                            request.future.set_result(result)
+                    continue
+
+                for request, result in zip(batch, persisted):
+                    if not request.future.done():
+                        request.future.set_result(result)
+
+                if worker_cancelled is not None:
+                    queued = self._stop_bootstrap_group(group)
+                    self._fail_bootstrap_requests(
+                        queued,
+                        RuntimeError("bootstrap group worker cancelled before persistence"),
+                    )
+                    raise worker_cancelled
+        except asyncio.CancelledError:
+            queued = self._stop_bootstrap_group(group)
+            self._fail_bootstrap_requests(
+                queued,
+                RuntimeError("bootstrap group worker cancelled before persistence"),
             )
             raise
 
@@ -535,6 +738,44 @@ class BundledEventStore(EventStore):
                 persisted.append(event)
                 tails[request.session_id] = {"seq": event.seq, "hash": event.hash}
             return persisted
+
+    def _persist_bootstrap_group(
+        self, batch: list[_GroupedBootstrap]
+    ) -> list[tuple[list[RuntimeEvent], dict[str, Any]]]:
+        with self._lock, self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            persisted_groups: list[tuple[list[RuntimeEvent], dict[str, Any]]] = []
+            for request in batch:
+                c.execute(
+                    "INSERT INTO sessions VALUES(?,?,?,?,?)",
+                    (
+                        request.session_id,
+                        request.parent_session_id,
+                        request.parent_seq,
+                        time.time(),
+                        json.dumps(request.meta or {}, ensure_ascii=False, default=str),
+                    ),
+                )
+                persisted: list[RuntimeEvent] = []
+                tail: dict[str, Any] = {"seq": None, "hash": None}
+                for event_type, payload in request.events:
+                    event = self._append_in_transaction(
+                        c,
+                        request.session_id,
+                        str(event_type),
+                        payload,
+                        tail=tail,
+                    )
+                    persisted.append(event)
+                    tail = {"seq": event.seq, "hash": event.hash}
+                reference = self._save_checkpoint_in_transaction(
+                    c,
+                    request.session_id,
+                    request.snapshot,
+                    tail=tail,
+                )
+                persisted_groups.append((persisted, reference))
+            return persisted_groups
 
     def _persist_checkpoint_group(
         self, batch: list[_GroupedCheckpoint]
