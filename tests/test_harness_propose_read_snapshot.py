@@ -75,7 +75,7 @@ def test_cold_proposal_keeps_bootstrap_and_records_replay_once(tmp_path):
     assert optimizer.immediate_begins >= 2
 
 
-def test_existing_shadow_probe_does_not_take_immediate_writer_slot(tmp_path):
+def test_existing_shadow_probe_adds_no_writer_beyond_replay_evidence(tmp_path):
     optimizer = TracingBundledHarness(tmp_path / "runtime.db")
     first = asyncio.run(
         optimizer.propose(
@@ -99,9 +99,10 @@ def test_existing_shadow_probe_does_not_take_immediate_writer_slot(tmp_path):
     )
 
     assert second is None
-    assert optimizer.immediate_begins == 0
-    # The fast path is allowed to remove only the read-only writer reservation; replay
-    # evidence remains durable exactly once per proposal attempt.
+    # Replay evidence is a real durable write, so one isolated proposal still needs one
+    # immediate writer transaction. The existing-shadow read probe itself must not add a
+    # second BEGIN IMMEDIATE reservation.
+    assert optimizer.immediate_begins == 1
     assert optimizer.replay_count("merchant_review") == 2
 
 
