@@ -186,8 +186,7 @@ class BundledEventStore(EventStore):
         *,
         seq: int | None = None,
     ) -> tuple[dict[str, Any], RuntimeEvent]:
-        return await self._run_io(
-            self.save_checkpoint_and_append,
+        return await self.save_checkpoint_and_append_grouped(
             session_id,
             snapshot,
             event_type,
