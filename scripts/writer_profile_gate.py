@@ -137,11 +137,11 @@ class ProfiledEventStore(BundledEventStore):
         )
         return connection
 
-    def create_session_events_checkpoint(self, *args, **kwargs):
+    def _persist_bootstrap_group(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
             "event.bootstrap",
-            lambda: super(ProfiledEventStore, self).create_session_events_checkpoint(*args, **kwargs),
+            lambda: super(ProfiledEventStore, self)._persist_bootstrap_group(*args, **kwargs),
         )
 
     def create_session_and_append(self, session_id, event_type, payload, **kwargs):

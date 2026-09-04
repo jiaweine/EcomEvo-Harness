@@ -29,6 +29,8 @@ def percentile(values: list[float], q: float) -> float:
 class TracingStore(BundledEventStore):
     def __init__(self, path: Path):
         self.immediate_begins = 0
+        self.bootstrap_group_transactions = 0
+        self.checkpoint_group_transactions = 0
         self._trace_lock = threading.Lock()
         super().__init__(path)
 
@@ -42,6 +44,16 @@ class TracingStore(BundledEventStore):
 
         connection.set_trace_callback(trace)
         return connection
+
+    def _persist_bootstrap_group(self, batch):
+        with self._trace_lock:
+            self.bootstrap_group_transactions += 1
+        return super()._persist_bootstrap_group(batch)
+
+    def _persist_checkpoint_group(self, batch):
+        with self._trace_lock:
+            self.checkpoint_group_transactions += 1
+        return super()._persist_checkpoint_group(batch)
 
 
 def bootstrap_events(index: int) -> list[tuple[str, dict[str, Any]]]:
@@ -118,6 +130,16 @@ async def measure(mode: str, root: Path) -> dict[str, Any]:
             failures.append(
                 f"writer transactions changed: {store.immediate_begins} != {expected_transactions}"
             )
+    else:
+        categorized = store.bootstrap_group_transactions + store.checkpoint_group_transactions
+        if categorized != store.immediate_begins:
+            failures.append(
+                "async grouped writer attribution changed: "
+                f"bootstrap={store.bootstrap_group_transactions} + "
+                f"checkpoint={store.checkpoint_group_transactions} != "
+                f"total={store.immediate_begins}"
+            )
+
     expected_events = 3 + CHECKPOINT_ROUNDS
     for index in range(SESSIONS):
         sid = f"{mode}-{index}"
@@ -137,6 +159,8 @@ async def measure(mode: str, root: Path) -> dict[str, Any]:
         "sessions": SESSIONS,
         "checkpoint_rounds": CHECKPOINT_ROUNDS,
         "writer_transactions": store.immediate_begins,
+        "bootstrap_group_transactions": store.bootstrap_group_transactions,
+        "checkpoint_group_transactions": store.checkpoint_group_transactions,
         "wall_seconds": round(wall, 4),
         "throughput_sessions_per_second": round(SESSIONS / wall, 3) if wall else 0.0,
         "heartbeat_ms": {
@@ -161,13 +185,10 @@ async def main_async() -> dict[str, Any]:
     failures.extend(sync["failures"])
     failures.extend(async_result["failures"])
 
-    bootstrap_transactions = SESSIONS
-    sync_checkpoint_transactions = int(sync["writer_transactions"]) - bootstrap_transactions
-    async_checkpoint_transactions = int(async_result["writer_transactions"]) - bootstrap_transactions
-    if async_checkpoint_transactions < 0:
-        failures.append(
-            "async writer transactions dropped below the one-transaction-per-bootstrap floor"
-        )
+    sync_bootstrap_transactions = SESSIONS
+    sync_checkpoint_transactions = int(sync["writer_transactions"]) - sync_bootstrap_transactions
+    async_bootstrap_transactions = int(async_result["bootstrap_group_transactions"])
+    async_checkpoint_transactions = int(async_result["checkpoint_group_transactions"])
     checkpoint_transaction_ratio = async_checkpoint_transactions / max(
         1, sync_checkpoint_transactions
     )
@@ -182,10 +203,9 @@ async def main_async() -> dict[str, Any]:
     lag_ratio = async_max / max(0.001, sync_max)
     wall_ratio = float(async_result["wall_seconds"]) / max(0.0001, float(sync["wall_seconds"]))
 
-    # The async arm now combines the original I/O offload with checkpoint group commit.
-    # Preserve the original loop-lag and wall guards, while requiring the grouped checkpoint
-    # writer amplification to stay within the same <=10% gate predeclared by the checkpoint
-    # A/B probe. Bootstrap creation remains one transaction per session in both arms.
+    # The async arm now combines I/O offload with both bootstrap and checkpoint group
+    # commit. Preserve the original loop-lag and wall guards and the existing <=10%
+    # checkpoint writer gate; bootstrap writer reduction has its own dedicated gate.
     if lag_ratio > 0.40:
         failures.append(f"event-loop max lag reduction too small: ratio={lag_ratio:.4f} > 0.40")
     if wall_ratio > 1.50:
@@ -198,7 +218,8 @@ async def main_async() -> dict[str, Any]:
         "comparison": {
             "async_to_sync_max_lag_ratio": round(lag_ratio, 4),
             "async_to_sync_wall_ratio": round(wall_ratio, 4),
-            "bootstrap_writer_transactions": bootstrap_transactions,
+            "sync_bootstrap_writer_transactions": sync_bootstrap_transactions,
+            "async_bootstrap_writer_transactions": async_bootstrap_transactions,
             "sync_checkpoint_writer_transactions": sync_checkpoint_transactions,
             "async_checkpoint_writer_transactions": async_checkpoint_transactions,
             "async_to_sync_checkpoint_transaction_ratio": round(
