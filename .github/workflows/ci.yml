@@ -128,7 +128,7 @@ jobs:
       - name: Writer-stage profile gate
         run: python scripts/writer_profile_gate.py
       - name: Current-head concurrency gate
-        run: python scripts/pressure_gate.py
+        run: python scripts/stable_pressure_gate.py
 
   runtime-profile:
     runs-on: ubuntu-latest
