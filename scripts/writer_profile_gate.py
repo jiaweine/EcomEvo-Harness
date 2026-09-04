@@ -192,6 +192,16 @@ class ProfiledEventStore(BundledEventStore):
             lambda: super(ProfiledEventStore, self).save_checkpoint_and_append(*args, **kwargs),
         )
 
+    async def save_checkpoint_and_append_grouped(self, *args, **kwargs):
+        stage = "event.checkpoint_group_commit"
+        token = _stage.set(stage)
+        started = time.perf_counter()
+        try:
+            return await super().save_checkpoint_and_append_grouped(*args, **kwargs)
+        finally:
+            self._writer_profile.operation(stage, (time.perf_counter() - started) * 1000.0)
+            _stage.reset(token)
+
     def save_patch_if_novel(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
