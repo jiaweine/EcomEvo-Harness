@@ -52,6 +52,15 @@ class TraceMixin:
             self.policy_selects = 0
             self.policy_updates = 0
 
+    def trace_snapshot(self) -> dict[str, int]:
+        with self._trace_lock:
+            return {
+                "writer_transactions": self.immediate_begins,
+                "policy_inserts": self.policy_inserts,
+                "policy_selects": self.policy_selects,
+                "policy_updates": self.policy_updates,
+            }
+
 
 class LegacySkills(TraceMixin, BundledAdaptiveSkillLibrary):
     pass
@@ -105,8 +114,6 @@ class UpsertSkills(TraceMixin, BundledAdaptiveSkillLibrary):
                 initial_retirement,
                 initial_exploration,
                 now,
-                int(skill_used),
-                int(success),
                 int(skill_used),
                 int(success),
                 int(skill_used),
@@ -201,11 +208,14 @@ async def measure(root: Path, mode: str, experiment: int) -> dict[str, Any]:
     started = time.perf_counter()
     await asyncio.gather(*(one() for _ in range(TASKS)))
     wall = time.perf_counter() - started
+    trace = skills.trace_snapshot()
     final = policy_projection(skills)
 
     failures: list[str] = []
-    if skills.immediate_begins != TASKS:
-        failures.append(f"writer transactions changed: {skills.immediate_begins} != {TASKS}")
+    if trace["writer_transactions"] != TASKS:
+        failures.append(
+            f"writer transactions changed: {trace['writer_transactions']} != {TASKS}"
+        )
     if final["updates"] != TASKS:
         failures.append(f"policy updates changed: {final['updates']} != {TASKS}")
     expected_exploration = min(0.90, 0.60 + TASKS * 0.025)
@@ -219,10 +229,7 @@ async def measure(root: Path, mode: str, experiment: int) -> dict[str, Any]:
     return {
         "mode": mode,
         "experiment": experiment,
-        "writer_transactions": skills.immediate_begins,
-        "policy_inserts": skills.policy_inserts,
-        "policy_selects": skills.policy_selects,
-        "policy_updates": skills.policy_updates,
+        **trace,
         "wall_seconds": round(wall, 4),
         "completion_p99_ms": round(float(p99), 3),
         "final": final,
