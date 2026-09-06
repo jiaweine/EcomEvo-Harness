@@ -201,6 +201,13 @@ class EcomEvoEngine:
         if sink:await sink(t,p)
         return ev
 
+    @staticmethod
+    def _routing_state_summary(routing: Any, domain: str) -> dict[str, Any]:
+        compact = getattr(routing, 'state_summary', None)
+        if callable(compact):
+            return compact(domain)
+        return routing.snapshot(domain)
+
     async def run(self,text:str,assets:list[dict[str,Any]],sink:EventSink|None=None,domain_hint:str|None=None,context_text:str|None=None,reasoner=None)->RuntimeSummary:
         with self._plugin_lock:self._active_runs+=1
         try:
@@ -419,7 +426,7 @@ class EcomEvoEngine:
 
         belief.facts.update({'tool_results':len([x for x in tool_results if x.ok]),'review_count':len(agents),'autonomy_steps':outcome.autonomy_steps,'delegations':outcome.delegations,'skill_count':len(outcome.skills_used),'tool_cost_used':tool_cost_used,'tool_cost_budget':tool_cost_budget,'tool_cost_remaining':tool_cost_remaining,'stop_reason':stop_reason,'evidence_complete':bool(final_verify.evidence_complete)})
         try:
-            routing=self.autonomy.policy.routing.snapshot(goal.domain.value)
+            routing=self._routing_state_summary(self.autonomy.policy.routing,goal.domain.value)
             belief.facts['routing_policy']={
                 'samples':routing.get('samples',0),
                 'reward_ewma':routing.get('reward_ewma',0.0),
