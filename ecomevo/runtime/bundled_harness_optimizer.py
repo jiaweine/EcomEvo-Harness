@@ -13,6 +13,7 @@ from .harness_optimizer import HarnessEvolutionOptimizer
 
 
 _REPLAY_GROUP_LIMIT = 64
+_OUTCOME_FUSION_LIMIT = 128
 _T = TypeVar("_T")
 
 
@@ -100,6 +101,21 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         updated together and their evidence rows are inserted in the original deduplicated
         component order before the unchanged shadow-transition check runs.
         """
+        ids = list(dict.fromkeys(str(value) for value in component_ids if str(value)))
+        if len(ids) > _OUTCOME_FUSION_LIMIT:
+            # The public Bundled type can be called directly with arbitrary iterables.
+            # Keep the historical unbounded per-row implementation for unusually large
+            # selections instead of depending on SQLite's build-specific bind limit.
+            return super().record_outcome(
+                domain,
+                ids,
+                verifier_score=verifier_score,
+                evidence_complete=evidence_complete,
+                session_id=session_id,
+                meta=meta,
+                evidence_completeness=evidence_completeness,
+            )
+
         q = max(0.0, min(1.0, float(verifier_score)))
         completeness = (
             max(0.0, min(1.0, float(evidence_completeness)))
@@ -108,7 +124,6 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         )
         reward = self.verifier_potential(q, completeness)
         now = time.time()
-        ids = list(dict.fromkeys(str(value) for value in component_ids if str(value)))
         outcome_meta = {
             **(meta or {}),
             "raw_verifier_score": q,
