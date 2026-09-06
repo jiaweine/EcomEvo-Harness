@@ -8,7 +8,7 @@ import weakref
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 
-from ecomevo.models import RuntimeEvent
+from ecomevo.models import EvolutionPatch, RuntimeEvent
 
 from .event_store import EventStore
 
@@ -328,6 +328,55 @@ class BundledEventStore(EventStore):
 
     async def verify_chain_async(self, session_id: str) -> bool:
         return await self._run_io(self.verify_chain, session_id)
+
+    @staticmethod
+    def _existing_patch_payload(row, patch: EvolutionPatch) -> dict[str, Any]:
+        try:
+            return json.loads(row["payload_json"])
+        except Exception:
+            return {
+                "patch_id": "existing",
+                "accepted": patch.accepted,
+                "target": patch.target,
+                "patch": patch.patch,
+            }
+
+    def save_patch_if_novel(self, patch: EvolutionPatch) -> dict[str, Any] | None:
+        """Return duplicate patches without reserving SQLite's writer slot.
+
+        ``evolution_patches`` is append-only through the runtime contract and fingerprint
+        uniqueness is enforced by SQLite. A read hit is therefore safe to return without
+        ``BEGIN IMMEDIATE``. A miss rechecks under the original writer lock before INSERT
+        so concurrent first observations retain the base EventStore novelty semantics.
+        """
+        fingerprint = self._patch_fingerprint(patch)
+        with self._conn() as connection:
+            existing = connection.execute(
+                "SELECT payload_json FROM evolution_patches WHERE fingerprint=? LIMIT 1",
+                (fingerprint,),
+            ).fetchone()
+        if existing is not None:
+            return self._existing_patch_payload(existing, patch)
+
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT payload_json FROM evolution_patches WHERE fingerprint=? LIMIT 1",
+                (fingerprint,),
+            ).fetchone()
+            if existing is not None:
+                return self._existing_patch_payload(existing, patch)
+            connection.execute(
+                "INSERT INTO evolution_patches(patch_id,created_at,payload_json,fingerprint) "
+                "VALUES(?,?,?,?)",
+                (
+                    patch.patch_id,
+                    patch.created_at,
+                    patch.model_dump_json(),
+                    fingerprint,
+                ),
+            )
+        return None
 
     async def append_grouped(
         self,
