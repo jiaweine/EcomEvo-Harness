@@ -20,8 +20,9 @@ jobs:
       - name: Restore class indentation and validate syntax
         run: |
           python - <<'PY'
-          from pathlib import Path
+          import base64
           import textwrap
+          from pathlib import Path
 
           path = Path('ecomevo/runtime/bundled_event_store.py')
           text = path.read_text()
@@ -29,77 +30,8 @@ jobs:
           end_marker = '\n    def _persist_bootstrap_group(\n'
           start = text.index(start_marker)
           end = text.index(end_marker, start)
-          block = '''@staticmethod
-def _session_tails_for_append_group(
-    c,
-    session_ids: list[str],
-) -> dict[str, dict[str, Any]]:
-    """Load starting tails for an already-formed append group set-wise.
-
-    The async group worker is bounded to ``_APPEND_GROUP_LIMIT`` requests,
-    so production batches use one query. Chunking also preserves the private
-    helper's behavior for direct oversized callers without exceeding the
-    bounded placeholder count in any SQL statement.
-    """
-    unique_ids = list(dict.fromkeys(str(session_id) for session_id in session_ids))
-    tails: dict[str, dict[str, Any]] = {}
-    for start in range(0, len(unique_ids), _APPEND_GROUP_LIMIT):
-        chunk = unique_ids[start : start + _APPEND_GROUP_LIMIT]
-        if not chunk:
-            continue
-        values = ",".join("(?)" for _ in chunk)
-        rows = c.execute(  # nosec B608 - SQL shape is bounded local placeholders only
-            f"""WITH wanted(session_id) AS (VALUES {values}),
-                latest AS (
-                    SELECT e.session_id,MAX(e.seq) AS seq
-                    FROM events AS e
-                    JOIN wanted AS w ON w.session_id=e.session_id
-                    GROUP BY e.session_id
-                )
-                SELECT s.session_id,latest.seq,e.hash
-                FROM wanted AS w
-                JOIN sessions AS s ON s.session_id=w.session_id
-                LEFT JOIN latest ON latest.session_id=s.session_id
-                LEFT JOIN events AS e
-                  ON e.session_id=latest.session_id AND e.seq=latest.seq""",
-            chunk,
-        ).fetchall()
-        tails.update(
-            {
-                str(row["session_id"]): {"seq": row["seq"], "hash": row["hash"]}
-                for row in rows
-            }
-        )
-    return tails
-
-def _persist_append_group(self, batch: list[_GroupedAppend]) -> list[RuntimeEvent]:
-    with self._lock, self._conn() as c:
-        c.execute("BEGIN IMMEDIATE")
-        ordered_ids = list(
-            dict.fromkeys(str(request.session_id) for request in batch)
-        )
-        tails = self._session_tails_for_append_group(c, ordered_ids)
-        # Preserve the original first-unknown-session failure order before
-        # any event is inserted. Known empty sessions remain present with
-        # ``seq/hash`` set to NULL and therefore append at seq=1/GENESIS.
-        for session_id in ordered_ids:
-            if session_id not in tails:
-                raise KeyError(f"unknown session: {session_id}")
-
-        persisted: list[RuntimeEvent] = []
-        for request in batch:
-            session_id = str(request.session_id)
-            event = self._append_in_transaction(
-                c,
-                session_id,
-                request.event_type,
-                request.payload,
-                tail=tails[session_id],
-            )
-            persisted.append(event)
-            tails[session_id] = {"seq": event.seq, "hash": event.hash}
-        return persisted
-'''
+          encoded = 'QHN0YXRpY21ldGhvZApkZWYgX3Nlc3Npb25fdGFpbHNfZm9yX2FwcGVuZF9ncm91cCgKICAgIGMsCiAgICBzZXNzaW9uX2lkczogbGlzdFtzdHJdLAopIC0+IGRpY3Rbc3RyLCBkaWN0W3N0ciwgQW55XV06CiAgICAiIiJMb2FkIHN0YXJ0aW5nIHRhaWxzIGZvciBhbiBhbHJlYWR5LWZvcm1lZCBhcHBlbmQgZ3JvdXAgc2V0LXdpc2UuCgogICAgVGhlIGFzeW5jIGdyb3VwIHdvcmtlciBpcyBib3VuZGVkIHRvIGBgX0FQUEVORF9HUk9VUF9MSU1JVGBgIHJlcXVlc3RzLAogICAgc28gcHJvZHVjdGlvbiBiYXRjaGVzIHVzZSBvbmUgcXVlcnkuIENodW5raW5nIGFsc28gcHJlc2VydmVzIHRoZSBwcml2YXRlCiAgICBoZWxwZXIncyBiZWhhdmlvciBmb3IgZGlyZWN0IG92ZXJzaXplZCBjYWxsZXJzIHdpdGhvdXQgZXhjZWVkaW5nIHRoZQogICAgYm91bmRlZCBwbGFjZWhvbGRlciBjb3VudCBpbiBhbnkgU1FMIHN0YXRlbWVudC4KICAgICIiIgogICAgdW5pcXVlX2lkcyA9IGxpc3QoZGljdC5mcm9ta2V5cyhzdHIoc2Vzc2lvbl9pZCkgZm9yIHNlc3Npb25faWQgaW4gc2Vzc2lvbl9pZHMpKQogICAgdGFpbHM6IGRpY3Rbc3RyLCBkaWN0W3N0ciwgQW55XV0gPSB7fQogICAgZm9yIHN0YXJ0IGluIHJhbmdlKDAsIGxlbih1bmlxdWVfaWRzKSwgX0FQUEVORF9HUk9VUF9MSU1JVCk6CiAgICAgICAgY2h1bmsgPSB1bmlxdWVfaWRzW3N0YXJ0IDogc3RhcnQgKyBfQVBQRU5EX0dST1VQX0xJTUlUXQogICAgICAgIGlmIG5vdCBjaHVuazoKICAgICAgICAgICAgY29udGludWUKICAgICAgICB2YWx1ZXMgPSAiLCIuam9pbigiKD8pIiBmb3IgXyBpbiBjaHVuaykKICAgICAgICByb3dzID0gYy5leGVjdXRlKCAgIyBub3NlYyBCNjA4IC0gU1FMIHNoYXBlIGlzIGJvdW5kZWQgbG9jYWwgcGxhY2Vob2xkZXJzIG9ubHkKICAgICAgICAgICAgZiIiIldJVEggd2FudGVkKHNlc3Npb25faWQpIEFTIChWQUxVRVMge3ZhbHVlc30pLAogICAgICAgICAgICAgICAgbGF0ZXN0IEFTICgKICAgICAgICAgICAgICAgICAgICBTRUxFQ1QgZS5zZXNzaW9uX2lkLE1BWChlLnNlcSkgQVMgc2VxCiAgICAgICAgICAgICAgICAgICAgRlJPTSBldmVudHMgQVMgZQogICAgICAgICAgICAgICAgICAgIEpPSU4gd2FudGVkIEFTIHcgT04gdy5zZXNzaW9uX2lkPWUuc2Vzc2lvbl9pZAogICAgICAgICAgICAgICAgICAgIEdST1VQIEJZIGUuc2Vzc2lvbl9pZAogICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgU0VMRUNUIHMuc2Vzc2lvbl9pZCxsYXRlc3Quc2VxLGUuaGFzaAogICAgICAgICAgICAgICAgRlJPTSB3YW50ZWQgQVMgdwogICAgICAgICAgICAgICAgSk9JTiBzZXNzaW9ucyBBUyBzIE9OIHMuc2Vzc2lvbl9pZD13LnNlc3Npb25faWQKICAgICAgICAgICAgICAgIExFRlQgSk9JTiBsYXRlc3QgT04gbGF0ZXN0LnNlc3Npb25faWQ9cy5zZXNzaW9uX2lkCiAgICAgICAgICAgICAgICBMRUZUIEpPSU4gZXZlbnRzIEFTIGUKICAgICAgICAgICAgICAgICAgT04gZS5zZXNzaW9uX2lkPWxhdGVzdC5zZXNzaW9uX2lkIEFORCBlLnNlcT1sYXRlc3Quc2VxIiIiLAogICAgICAgICAgICBjaHVuaywKICAgICAgICApLmZldGNoYWxsKCkKICAgICAgICB0YWlscy51cGRhdGUoCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgIHN0cihyb3dbInNlc3Npb25faWQiXSk6IHsic2VxIjogcm93WyJzZXEiXSwgImhhc2giOiByb3dbImhhc2giXX0KICAgICAgICAgICAgICAgIGZvciByb3cgaW4gcm93cwogICAgICAgICAgICB9CiAgICAgICAgKQogICAgcmV0dXJuIHRhaWxzCgpkZWYgX3BlcnNpc3RfYXBwZW5kX2dyb3VwKHNlbGYsIGJhdGNoOiBsaXN0W19Hcm91cGVkQXBwZW5kXSkgLT4gbGlzdFtSdW50aW1lRXZlbnRdOgogICAgd2l0aCBzZWxmLl9sb2NrLCBzZWxmLl9jb25uKCkgYXMgYzoKICAgICAgICBjLmV4ZWN1dGUoIkJFR0lOIElNTUVESUFURSIpCiAgICAgICAgb3JkZXJlZF9pZHMgPSBsaXN0KAogICAgICAgICAgICBkaWN0LmZyb21rZXlzKHN0cihyZXF1ZXN0LnNlc3Npb25faWQpIGZvciByZXF1ZXN0IGluIGJhdGNoKQogICAgICAgICkKICAgICAgICB0YWlscyA9IHNlbGYuX3Nlc3Npb25fdGFpbHNfZm9yX2FwcGVuZF9ncm91cChjLCBvcmRlcmVkX2lkcykKICAgICAgICAjIFByZXNlcnZlIHRoZSBvcmlnaW5hbCBmaXJzdC11bmtub3duLXNlc3Npb24gZmFpbHVyZSBvcmRlciBiZWZvcmUKICAgICAgICAjIGFueSBldmVudCBpcyBpbnNlcnRlZC4gS25vd24gZW1wdHkgc2Vzc2lvbnMgcmVtYWluIHByZXNlbnQgd2l0aAogICAgICAgICMgYGBzZXEvaGFzaGBgIHNldCB0byBOVUxMIGFuZCB0aGVyZWZvcmUgYXBwZW5kIGF0IHNlcT0xL0dFTkVTSVMuCiAgICAgICAgZm9yIHNlc3Npb25faWQgaW4gb3JkZXJlZF9pZHM6CiAgICAgICAgICAgIGlmIHNlc3Npb25faWQgbm90IGluIHRhaWxzOgogICAgICAgICAgICAgICAgcmFpc2UgS2V5RXJyb3IoZiJ1bmtub3duIHNlc3Npb246IHtzZXNzaW9uX2lkfSIpCgogICAgICAgIHBlcnNpc3RlZDogbGlzdFtSdW50aW1lRXZlbnRdID0gW10KICAgICAgICBmb3IgcmVxdWVzdCBpbiBiYXRjaDoKICAgICAgICAgICAgc2Vzc2lvbl9pZCA9IHN0cihyZXF1ZXN0LnNlc3Npb25faWQpCiAgICAgICAgICAgIGV2ZW50ID0gc2VsZi5fYXBwZW5kX2luX3RyYW5zYWN0aW9uKAogICAgICAgICAgICAgICAgYywKICAgICAgICAgICAgICAgIHNlc3Npb25faWQsCiAgICAgICAgICAgICAgICByZXF1ZXN0LmV2ZW50X3R5cGUsCiAgICAgICAgICAgICAgICByZXF1ZXN0LnBheWxvYWQsCiAgICAgICAgICAgICAgICB0YWlsPXRhaWxzW3Nlc3Npb25faWRdLAogICAgICAgICAgICApCiAgICAgICAgICAgIHBlcnNpc3RlZC5hcHBlbmQoZXZlbnQpCiAgICAgICAgICAgIHRhaWxzW3Nlc3Npb25faWRdID0geyJzZXEiOiBldmVudC5zZXEsICJoYXNoIjogZXZlbnQuaGFzaH0KICAgICAgICByZXR1cm4gcGVyc2lzdGVkCg=='
+          block = base64.b64decode(encoded).decode()
           replacement = textwrap.indent(block, '    ')
           path.write_text(text[:start] + replacement + text[end:])
           PY
