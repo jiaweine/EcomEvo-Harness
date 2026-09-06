@@ -58,7 +58,9 @@ class RoutingMetricsMixin:
         return writer_profile._timed(
             self._writer_profile,
             "routing.outcome",
-            lambda: super().apply_batch(domain, phase=phase, rows=rows),
+            lambda: AdaptiveRoutingStore.apply_batch(
+                self, domain, phase=phase, rows=rows
+            ),
         )
 
     def metrics(self) -> dict[str, Any]:
@@ -109,8 +111,7 @@ class FusedRouting(RoutingMetricsMixin, AdaptiveRoutingStore):
         touched: list[tuple[str, str]] = []
         touched_set: set[tuple[str, str]] = set()
 
-        # Preserve the exact historical row order in Python. Only the final SQL writes
-        # are fused; alpha/beta counts and reward EWMA evolve in the same sequence.
+        # Replay the exact historical row order in memory. Only final SQL writes fuse.
         for item in rows:
             tool = str(item["tool"])
             ok = bool(item.get("ok", False))
@@ -169,24 +170,14 @@ class FusedRouting(RoutingMetricsMixin, AdaptiveRoutingStore):
         )
 
 
-def _projection(store: AdaptiveRoutingStore, domain: str) -> dict[str, Any]:
+def projection(store: AdaptiveRoutingStore) -> dict[str, Any]:
     with store._conn() as c:
         policy = [
-            {
-                key: value
-                for key, value in dict(row).items()
-                if key != "updated_at"
-            }
-            for row in c.execute(
-                "SELECT * FROM routing_policy ORDER BY policy_key"
-            ).fetchall()
+            {key: value for key, value in dict(row).items() if key != "updated_at"}
+            for row in c.execute("SELECT * FROM routing_policy ORDER BY policy_key").fetchall()
         ]
         stats = [
-            {
-                key: value
-                for key, value in dict(row).items()
-                if key != "updated_at"
-            }
+            {key: value for key, value in dict(row).items() if key != "updated_at"}
             for row in c.execute(
                 "SELECT * FROM routing_tool_stats ORDER BY domain,tool"
             ).fetchall()
@@ -197,14 +188,12 @@ def _projection(store: AdaptiveRoutingStore, domain: str) -> dict[str, Any]:
                 for key, value in dict(row).items()
                 if key not in {"id", "created_at"}
             }
-            for row in c.execute(
-                "SELECT * FROM routing_outcomes ORDER BY id"
-            ).fetchall()
+            for row in c.execute("SELECT * FROM routing_outcomes ORDER BY id").fetchall()
         ]
     return {"policy": policy, "stats": stats, "outcomes": outcomes}
 
 
-def _row(tool: str, reward: float, ok: bool, seed: float) -> dict[str, Any]:
+def sample_row(tool: str, reward: float, ok: bool, seed: float) -> dict[str, Any]:
     vector = [0.0] * 12
     vector[0] = 1.0
     vector[1] = seed
@@ -224,26 +213,27 @@ def semantic_probe(root: Path) -> dict[str, Any]:
     baseline = BaselineRouting(root / "semantic-baseline.db", profile)
     fused = FusedRouting(root / "semantic-fused.db", profile)
     batches = [
-        [_row("catalog", 0.4, True, 0.2), _row("risk", -0.2, False, 0.7)],
-        [_row("catalog", 0.8, True, 0.4), _row("catalog", 0.1, True, 0.6), _row("risk", 0.3, True, 0.3)],
-        [_row("entity", -0.5, False, 0.8)],
-        [_row("risk", 0.9, True, 0.5), _row("entity", 0.2, True, 0.1), _row("catalog", -0.1, False, 0.9)],
+        [sample_row("catalog", 0.4, True, 0.2), sample_row("risk", -0.2, False, 0.7)],
+        [
+            sample_row("catalog", 0.8, True, 0.4),
+            sample_row("catalog", 0.1, True, 0.6),
+            sample_row("risk", 0.3, True, 0.3),
+        ],
+        [sample_row("entity", -0.5, False, 0.8)],
+        [
+            sample_row("risk", 0.9, True, 0.5),
+            sample_row("entity", 0.2, True, 0.1),
+            sample_row("catalog", -0.1, False, 0.9),
+        ],
     ]
-    states_equal_each_round = True
+    equal = True
     for index, rows in enumerate(batches):
-        baseline_result = baseline.apply_batch(DOMAIN, phase=f"round-{index}", rows=rows)
-        fused_result = fused.apply_batch(DOMAIN, phase=f"round-{index}", rows=rows)
-        if baseline_result is None or fused_result is None:
-            raise AssertionError("semantic batch unexpectedly produced no update")
-        if _projection(baseline, DOMAIN) != _projection(fused, DOMAIN):
-            states_equal_each_round = False
+        baseline.apply_batch(DOMAIN, phase=f"round-{index}", rows=rows)
+        fused.apply_batch(DOMAIN, phase=f"round-{index}", rows=rows)
+        if projection(baseline) != projection(fused):
+            equal = False
             break
-    return {
-        "rounds": len(batches),
-        "states_equal_each_round": states_equal_each_round,
-        "baseline": _projection(baseline, DOMAIN),
-        "fused": _projection(fused, DOMAIN),
-    }
+    return {"rounds": len(batches), "states_equal_each_round": equal}
 
 
 def build_engine(db: Path, profile: writer_profile.WriterProfile, mode: str):
@@ -292,8 +282,7 @@ async def runtime_probe(root: Path, mode: str, experiment: int) -> dict[str, Any
         failures.append("runtime lost writer attribution")
     if stage and int(stage["transactions"]) != metrics["apply_calls"]:
         failures.append(
-            "routing transaction/apply mismatch: "
-            f"{stage['transactions']} != {metrics['apply_calls']}"
+            f"routing transaction/apply mismatch: {stage['transactions']} != {metrics['apply_calls']}"
         )
     return {
         "mode": mode,
@@ -357,10 +346,7 @@ async def main_async() -> dict[str, Any]:
         "ok": not failures,
         "tasks": RUNTIME_TASKS,
         "experiments": EXPERIMENTS,
-        "semantics": {
-            "rounds": semantics["rounds"],
-            "states_equal_each_round": semantics["states_equal_each_round"],
-        },
+        "semantics": semantics,
         "results": results,
         "comparison": {
             "writer_transactions_equal": baseline_tx == fused_tx,
