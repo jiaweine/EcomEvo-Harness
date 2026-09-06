@@ -11,8 +11,10 @@ from ecomevo.runtime.bundled_event_store import BundledEventStore
 
 
 BATCH_SIZE = 64
-BATCHES = 24
+BATCHES = 96
+WARMUP_BATCHES = 8
 EXPERIMENTS = 5
+MAX_OPERATION_RATIO = 1.02
 
 
 def _request(session_id: str, batch_index: int):
@@ -65,19 +67,40 @@ def _prepare(store: TracedStore, session_ids: list[str]) -> None:
     for session_id in session_ids:
         store.create_session(session_id)
         store.append(session_id, "seed", {"session": session_id})
-    store.reset_trace()
 
 
-def _run_arm(store_cls, path: Path, session_ids: list[str]) -> dict:
-    store = store_cls(path)
-    _prepare(store, session_ids)
-    started = time.perf_counter()
-    for batch_index in range(BATCHES):
+def _append_batches(
+    store: TracedStore,
+    session_ids: list[str],
+    *,
+    count: int,
+    batch_offset: int,
+) -> None:
+    for batch_index in range(batch_offset, batch_offset + count):
         persisted = store._persist_append_group(
             [_request(session_id, batch_index) for session_id in session_ids]
         )
         if len(persisted) != len(session_ids):
             raise AssertionError("append group lost requests")
+
+
+def _run_arm(store_cls, path: Path, session_ids: list[str]) -> dict:
+    store = store_cls(path)
+    _prepare(store, session_ids)
+
+    # Warm SQLite pages, statement preparation and the connection path before the
+    # measured region. Warm-up writes are identical across arms and excluded from
+    # both timing and statement counts.
+    _append_batches(
+        store,
+        session_ids,
+        count=WARMUP_BATCHES,
+        batch_offset=-WARMUP_BATCHES,
+    )
+    store.reset_trace()
+
+    started = time.perf_counter()
+    _append_batches(store, session_ids, count=BATCHES, batch_offset=0)
     operation = time.perf_counter() - started
 
     statements = [statement.upper() for statement in store.statements]
@@ -103,14 +126,17 @@ def _run_arm(store_cls, path: Path, session_ids: list[str]) -> dict:
 
 def main() -> int:
     session_ids = [f"session-{index:02d}" for index in range(BATCH_SIZE)]
-    baseline_runs = []
-    fused_runs = []
+    paired_runs: list[dict] = []
     failures: list[str] = []
 
     with tempfile.TemporaryDirectory(prefix="ecomevo-tail-fusion-gate-") as tmp:
         root = Path(tmp)
         for experiment in range(EXPERIMENTS):
-            order = ("baseline", "fused") if experiment % 2 == 0 else ("fused", "baseline")
+            order = (
+                ("baseline", "fused")
+                if experiment % 2 == 0
+                else ("fused", "baseline")
+            )
             results = {}
             for arm in order:
                 store_cls = BaselineStore if arm == "baseline" else TracedStore
@@ -119,73 +145,97 @@ def main() -> int:
                     root / f"{experiment}-{arm}.db",
                     session_ids,
                 )
-            baseline_runs.append(results["baseline"])
-            fused_runs.append(results["fused"])
+            baseline = results["baseline"]
+            fused = results["fused"]
+            paired_runs.append(
+                {
+                    "experiment": experiment,
+                    "order": list(order),
+                    "baseline_operation_seconds": baseline["operation_seconds"],
+                    "fused_operation_seconds": fused["operation_seconds"],
+                    "operation_ratio": (
+                        fused["operation_seconds"] / baseline["operation_seconds"]
+                        if baseline["operation_seconds"]
+                        else 0.0
+                    ),
+                    "baseline": baseline,
+                    "fused": fused,
+                }
+            )
 
     expected_transactions = BATCHES
     expected_legacy_lookups = BATCHES * BATCH_SIZE
     expected_fused_lookups = BATCHES
 
-    for index, run in enumerate(baseline_runs):
-        if run["transactions"] != expected_transactions:
+    for pair in paired_runs:
+        index = int(pair["experiment"])
+        baseline = pair["baseline"]
+        fused = pair["fused"]
+        if baseline["transactions"] != expected_transactions:
             failures.append(
                 f"baseline experiment {index} transactions "
-                f"{run['transactions']} != {expected_transactions}"
+                f"{baseline['transactions']} != {expected_transactions}"
             )
-        if run["legacy_tail_lookups"] != expected_legacy_lookups:
-            failures.append(
-                f"baseline experiment {index} tail lookups "
-                f"{run['legacy_tail_lookups']} != {expected_legacy_lookups}"
-            )
-        if not run["chains_valid"]:
-            failures.append(f"baseline experiment {index} produced invalid chain")
-
-    for index, run in enumerate(fused_runs):
-        if run["transactions"] != expected_transactions:
+        if fused["transactions"] != expected_transactions:
             failures.append(
                 f"fused experiment {index} transactions "
-                f"{run['transactions']} != {expected_transactions}"
+                f"{fused['transactions']} != {expected_transactions}"
             )
-        if run["set_tail_lookups"] != expected_fused_lookups:
+        if baseline["legacy_tail_lookups"] != expected_legacy_lookups:
+            failures.append(
+                f"baseline experiment {index} tail lookups "
+                f"{baseline['legacy_tail_lookups']} != {expected_legacy_lookups}"
+            )
+        if fused["set_tail_lookups"] != expected_fused_lookups:
             failures.append(
                 f"fused experiment {index} set lookups "
-                f"{run['set_tail_lookups']} != {expected_fused_lookups}"
+                f"{fused['set_tail_lookups']} != {expected_fused_lookups}"
             )
-        if run["legacy_tail_lookups"] != 0:
+        if fused["legacy_tail_lookups"] != 0:
             failures.append(
                 f"fused experiment {index} used "
-                f"{run['legacy_tail_lookups']} legacy tail lookups"
+                f"{fused['legacy_tail_lookups']} legacy tail lookups"
             )
-        if not run["chains_valid"]:
+        if not baseline["chains_valid"]:
+            failures.append(f"baseline experiment {index} produced invalid chain")
+        if not fused["chains_valid"]:
             failures.append(f"fused experiment {index} produced invalid chain")
 
-    baseline_operation = statistics.median(
-        run["operation_seconds"] for run in baseline_runs
-    )
-    fused_operation = statistics.median(
-        run["operation_seconds"] for run in fused_runs
-    )
-    operation_ratio = fused_operation / baseline_operation if baseline_operation else 0.0
-    if operation_ratio > 1.02:
+    paired_ratios = [float(pair["operation_ratio"]) for pair in paired_runs]
+    operation_ratio = statistics.median(paired_ratios)
+    if operation_ratio > MAX_OPERATION_RATIO:
         failures.append(
-            f"set-based tail lookup regressed fixed-input operation time: "
-            f"{operation_ratio:.4f}x > 1.02x"
+            "set-based tail lookup regressed paired fixed-input operation time: "
+            f"{operation_ratio:.4f}x > {MAX_OPERATION_RATIO:.2f}x"
         )
 
     result = {
         "ok": not failures,
         "batch_size": BATCH_SIZE,
-        "batches_per_arm": BATCHES,
+        "warmup_batches_per_arm": WARMUP_BATCHES,
+        "measured_batches_per_arm": BATCHES,
         "experiments": EXPERIMENTS,
-        "baseline_operation_seconds_median": round(baseline_operation, 6),
-        "fused_operation_seconds_median": round(fused_operation, 6),
-        "operation_ratio": round(operation_ratio, 4),
-        "baseline_tail_lookup_statements": expected_legacy_lookups,
-        "fused_tail_lookup_statements": expected_fused_lookups,
+        "paired_operation_ratios": [round(value, 4) for value in paired_ratios],
+        "paired_operation_ratio_median": round(operation_ratio, 4),
+        "max_operation_ratio": MAX_OPERATION_RATIO,
+        "baseline_tail_lookup_statements_per_experiment": expected_legacy_lookups,
+        "fused_tail_lookup_statements_per_experiment": expected_fused_lookups,
         "tail_lookup_statement_ratio": round(
             expected_fused_lookups / expected_legacy_lookups, 4
         ),
-        "transactions_per_arm": expected_transactions,
+        "transactions_per_arm_per_experiment": expected_transactions,
+        "pair_timings": [
+            {
+                "experiment": int(pair["experiment"]),
+                "order": pair["order"],
+                "baseline_seconds": round(
+                    float(pair["baseline_operation_seconds"]), 6
+                ),
+                "fused_seconds": round(float(pair["fused_operation_seconds"]), 6),
+                "ratio": round(float(pair["operation_ratio"]), 4),
+            }
+            for pair in paired_runs
+        ],
         "failures": failures,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
