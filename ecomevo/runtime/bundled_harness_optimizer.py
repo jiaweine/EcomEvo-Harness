@@ -7,7 +7,7 @@ import time
 import weakref
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Iterable, TypeVar
 
 from .harness_optimizer import HarnessEvolutionOptimizer
 
@@ -81,6 +81,75 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
                 except Exception:
                     raise
                 raise cancelled
+
+    def record_outcome(
+        self,
+        domain: str,
+        component_ids: Iterable[str],
+        *,
+        verifier_score: float,
+        evidence_complete: bool,
+        session_id: str | None,
+        meta: dict[str, Any] | None = None,
+        evidence_completeness: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Persist one Harness outcome with set-based SQL in the original transaction.
+
+        The public optimizer contract and the one-outcome/one-writer-transaction boundary
+        stay unchanged. Only the per-component SQL shape is fused: valid selected rows are
+        updated together and their evidence rows are inserted in the original deduplicated
+        component order before the unchanged shadow-transition check runs.
+        """
+        q = max(0.0, min(1.0, float(verifier_score)))
+        completeness = (
+            max(0.0, min(1.0, float(evidence_completeness)))
+            if evidence_completeness is not None
+            else (1.0 if evidence_complete else q)
+        )
+        reward = self.verifier_potential(q, completeness)
+        now = time.time()
+        ids = list(dict.fromkeys(str(value) for value in component_ids if str(value)))
+        outcome_meta = {
+            **(meta or {}),
+            "raw_verifier_score": q,
+            "evidence_completeness": completeness,
+            "reward": reward,
+            "reward_method": "verifier_harmonic_potential",
+        }
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if ids:
+                placeholders = ",".join("?" for _ in ids)
+                connection.execute(
+                    "UPDATE harness_components "
+                    "SET alpha=alpha+?,beta=beta+?,uses=uses+1,updated_at=? "
+                    f"WHERE domain=? AND component_id IN ({placeholders})",
+                    (reward, 1.0 - reward, now, domain, *ids),
+                )
+                selected_rows = ",".join(
+                    f"(?,{ordinal})" for ordinal, _component_id in enumerate(ids)
+                )
+                connection.execute(
+                    f"WITH selected(component_id,ordinal) AS (VALUES {selected_rows}) "
+                    "INSERT INTO harness_component_outcomes("
+                    "component_id,session_id,verifier_score,evidence_complete,meta_json,created_at) "
+                    "SELECT component.component_id,?,?,?,?,? "
+                    "FROM selected "
+                    "JOIN harness_components AS component "
+                    "ON component.component_id=selected.component_id "
+                    "WHERE component.domain=? "
+                    "ORDER BY selected.ordinal",
+                    (
+                        *ids,
+                        session_id,
+                        reward,
+                        int(bool(evidence_complete)),
+                        json.dumps(outcome_meta, ensure_ascii=False, default=str),
+                        now,
+                        domain,
+                    ),
+                )
+            return self._transition_shadows(connection, domain, now)
 
     async def record_outcome_async(self, *args, **kwargs) -> list[dict[str, Any]]:
         return await self._run_io(self.record_outcome, *args, **kwargs)
