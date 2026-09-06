@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ecomevo.runtime import EcomEvoEngine
+import ecomevo.runtime.control_policy as control_policy
 
 
 TASKS = 120
@@ -85,10 +86,12 @@ async def main_async() -> dict[str, Any]:
         policy = engine.autonomy.policy
 
         phase_var: ContextVar[str] = ContextVar("decision-static-probe-phase", default="unknown")
+        inside_terms_var: ContextVar[bool] = ContextVar("decision-static-inside-terms", default=False)
         sanitize_rows: list[dict[str, Any]] = []
         rank_rows: list[dict[str, Any]] = []
         prep_rows: list[dict[str, Any]] = []
         term_rows: list[dict[str, Any]] = []
+        query_term_rows: list[dict[str, Any]] = []
         fallback_times_ms: list[float] = []
 
         original_sanitize = policy.sanitize
@@ -96,6 +99,26 @@ async def main_async() -> dict[str, Any]:
         original_prepare = policy._prepare_rank_feature_snapshot
         original_terms = policy._terms
         original_fallback = policy.fallback_calls
+        original_query_terms = control_policy._query_terms
+
+        def wrapped_query_terms(query, limit=40):
+            phase = phase_var.get()
+            source = "terms" if inside_terms_var.get() else "direct"
+            started = time.perf_counter()
+            result = original_query_terms(query, limit=limit)
+            query_term_rows.append(
+                {
+                    "phase": phase,
+                    "source": source,
+                    "limit": int(limit),
+                    "input_chars": len(str(query or "")),
+                    "result_count": len(result),
+                    "elapsed_ms": (time.perf_counter() - started) * 1000.0,
+                }
+            )
+            return result
+
+        control_policy._query_terms = wrapped_query_terms
 
         def wrapped_sanitize(*args, **kwargs):
             phase = str(kwargs.get("phase") or "unknown")
@@ -176,8 +199,12 @@ async def main_async() -> dict[str, Any]:
         def wrapped_terms(value):
             phase = phase_var.get()
             current = policy._decision_round.get()
+            token = inside_terms_var.set(True)
             started = time.perf_counter()
-            result = original_terms(value)
+            try:
+                result = original_terms(value)
+            finally:
+                inside_terms_var.reset(token)
             term_rows.append(
                 {
                     "phase": phase,
@@ -267,6 +294,14 @@ async def main_async() -> dict[str, Any]:
             for phase in sorted({str(row["phase"]) for row in sanitize_rows})
             for rows in [[row for row in sanitize_rows if row["phase"] == phase]]
         }
+        query_shapes = Counter(
+            f"{row['source']}:{row['phase']}:limit={int(row['limit'])}"
+            for row in query_term_rows
+        )
+        query_timing: dict[str, list[float]] = defaultdict(list)
+        for row in query_term_rows:
+            key = f"{row['source']}:{row['phase']}:limit={int(row['limit'])}"
+            query_timing[key].append(float(row["elapsed_ms"]))
 
         return {
             "ok": not failures,
@@ -294,6 +329,17 @@ async def main_async() -> dict[str, Any]:
             else 0.0,
             "feature_prepare": _timing_summary(prep_rows),
             "terms": _timing_summary(term_rows),
+            "query_terms_calls": len(query_term_rows),
+            "query_terms_shapes": dict(sorted(query_shapes.items())),
+            "query_terms_timing": {
+                key: {
+                    "calls": len(values),
+                    "total_ms": round(sum(values), 3),
+                    "p50_ms": round(_percentile(values, 0.50), 4),
+                    "p95_ms": round(_percentile(values, 0.95), 4),
+                }
+                for key, values in sorted(query_timing.items())
+            },
             "fallback_latency_ms": {
                 "total": round(sum(fallback_times_ms), 3),
                 "p50": round(_percentile(fallback_times_ms, 0.50), 4),
