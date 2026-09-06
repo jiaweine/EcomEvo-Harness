@@ -15,6 +15,7 @@ from ecomevo.runtime.adaptive_routing import AdaptiveRoutingStore
 
 DOMAIN = "merchant_review"
 RUNTIME_TASKS = 32
+CAUSAL_ROUNDS = 64
 EXPERIMENTS = 3
 
 
@@ -111,7 +112,7 @@ class FusedRouting(RoutingMetricsMixin, AdaptiveRoutingStore):
         touched: list[tuple[str, str]] = []
         touched_set: set[tuple[str, str]] = set()
 
-        # Replay the exact historical row order in memory. Only final SQL writes fuse.
+        # Preserve historical input order; only final SQL writes are fused.
         for item in rows:
             tool = str(item["tool"])
             ok = bool(item.get("ok", False))
@@ -236,6 +237,48 @@ def semantic_probe(root: Path) -> dict[str, Any]:
     return {"rounds": len(batches), "states_equal_each_round": equal}
 
 
+def stage_from(report: dict[str, Any], name: str) -> dict[str, Any] | None:
+    return next((row for row in report["stages"] if row["stage"] == name), None)
+
+
+def causal_rows(index: int) -> list[dict[str, Any]]:
+    seed = ((index % 7) + 1) / 10.0
+    return [
+        sample_row("catalog", 0.6 if index % 3 else -0.1, index % 5 != 0, seed),
+        sample_row("risk", -0.2 if index % 4 else 0.7, index % 4 == 0, 1.0 - seed / 2.0),
+    ]
+
+
+def causal_probe(root: Path, mode: str, experiment: int) -> dict[str, Any]:
+    profile = writer_profile.WriterProfile()
+    routing_type = BaselineRouting if mode == "baseline" else FusedRouting
+    routing = routing_type(root / f"causal-{mode}-{experiment}.db", profile)
+
+    # Align both arms on identical warm state, then measure only the steady two-row path.
+    routing.apply_batch(DOMAIN, phase="warm", rows=causal_rows(-1))
+    profile.reset()
+    routing.reset_metrics()
+    started = time.perf_counter()
+    for index in range(CAUSAL_ROUNDS):
+        routing.apply_batch(DOMAIN, phase=f"causal-{index}", rows=causal_rows(index))
+    wall = time.perf_counter() - started
+    report = profile.report(CAUSAL_ROUNDS)
+    stage = stage_from(report, "routing.outcome")
+    return {
+        "mode": mode,
+        "experiment": experiment,
+        "wall_seconds": round(wall, 4),
+        "routing": {
+            "transactions": int(stage["transactions"]) if stage else 0,
+            "writer_hold_ms_total": float(stage["writer_hold_ms_total"]) if stage else 0.0,
+            "writer_hold_ms_p95": float(stage["writer_hold_ms_p95"]) if stage else 0.0,
+            "operation_ms_total": float(stage["operation_ms_total"]) if stage else 0.0,
+        },
+        "metrics": routing.metrics(),
+        "projection": projection(routing),
+    }
+
+
 def build_engine(db: Path, profile: writer_profile.WriterProfile, mode: str):
     sandbox = writer_profile.ActionSandbox()
     events = writer_profile.ProfiledEventStore(db, profile)
@@ -254,10 +297,6 @@ def build_engine(db: Path, profile: writer_profile.WriterProfile, mode: str):
     routing = routing_type(db, profile)
     engine.autonomy.policy.routing = routing
     return engine, routing
-
-
-def stage_from(report: dict[str, Any], name: str) -> dict[str, Any] | None:
-    return next((row for row in report["stages"] if row["stage"] == name), None)
 
 
 async def runtime_probe(root: Path, mode: str, experiment: int) -> dict[str, Any]:
@@ -311,7 +350,8 @@ def median_path(rows: list[dict[str, Any]], *path: str) -> float:
 
 async def main_async() -> dict[str, Any]:
     failures: list[str] = []
-    results: dict[str, list[dict[str, Any]]] = {"baseline": [], "fused": []}
+    causal: dict[str, list[dict[str, Any]]] = {"baseline": [], "fused": []}
+    runtime: dict[str, list[dict[str, Any]]] = {"baseline": [], "fused": []}
     with tempfile.TemporaryDirectory(prefix="ecomevo-routing-reliability-fusion-") as tmp:
         root = Path(tmp)
         semantics = semantic_probe(root)
@@ -320,40 +360,93 @@ async def main_async() -> dict[str, Any]:
 
         for experiment in range(EXPERIMENTS):
             order = ("baseline", "fused") if experiment % 2 == 0 else ("fused", "baseline")
+            causal_rows_by_mode = {
+                mode: causal_probe(root, mode, experiment)
+                for mode in order
+            }
+            for mode in order:
+                causal[mode].append(causal_rows_by_mode[mode])
+            if causal_rows_by_mode["baseline"]["projection"] != causal_rows_by_mode["fused"]["projection"]:
+                failures.append(f"causal state diverged in experiment {experiment}")
+            for mode in order:
+                if causal_rows_by_mode[mode]["routing"]["transactions"] != CAUSAL_ROUNDS:
+                    failures.append(
+                        f"{mode}[{experiment}] causal tx changed: "
+                        f"{causal_rows_by_mode[mode]['routing']['transactions']} != {CAUSAL_ROUNDS}"
+                    )
+
             for mode in order:
                 row = await runtime_probe(root, mode, experiment)
-                results[mode].append(row)
+                runtime[mode].append(row)
                 failures.extend(
                     f"{mode}[{experiment}]: {failure}"
                     for failure in row["failures"]
                 )
 
-    baseline_tx = median_path(results["baseline"], "routing", "transactions")
-    fused_tx = median_path(results["fused"], "routing", "transactions")
-    baseline_hold = median_path(results["baseline"], "routing", "writer_hold_ms_total")
-    fused_hold = median_path(results["fused"], "routing", "writer_hold_ms_total")
-    baseline_op = median_path(results["baseline"], "routing", "operation_ms_total")
-    fused_op = median_path(results["fused"], "routing", "operation_ms_total")
-    baseline_writes = median_path(results["baseline"], "metrics", "reliability_writes")
-    fused_writes = median_path(results["fused"], "metrics", "reliability_writes")
-    baseline_wall = median_path(results["baseline"], "wall_seconds")
-    fused_wall = median_path(results["fused"], "wall_seconds")
+    baseline_causal_hold = median_path(causal["baseline"], "routing", "writer_hold_ms_total")
+    fused_causal_hold = median_path(causal["fused"], "routing", "writer_hold_ms_total")
+    baseline_causal_op = median_path(causal["baseline"], "routing", "operation_ms_total")
+    fused_causal_op = median_path(causal["fused"], "routing", "operation_ms_total")
+    baseline_causal_writes = median_path(causal["baseline"], "metrics", "reliability_writes")
+    fused_causal_writes = median_path(causal["fused"], "metrics", "reliability_writes")
+    baseline_causal_wall = median_path(causal["baseline"], "wall_seconds")
+    fused_causal_wall = median_path(causal["fused"], "wall_seconds")
 
-    if baseline_tx != fused_tx:
-        failures.append(f"routing transaction count changed: {baseline_tx} != {fused_tx}")
+    baseline_runtime_hold_per_call = statistics.median(
+        row["routing"]["writer_hold_ms_total"] / max(1, row["metrics"]["apply_calls"])
+        for row in runtime["baseline"]
+    )
+    fused_runtime_hold_per_call = statistics.median(
+        row["routing"]["writer_hold_ms_total"] / max(1, row["metrics"]["apply_calls"])
+        for row in runtime["fused"]
+    )
+    baseline_runtime_op_per_call = statistics.median(
+        row["routing"]["operation_ms_total"] / max(1, row["metrics"]["apply_calls"])
+        for row in runtime["baseline"]
+    )
+    fused_runtime_op_per_call = statistics.median(
+        row["routing"]["operation_ms_total"] / max(1, row["metrics"]["apply_calls"])
+        for row in runtime["fused"]
+    )
+    baseline_runtime_writes_per_call = statistics.median(
+        row["metrics"]["reliability_writes"] / max(1, row["metrics"]["apply_calls"])
+        for row in runtime["baseline"]
+    )
+    fused_runtime_writes_per_call = statistics.median(
+        row["metrics"]["reliability_writes"] / max(1, row["metrics"]["apply_calls"])
+        for row in runtime["fused"]
+    )
 
     return {
         "ok": not failures,
         "tasks": RUNTIME_TASKS,
+        "causal_rounds": CAUSAL_ROUNDS,
         "experiments": EXPERIMENTS,
         "semantics": semantics,
-        "results": results,
+        "causal": causal,
+        "runtime": runtime,
         "comparison": {
-            "writer_transactions_equal": baseline_tx == fused_tx,
-            "reliability_write_statement_ratio": round(fused_writes / max(1.0, baseline_writes), 4),
-            "routing_writer_hold_total_ratio": round(fused_hold / max(0.001, baseline_hold), 4),
-            "routing_operation_total_ratio": round(fused_op / max(0.001, baseline_op), 4),
-            "runtime_wall_ratio": round(fused_wall / max(0.0001, baseline_wall), 4),
+            "causal_reliability_write_statement_ratio": round(
+                fused_causal_writes / max(1.0, baseline_causal_writes), 4
+            ),
+            "causal_writer_hold_total_ratio": round(
+                fused_causal_hold / max(0.001, baseline_causal_hold), 4
+            ),
+            "causal_operation_total_ratio": round(
+                fused_causal_op / max(0.001, baseline_causal_op), 4
+            ),
+            "causal_wall_ratio": round(
+                fused_causal_wall / max(0.0001, baseline_causal_wall), 4
+            ),
+            "runtime_writer_hold_per_apply_ratio": round(
+                fused_runtime_hold_per_call / max(0.001, baseline_runtime_hold_per_call), 4
+            ),
+            "runtime_operation_per_apply_ratio": round(
+                fused_runtime_op_per_call / max(0.001, baseline_runtime_op_per_call), 4
+            ),
+            "runtime_reliability_writes_per_apply_ratio": round(
+                fused_runtime_writes_per_call / max(0.001, baseline_runtime_writes_per_call), 4
+            ),
         },
         "failures": failures,
     }
