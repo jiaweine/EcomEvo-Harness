@@ -1,0 +1,31 @@
+name: Skill Policy CAS Probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ecomevo-skill-policy-cas-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_VERSION: '26.2.1'
+
+jobs:
+  skill-policy-cas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade "pip==${PIP_VERSION}"
+          python -m pip install -e '.[dev]'
+      - name: Skill policy optimistic CAS A/B
+        run: python scripts/skill_policy_cas_probe.py
