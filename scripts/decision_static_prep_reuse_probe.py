@@ -62,6 +62,21 @@ def _percentile(values: list[float], q: float) -> float:
     return ordered[index]
 
 
+def _timing_summary(rows: list[dict[str, Any]], phase_key: str = "phase") -> dict[str, Any]:
+    grouped: dict[str, list[float]] = defaultdict(list)
+    for row in rows:
+        grouped[str(row[phase_key])].append(float(row["elapsed_ms"]))
+    return {
+        phase: {
+            "calls": len(values),
+            "total_ms": round(sum(values), 3),
+            "p50_ms": round(_percentile(values, 0.50), 4),
+            "p95_ms": round(_percentile(values, 0.95), 4),
+        }
+        for phase, values in sorted(grouped.items())
+    }
+
+
 async def main_async() -> dict[str, Any]:
     failures: list[str] = []
     with tempfile.TemporaryDirectory(prefix="ecomevo-decision-static-prep-") as tmp:
@@ -71,11 +86,13 @@ async def main_async() -> dict[str, Any]:
 
         phase_var: ContextVar[str] = ContextVar("decision-static-probe-phase", default="unknown")
         sanitize_rows: list[dict[str, Any]] = []
+        rank_rows: list[dict[str, Any]] = []
         prep_rows: list[dict[str, Any]] = []
         term_rows: list[dict[str, Any]] = []
         fallback_times_ms: list[float] = []
 
         original_sanitize = policy.sanitize
+        original_rank = policy._rank_candidates
         original_prepare = policy._prepare_rank_feature_snapshot
         original_terms = policy._terms
         original_fallback = policy.fallback_calls
@@ -84,31 +101,53 @@ async def main_async() -> dict[str, Any]:
             phase = str(kwargs.get("phase") or "unknown")
             token = phase_var.set(phase)
             before = policy._decision_round.get()
+            raw_value = args[0] if args else kwargs.get("raw")
             started = time.perf_counter()
+            result = None
             try:
                 result = original_sanitize(*args, **kwargs)
+                return result
             finally:
                 elapsed_ms = (time.perf_counter() - started) * 1000.0
                 after = policy._decision_round.get()
+                raw_tool_count = 0
+                if isinstance(raw_value, dict):
+                    raw_tool_count = len(
+                        [
+                            row
+                            for row in (raw_value.get("tool_calls") or [])
+                            if isinstance(row, dict)
+                        ]
+                    )
                 sanitize_rows.append(
                     {
                         "phase": phase,
                         "elapsed_ms": elapsed_ms,
                         "round_before": id(before) if before is not None else None,
                         "round_after": id(after) if after is not None else None,
-                        "raw_tool_count": len(
-                            [
-                                row
-                                for row in ((kwargs.get("raw") or {}).get("tool_calls") or [])
-                                if isinstance(row, dict)
-                            ]
-                        )
-                        if isinstance(kwargs.get("raw"), dict)
-                        else 0,
-                        "decision_calls": len(getattr(locals().get("result", None), "calls", []) or []),
+                        "raw_tool_count": raw_tool_count,
+                        "decision_calls": len(getattr(result, "calls", []) or []),
+                        "decision_delegations": len(getattr(result, "delegations", []) or []),
+                        "selection_trace": len(getattr(result, "selection_trace", []) or []),
                     }
                 )
                 phase_var.reset(token)
+
+        def wrapped_rank(candidates, *args, **kwargs):
+            phase = phase_var.get()
+            current = policy._decision_round.get()
+            started = time.perf_counter()
+            result = original_rank(candidates, *args, **kwargs)
+            rank_rows.append(
+                {
+                    "phase": phase,
+                    "round_id": id(current) if current is not None else None,
+                    "candidate_count": len(candidates),
+                    "selected_count": len(result[0]),
+                    "trace_count": len(result[1]),
+                    "elapsed_ms": (time.perf_counter() - started) * 1000.0,
+                }
+            )
             return result
 
         def wrapped_prepare(*args, **kwargs):
@@ -156,6 +195,7 @@ async def main_async() -> dict[str, Any]:
                 fallback_times_ms.append((time.perf_counter() - started) * 1000.0)
 
         policy.sanitize = wrapped_sanitize
+        policy._rank_candidates = wrapped_rank
         policy._prepare_rank_feature_snapshot = wrapped_prepare
         policy._terms = wrapped_terms
         policy.fallback_calls = wrapped_fallback
@@ -208,12 +248,25 @@ async def main_async() -> dict[str, Any]:
             for row in paired_rounds
         ]
 
-        prep_by_phase: dict[str, list[float]] = defaultdict(list)
-        for row in prep_rows:
-            prep_by_phase[str(row["phase"])].append(float(row["elapsed_ms"]))
-        terms_by_phase: dict[str, list[float]] = defaultdict(list)
-        for row in term_rows:
-            terms_by_phase[str(row["phase"])].append(float(row["elapsed_ms"]))
+        rank_shape_counts = Counter(
+            f"{row['phase']}:{int(row['candidate_count'])}" for row in rank_rows
+        )
+        zero_rank_by_phase = Counter(
+            row["phase"] for row in rank_rows if int(row["candidate_count"]) == 0
+        )
+        sanitize_output = {
+            phase: {
+                "calls": len(rows),
+                "raw_tool_count_total": sum(int(row["raw_tool_count"]) for row in rows),
+                "decision_calls_total": sum(int(row["decision_calls"]) for row in rows),
+                "decision_delegations_total": sum(
+                    int(row["decision_delegations"]) for row in rows
+                ),
+                "selection_trace_total": sum(int(row["selection_trace"]) for row in rows),
+            }
+            for phase in sorted({str(row["phase"]) for row in sanitize_rows})
+            for rows in [[row for row in sanitize_rows if row["phase"] == phase]]
+        }
 
         return {
             "ok": not failures,
@@ -221,6 +274,11 @@ async def main_async() -> dict[str, Any]:
             "wall_seconds": round(wall_seconds, 4),
             "sanitize_calls": len(sanitize_rows),
             "sanitize_phase_counts": dict(Counter(row["phase"] for row in sanitize_rows)),
+            "sanitize_output": sanitize_output,
+            "rank_calls": len(rank_rows),
+            "rank_candidate_shapes": dict(sorted(rank_shape_counts.items())),
+            "zero_candidate_rank_calls_by_phase": dict(zero_rank_by_phase),
+            "rank_timing": _timing_summary(rank_rows),
             "fallback_calls": len(fallback_times_ms),
             "feature_prepare_calls": len(prep_rows),
             "feature_prepare_phase_counts": dict(Counter(row["phase"] for row in prep_rows)),
@@ -234,24 +292,8 @@ async def main_async() -> dict[str, Any]:
             "candidate_overlap_ratio_median": round(statistics.median(overlap_ratios), 4)
             if overlap_ratios
             else 0.0,
-            "feature_prepare": {
-                phase: {
-                    "calls": len(values),
-                    "total_ms": round(sum(values), 3),
-                    "p50_ms": round(_percentile(values, 0.50), 4),
-                    "p95_ms": round(_percentile(values, 0.95), 4),
-                }
-                for phase, values in sorted(prep_by_phase.items())
-            },
-            "terms": {
-                phase: {
-                    "calls": len(values),
-                    "total_ms": round(sum(values), 3),
-                    "p50_ms": round(_percentile(values, 0.50), 4),
-                    "p95_ms": round(_percentile(values, 0.95), 4),
-                }
-                for phase, values in sorted(terms_by_phase.items())
-            },
+            "feature_prepare": _timing_summary(prep_rows),
+            "terms": _timing_summary(term_rows),
             "fallback_latency_ms": {
                 "total": round(sum(fallback_times_ms), 3),
                 "p50": round(_percentile(fallback_times_ms, 0.50), 4),
