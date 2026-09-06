@@ -766,27 +766,76 @@ class BundledEventStore(EventStore):
             )
             raise
 
-    def _persist_append_group(self, batch: list[_GroupedAppend]) -> list[RuntimeEvent]:
-        with self._lock, self._conn() as c:
-            c.execute("BEGIN IMMEDIATE")
-            tails: dict[str, dict[str, Any] | Any] = {}
-            persisted: list[RuntimeEvent] = []
-            for request in batch:
-                if request.session_id not in tails:
-                    tail = self._session_tail(c, request.session_id)
-                    if tail is None:
-                        raise KeyError(f"unknown session: {request.session_id}")
-                    tails[request.session_id] = tail
-                event = self._append_in_transaction(
-                    c,
-                    request.session_id,
-                    request.event_type,
-                    request.payload,
-                    tail=tails[request.session_id],
+    @staticmethod
+def _session_tails_for_append_group(
+    c,
+    session_ids: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Load starting tails for an already-formed append group set-wise.
+
+    The async group worker is bounded to ``_APPEND_GROUP_LIMIT`` requests,
+    so production batches use one query. Chunking also preserves the private
+    helper's behavior for direct oversized callers without exceeding the
+    bounded placeholder count in any SQL statement.
+    """
+    unique_ids = list(dict.fromkeys(str(session_id) for session_id in session_ids))
+    tails: dict[str, dict[str, Any]] = {}
+    for start in range(0, len(unique_ids), _APPEND_GROUP_LIMIT):
+        chunk = unique_ids[start : start + _APPEND_GROUP_LIMIT]
+        if not chunk:
+            continue
+        values = ",".join("(?)" for _ in chunk)
+        rows = c.execute(  # nosec B608 - SQL shape is bounded local placeholders only
+            f"""WITH wanted(session_id) AS (VALUES {values}),
+                latest AS (
+                    SELECT e.session_id,MAX(e.seq) AS seq
+                    FROM events AS e
+                    JOIN wanted AS w ON w.session_id=e.session_id
+                    GROUP BY e.session_id
                 )
-                persisted.append(event)
-                tails[request.session_id] = {"seq": event.seq, "hash": event.hash}
-            return persisted
+                SELECT s.session_id,latest.seq,e.hash
+                FROM wanted AS w
+                JOIN sessions AS s ON s.session_id=w.session_id
+                LEFT JOIN latest ON latest.session_id=s.session_id
+                LEFT JOIN events AS e
+                  ON e.session_id=latest.session_id AND e.seq=latest.seq""",
+            chunk,
+        ).fetchall()
+        tails.update(
+            {
+                str(row["session_id"]): {"seq": row["seq"], "hash": row["hash"]}
+                for row in rows
+            }
+        )
+    return tails
+
+def _persist_append_group(self, batch: list[_GroupedAppend]) -> list[RuntimeEvent]:
+    with self._lock, self._conn() as c:
+        c.execute("BEGIN IMMEDIATE")
+        ordered_ids = list(
+            dict.fromkeys(str(request.session_id) for request in batch)
+        )
+        tails = self._session_tails_for_append_group(c, ordered_ids)
+        # Preserve the original first-unknown-session failure order before
+        # any event is inserted. Known empty sessions remain present with
+        # ``seq/hash`` set to NULL and therefore append at seq=1/GENESIS.
+        for session_id in ordered_ids:
+            if session_id not in tails:
+                raise KeyError(f"unknown session: {session_id}")
+
+        persisted: list[RuntimeEvent] = []
+        for request in batch:
+            session_id = str(request.session_id)
+            event = self._append_in_transaction(
+                c,
+                session_id,
+                request.event_type,
+                request.payload,
+                tail=tails[session_id],
+            )
+            persisted.append(event)
+            tails[session_id] = {"seq": event.seq, "hash": event.hash}
+        return persisted
 
     def _persist_bootstrap_group(
         self, batch: list[_GroupedBootstrap]
