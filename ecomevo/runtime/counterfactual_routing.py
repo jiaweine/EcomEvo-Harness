@@ -178,6 +178,10 @@ class CounterfactualAdaptiveDecisionPolicy(PrecomputedAdaptiveDecisionPolicy):
             f"ecomevo-decision-round-{id(self)}",
             default=None,
         )
+        self._task_target_terms: ContextVar[dict[str, frozenset[str]] | None] = ContextVar(
+            f"ecomevo-task-target-terms-{id(self)}",
+            default=None,
+        )
         self._skill_source = self.skills
         self._routing_source = self.routing
         self.skills = _DecisionSkillView(self._skill_source, self._decision_round)
@@ -186,6 +190,27 @@ class CounterfactualAdaptiveDecisionPolicy(PrecomputedAdaptiveDecisionPolicy):
             self._decision_round,
             lambda: list(self.registry.tools),
         )
+
+    def bind_task_target_terms(self):
+        """Enable exact string-term reuse for the current task context only."""
+        return self._task_target_terms.set({})
+
+    def reset_task_target_terms(self, token) -> None:
+        """Restore the parent context so request strings never survive a task boundary."""
+        self._task_target_terms.reset(token)
+
+    def _terms(self, value: Any) -> set[str]:
+        if not isinstance(value, str):
+            return super()._terms(value)
+        cache = self._task_target_terms.get()
+        if cache is None:
+            return super()._terms(value)
+        cached = cache.get(value)
+        if cached is not None:
+            return set(cached)
+        terms = frozenset(super()._terms(value))
+        cache[value] = terms
+        return set(terms)
 
     def rebind_skills(self, skills: Any) -> None:
         """Keep the task-local policy view intact when the runtime skill plugin changes."""
@@ -489,6 +514,7 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
                     {"error": type(exc).__name__, "authority": "read-only-routing-only"},
                 )
 
+        target_term_token = self.policy.bind_task_target_terms()
         token = self._decision_read_fusion.set(reasoner is not None)
         try:
             return await super().run(
@@ -504,3 +530,4 @@ class CounterfactualAdaptiveAutonomousController(AutonomousController):
             )
         finally:
             self._decision_read_fusion.reset(token)
+            self.policy.reset_task_target_terms(target_term_token)
