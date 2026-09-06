@@ -134,18 +134,22 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if ids:
+                # The only constructed SQL fragment is a bounded sequence of literal
+                # parameter markers. Component IDs and the domain remain bound values.
                 placeholders = ",".join("?" for _ in ids)
                 connection.execute(
-                    "UPDATE harness_components "
+                    "UPDATE harness_components "  # nosec B608
                     "SET alpha=alpha+?,beta=beta+?,uses=uses+1,updated_at=? "
                     f"WHERE domain=? AND component_id IN ({placeholders})",
                     (reward, 1.0 - reward, now, domain, *ids),
                 )
+                # Likewise, ordinal literals come only from enumerate() over the bounded
+                # local ID list; every component ID is still supplied as a SQL parameter.
                 selected_rows = ",".join(
                     f"(?,{ordinal})" for ordinal, _component_id in enumerate(ids)
                 )
                 connection.execute(
-                    f"WITH selected(component_id,ordinal) AS (VALUES {selected_rows}) "
+                    f"WITH selected(component_id,ordinal) AS (VALUES {selected_rows}) "  # nosec B608
                     "INSERT INTO harness_component_outcomes("
                     "component_id,session_id,verifier_score,evidence_complete,meta_json,created_at) "
                     "SELECT component.component_id,?,?,?,?,? "
