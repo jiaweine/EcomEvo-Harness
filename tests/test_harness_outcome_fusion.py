@@ -157,6 +157,13 @@ def test_large_component_selection_falls_back_without_bind_limit_regression(tmp_
     assert [str(row["component_id"]) for row in rows] == [valid_id]
 
 
+async def _record_outcome(harness, *args, **kwargs) -> list[dict]:
+    async_call = getattr(harness, "record_outcome_async", None)
+    if callable(async_call):
+        return await async_call(*args, **kwargs)
+    return harness.record_outcome(*args, **kwargs)
+
+
 async def _shadow_signature(harness) -> dict:
     candidate = await harness.propose(
         DOMAIN,
@@ -172,14 +179,16 @@ async def _shadow_signature(harness) -> dict:
     promotion_round = None
     transition_signature: list[dict] = []
     for index in range(40):
-        await harness.record_outcome_async(
+        await _record_outcome(
+            harness,
             DOMAIN,
             [candidate["parent_id"]],
             verifier_score=0.05,
             evidence_complete=False,
             session_id=f"parent-{index}",
         )
-        transitions = await harness.record_outcome_async(
+        transitions = await _record_outcome(
+            harness,
             DOMAIN,
             [candidate["component_id"]],
             verifier_score=0.95,
