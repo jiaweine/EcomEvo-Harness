@@ -29,3 +29,5 @@ jobs:
           python -m pip install -e '.[dev]'
       - name: Skill learning note-run UPSERT A/B
         run: python scripts/skill_note_run_upsert_probe.py
+      - name: Runtime skill note-run writer-hold A/B
+        run: python scripts/skill_note_run_runtime_upsert_probe.py
