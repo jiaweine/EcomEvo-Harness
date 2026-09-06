@@ -29,3 +29,5 @@ jobs:
           python -m pip install -e '.[dev]'
       - name: Harness outcome SQL fusion A/B
         run: python scripts/harness_outcome_fusion_probe.py
+      - name: Runtime harness outcome writer-hold A/B
+        run: python scripts/harness_outcome_runtime_fusion_probe.py
