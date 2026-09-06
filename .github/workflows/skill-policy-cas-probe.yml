@@ -28,4 +28,4 @@ jobs:
           python -m pip install --upgrade "pip==${PIP_VERSION}"
           python -m pip install -e '.[dev]'
       - name: Skill policy optimistic CAS A/B
-        run: python scripts/skill_policy_cas_probe.py
+        run: python scripts/skill_policy_cas_single_connection_probe.py
