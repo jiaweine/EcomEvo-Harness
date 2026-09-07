@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import threading
 import time
 import weakref
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 
@@ -16,6 +18,7 @@ from .event_store import EventStore
 _APPEND_GROUP_LIMIT = 64
 _BOOTSTRAP_GROUP_LIMIT = 64
 _CHECKPOINT_GROUP_LIMIT = 64
+_EVOLUTION_PATCH_CACHE_LIMIT = 256
 _T = TypeVar("_T")
 
 
@@ -96,6 +99,8 @@ class BundledEventStore(EventStore):
         self._io_gates: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
         ] = weakref.WeakKeyDictionary()
+        self._patch_cache_lock = threading.RLock()
+        self._patch_positive_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
         super().__init__(path)
 
     def _io_gate(self, loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
@@ -329,6 +334,23 @@ class BundledEventStore(EventStore):
     async def verify_chain_async(self, session_id: str) -> bool:
         return await self._run_io(self.verify_chain, session_id)
 
+    def _cached_patch_payload(self, fingerprint: str) -> dict[str, Any] | None:
+        with self._patch_cache_lock:
+            payload = self._patch_positive_cache.get(fingerprint)
+            if payload is None:
+                return None
+            self._patch_positive_cache.move_to_end(fingerprint)
+            return copy.deepcopy(payload)
+
+    def _remember_patch_payload(
+        self, fingerprint: str, payload: dict[str, Any]
+    ) -> None:
+        with self._patch_cache_lock:
+            self._patch_positive_cache[fingerprint] = copy.deepcopy(payload)
+            self._patch_positive_cache.move_to_end(fingerprint)
+            while len(self._patch_positive_cache) > _EVOLUTION_PATCH_CACHE_LIMIT:
+                self._patch_positive_cache.popitem(last=False)
+
     @staticmethod
     def _existing_patch_payload(row, patch: EvolutionPatch) -> dict[str, Any]:
         try:
@@ -342,21 +364,27 @@ class BundledEventStore(EventStore):
             }
 
     def save_patch_if_novel(self, patch: EvolutionPatch) -> dict[str, Any] | None:
-        """Return duplicate patches without reserving SQLite's writer slot.
+        """Return known duplicates without repeated SQLite fingerprint lookups.
 
-        ``evolution_patches`` is append-only through the runtime contract and fingerprint
-        uniqueness is enforced by SQLite. A read hit is therefore safe to return without
-        ``BEGIN IMMEDIATE``. A miss rechecks under the original writer lock before INSERT
-        so concurrent first observations retain the base EventStore novelty semantics.
+        The positive cache only contains fingerprints already confirmed durable by this
+        instance. Misses always retain #74's WAL read plus writer-locked recheck, so a
+        fingerprint appended later by another process remains discoverable. The cache is
+        bounded and hit payloads are deep-copied to preserve fresh mutable return values.
         """
         fingerprint = self._patch_fingerprint(patch)
+        cached = self._cached_patch_payload(fingerprint)
+        if cached is not None:
+            return cached
+
         with self._conn() as connection:
             existing = connection.execute(
                 "SELECT payload_json FROM evolution_patches WHERE fingerprint=? LIMIT 1",
                 (fingerprint,),
             ).fetchone()
         if existing is not None:
-            return self._existing_patch_payload(existing, patch)
+            payload = self._existing_patch_payload(existing, patch)
+            self._remember_patch_payload(fingerprint, payload)
+            return payload
 
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -365,7 +393,9 @@ class BundledEventStore(EventStore):
                 (fingerprint,),
             ).fetchone()
             if existing is not None:
-                return self._existing_patch_payload(existing, patch)
+                payload = self._existing_patch_payload(existing, patch)
+                self._remember_patch_payload(fingerprint, payload)
+                return payload
             connection.execute(
                 "INSERT INTO evolution_patches(patch_id,created_at,payload_json,fingerprint) "
                 "VALUES(?,?,?,?)",
@@ -376,6 +406,12 @@ class BundledEventStore(EventStore):
                     fingerprint,
                 ),
             )
+
+        # Populate only after the connection context has committed the novel INSERT.
+        self._remember_patch_payload(
+            fingerprint,
+            patch.model_dump(mode="json"),
+        )
         return None
 
     async def append_grouped(
