@@ -1,5 +1,7 @@
 from pathlib import Path
 
+# Second push intentionally triggers the already-present one-shot workflow.
+
 
 def replace_once(path: str, old: str, new: str) -> None:
     target = Path(path)
