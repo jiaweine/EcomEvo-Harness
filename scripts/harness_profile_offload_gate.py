@@ -12,7 +12,8 @@ from typing import Any
 from ecomevo.runtime.bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
 
 
-CALLS = 64
+CALLS = 256
+WARMUP_CALLS = 32
 EXPERIMENTS = 5
 HEARTBEAT_SECONDS = 0.001
 MAX_LAG_RATIO_LIMIT = 0.35
@@ -101,6 +102,12 @@ async def main_async() -> dict[str, Any]:
         if len(warm.get("component_ids") or []) != 4:
             failures.append("warm profile did not initialize all four harness components")
 
+        warm_keys = [f"warm-{index}" for index in range(WARMUP_CALLS)]
+        # Warm both the SQLite page cache and the async worker path before timing. The
+        # production thresholds are unchanged; this only lengthens/stabilizes measurement.
+        await _run_arm(harness, "baseline", warm_keys, main_thread_id=main_thread_id)
+        await _run_arm(harness, "candidate", warm_keys, main_thread_id=main_thread_id)
+
         session_keys = [f"profile-{index}" for index in range(CALLS)]
         pairs: list[dict[str, Any]] = []
         max_lag_ratios: list[float] = []
@@ -174,6 +181,7 @@ async def main_async() -> dict[str, Any]:
         result = {
             "ok": not failures,
             "calls_per_arm": CALLS,
+            "warmup_calls_per_arm": WARMUP_CALLS,
             "experiments": EXPERIMENTS,
             "semantic_output_equal": not any("profile outputs differ" in failure for failure in failures),
             "median_heartbeat_max_ratio": round(median_max_ratio, 4),
