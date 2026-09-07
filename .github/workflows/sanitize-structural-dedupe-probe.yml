@@ -1,0 +1,27 @@
+name: Sanitize Structural Dedupe Probe
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/sanitize_structural_dedupe_probe.py'
+      - '.github/workflows/sanitize-structural-dedupe-probe.yml'
+      - 'ecomevo/runtime/**'
+
+permissions:
+  contents: read
+
+jobs:
+  sanitize-structural-dedupe:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade 'pip==26.2.1'
+          python -m pip install -e .
+      - name: Measure structural sanitize dedupe
+        run: python scripts/sanitize_structural_dedupe_probe.py
