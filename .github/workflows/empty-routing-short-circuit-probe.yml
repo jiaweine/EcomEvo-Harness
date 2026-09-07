@@ -1,0 +1,29 @@
+name: Empty Routing Short Circuit Probe
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/empty_routing_short_circuit_probe.py'
+      - '.github/workflows/empty-routing-short-circuit-probe.yml'
+      - 'ecomevo/runtime/precomputed_ranking.py'
+      - 'ecomevo/runtime/adaptive_routing.py'
+      - 'ecomevo/runtime/counterfactual_routing.py'
+
+permissions:
+  contents: read
+
+jobs:
+  empty-routing-short-circuit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade 'pip==26.2.1'
+          python -m pip install -e .
+      - name: Measure empty-rank short circuit
+        run: python scripts/empty_routing_short_circuit_probe.py
