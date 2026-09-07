@@ -224,7 +224,11 @@ class EcomEvoEngine:
         autonomy_mode='model_controller' if reasoner is not None else 'deterministic_fallback'
         belief.facts['autonomy_mode']=autonomy_mode
 
-        harness_profile=self.harness.profile(goal.domain.value,session_key=sid)
+        profile_async=getattr(self.harness,'profile_async',None)
+        if sink is None and callable(profile_async):
+            harness_profile=await profile_async(goal.domain.value,session_key=sid)
+        else:
+            harness_profile=self.harness.profile(goal.domain.value,session_key=sid)
         belief.facts['harness_profile']={
             'component_ids':list(harness_profile.get('component_ids') or []),
             'components':{

@@ -83,6 +83,10 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
                     raise
                 raise cancelled
 
+    async def profile_async(self, domain: str, *, session_key: str) -> dict[str, Any]:
+        """Run the built-in startup profile read off the asyncio event loop."""
+        return await self._run_io(self.profile, domain, session_key=session_key)
+
     def record_outcome(
         self,
         domain: str,
