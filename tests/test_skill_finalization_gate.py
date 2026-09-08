@@ -48,7 +48,7 @@ def test_unrounded_wall_failure_is_not_hidden_by_display_precision(gate):
 def test_all_pairs_participate_in_median(gate):
     result = gate.summarize_samples(samples(gate, [1, 1.1, 1.2, 2.4, 2.5, 2.6]))
     assert not result["ok"]
-    assert result["comparison"]["async_to_sync_wall_ratio"] == 1.8
+    assert result["comparison"]["async_to_sync_wall_ratio"] == pytest.approx(1.8)
     assert len(result["samples"]) == 6
 
 
