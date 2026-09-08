@@ -1,0 +1,32 @@
+name: Grouped Restore Gate
+
+on:
+  pull_request:
+    paths:
+      - 'ecomevo/runtime/grouped_restore_event_store.py'
+      - 'ecomevo/runtime/engine.py'
+      - 'tests/test_grouped_checkpoint_restore.py'
+      - 'scripts/grouped_restore_gate.py'
+      - '.github/workflows/grouped-restore-gate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  grouped-restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade 'pip==26.2.1'
+          python -m pip install -e '.[dev]'
+      - name: Check grouped restore semantics
+        run: python -m pytest -q tests/test_grouped_checkpoint_restore.py
+      - name: Measure production grouped restore
+        run: python scripts/grouped_restore_gate.py
