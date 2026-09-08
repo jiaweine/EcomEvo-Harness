@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ecomevo.models import EvolutionPatch, RuntimeSummary
-from .bundled_event_store import BundledEventStore
+from .grouped_restore_event_store import GroupedRestoreBundledEventStore
 from .bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
 from .bundled_skills import BundledAdaptiveSkillLibrary
 from .counterfactual_routing import CounterfactualAdaptiveAutonomousController
@@ -49,7 +49,7 @@ class EcomEvoEngine:
         def component(key: str, factory):
             return overrides[key] if key in overrides else factory()
 
-        self.events = component('event.store', lambda: BundledEventStore(db_path))
+        self.events = component('event.store', lambda: GroupedRestoreBundledEventStore(db_path))
         self.skills = component('memory.skills', lambda: BundledAdaptiveSkillLibrary(db_path))
         self.sandbox = component('sandbox.action', ActionSandbox)
         self.harness = component('evolver.harness', lambda: BundledHarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
@@ -317,6 +317,9 @@ class EcomEvoEngine:
             return reference
         async def controller_restore(reference):
             seq=reference.get('seq') if isinstance(reference,dict) else None
+            restore_async=getattr(self.events,'restore_checkpoint_async',None)
+            if sink is None and seq is not None and callable(restore_async):
+                return await restore_async(sid,seq)
             return self.events.restore_checkpoint(sid,seq)
         profile_token=bind_harness_profile(harness_profile)
         try:
