@@ -1,0 +1,27 @@
+name: Restore Checkpoint Offload Probe
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/restore_checkpoint_offload_probe.py'
+      - '.github/workflows/restore-checkpoint-offload-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  restore-checkpoint-offload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade 'pip==26.2.1'
+          python -m pip install -e .
+      - name: Measure checkpoint restore offload
+        run: python scripts/restore_checkpoint_offload_probe.py
