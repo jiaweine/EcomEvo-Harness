@@ -30,6 +30,6 @@ jobs:
           python -m pip install --upgrade "pip==${PIP_VERSION}"
           python -m pip install -e '.[dev]'
       - name: Skill async correctness
-        run: pytest -q tests/test_skill_async_offload.py
+        run: pytest -q tests/test_skill_async_offload.py tests/test_skill_note_run_group_commit.py tests/test_skill_finalization_gate.py
       - name: Skill finalization A/B
         run: python scripts/skill_finalization_gate.py
