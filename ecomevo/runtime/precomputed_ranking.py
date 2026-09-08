@@ -7,12 +7,14 @@ from .adaptive_routing import AdaptiveDecisionPolicy
 
 
 class PrecomputedAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
-    """Reuse pure feature inputs within one candidate-ranking call only.
+    """Reuse pure feature inputs without retaining request-specific ranking state.
 
-    This deliberately does not cache across decision rounds. The snapshot lives in a
-    ContextVar so concurrent tasks sharing one policy instance cannot see each other's
-    candidates, evidence gaps, skills, or previous results.
+    The per-ranking snapshot remains task-local and never crosses decision rounds. A small
+    instance-local cache is separately allowed for set-valued tool metadata only; string
+    targets and other request-specific values always use the uncached base implementation.
     """
+
+    _STATIC_TERM_CACHE_LIMIT = 128
 
     def __init__(self, planner, registry, sandbox, skills, *, max_calls: int, max_delegations: int):
         super().__init__(
@@ -27,6 +29,28 @@ class PrecomputedAdaptiveDecisionPolicy(AdaptiveDecisionPolicy):
             f"ecomevo-rank-feature-snapshot-{id(self)}",
             default=None,
         )
+        self._static_term_cache: dict[str, frozenset[str]] = {}
+        self._static_term_cache_order: list[str] = []
+
+    def _terms(self, value: Any) -> set[str]:
+        if not isinstance(value, set):
+            return super()._terms(value)
+
+        # Preserve the exact text/order the legacy set path would feed to `_query_terms`.
+        # Tool/plugin metadata changes therefore produce a different key and a clean miss.
+        # Cached values are immutable and callers always receive a fresh set copy.
+        text_key = " ".join(str(item) for item in value)
+        cached = self._static_term_cache.get(text_key)
+        if cached is not None:
+            return set(cached)
+
+        cached = frozenset(super()._terms(value))
+        self._static_term_cache[text_key] = cached
+        self._static_term_cache_order.append(text_key)
+        if len(self._static_term_cache_order) > self._STATIC_TERM_CACHE_LIMIT:
+            oldest = self._static_term_cache_order.pop(0)
+            self._static_term_cache.pop(oldest, None)
+        return set(cached)
 
     def _prepare_rank_feature_snapshot(
         self,

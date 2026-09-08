@@ -1,5 +1,7 @@
 from __future__ import annotations
 import re
+import weakref
+from contextvars import ContextVar
 from typing import Any
 from ecomevo.models import BeliefState, DecisionDomain, GoalState, ToolCall
 from .tools import call, _query_terms
@@ -18,6 +20,21 @@ class AdaptivePlanner:
 
     def __init__(self):
         self.learned_checks:dict[str,list[str]]={}
+        # One bounded, context-local entry. A fresh non-recovery plan always replaces
+        # it, so terms can only be reused by later recovery plans for this exact goal
+        # object. ContextVar keeps concurrent runtime tasks isolated without changing
+        # the planner plugin contract or storing raw request text in a global cache.
+        self._goal_terms_cache: ContextVar[
+            tuple[weakref.ReferenceType[GoalState], tuple[str, ...]] | None
+        ] = ContextVar(f'ecomevo-planner-goal-terms-{id(self)}', default=None)
+
+    def _goal_terms(self, goal: GoalState, *, recovery: bool) -> list[str]:
+        cached=self._goal_terms_cache.get()
+        if recovery and cached is not None and cached[0]() is goal:
+            return list(cached[1])
+        terms=tuple(_query_terms(goal.primary,limit=24))
+        self._goal_terms_cache.set((weakref.ref(goal),terms))
+        return list(terms)
 
     def apply_evolution_patch(self, patch:dict[str,Any]|Any)->bool:
         data=patch.model_dump(mode='json') if hasattr(patch,'model_dump') else dict(patch)
@@ -76,7 +93,7 @@ class AdaptivePlanner:
         learned=self.learned_checks.get(goal.domain.value,[])
         memory_terms=[str(x) for x in (belief.facts.get('memory_watch_terms') or []) if str(x).strip()]
         context_terms=[str(x) for x in (belief.facts.get('conversation_context_terms') or []) if str(x).strip()]
-        keywords=list(dict.fromkeys(_query_terms(goal.primary,limit=24)+context_terms[:12]+learned[:8]+memory_terms[:8]))
+        keywords=list(dict.fromkeys(self._goal_terms(goal,recovery=recovery)+context_terms[:12]+learned[:8]+memory_terms[:8]))
         calls.append(call('evidence.search','从附件中定位与问题直接相关的证据',{'keywords':keywords},group='parallel-a'))
         domain=goal.domain
         if domain==DecisionDomain.PRODUCT_GOVERNANCE:calls += [call('catalog.inspect','核对商品字段与高风险声明',group='parallel-b'),call('risk.scan','检查商品与交易风险线索',group='parallel-b')]

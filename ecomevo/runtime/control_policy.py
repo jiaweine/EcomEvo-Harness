@@ -333,9 +333,12 @@ class DecisionPolicy:
             args = item.get("args") if isinstance(item.get("args"), dict) else {}
             if tool == "evidence.search":
                 words = [str(x).strip() for x in (args.get("keywords") or []) if str(x).strip()][:32]
-                memory_terms = [str(x).strip() for x in (memory_component.get("retrieval_terms") or []) if str(x).strip()]
-                fallback_terms = _query_terms(" ".join([goal.primary] + list(goal.required_evidence) + memory_terms), limit=24)
-                args = {"keywords": list(dict.fromkeys(words or fallback_terms))[:32]}
+                if words:
+                    args = {"keywords": list(dict.fromkeys(words))[:32]}
+                else:
+                    memory_terms = [str(x).strip() for x in (memory_component.get("retrieval_terms") or []) if str(x).strip()]
+                    fallback_terms = _query_terms(" ".join([goal.primary] + list(goal.required_evidence) + memory_terms), limit=24)
+                    args = {"keywords": list(dict.fromkeys(fallback_terms))[:32]}
             else:
                 args = {}  # MCP and local tool arguments remain server-owned.
             sig = self.call_signature(tool, args)
@@ -384,11 +387,14 @@ class DecisionPolicy:
         components = profile.get("components") if isinstance(profile.get("components"), dict) else {}
         memory_component = components.get("memory") if isinstance(components.get("memory"), dict) else {}
         memory_terms = [str(x) for x in (memory_component.get("retrieval_terms") or []) if str(x).strip()]
+        goal_terms: list[str] | None = None
         raw_calls = []
         for item in candidates:
             args = item.args or {}
             if item.tool == "evidence.search":
-                args = {"keywords": list(dict.fromkeys(list(belief.missing_evidence) + memory_terms + _query_terms(goal.primary, limit=16)))[:32]}
+                if goal_terms is None:
+                    goal_terms = _query_terms(goal.primary, limit=16)
+                args = {"keywords": list(dict.fromkeys(list(belief.missing_evidence) + memory_terms + goal_terms))[:32]}
             raw_calls.append({"tool": item.tool, "purpose": item.purpose, "args": args,
                               "parallel_group": item.parallel_group})
         decision = self.sanitize(

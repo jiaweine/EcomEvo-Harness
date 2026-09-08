@@ -109,6 +109,33 @@ class FactorizedAdaptiveRoutingStore(AdaptiveRoutingStore):
         projected = self._matvec(inverse, vector)
         return max(0.0, self._dot(vector, projected))
 
+    def state_summary(self, domain: str) -> dict[str, Any]:
+        """Read only the routing metadata Engine persists into the final belief.
+
+        This optional built-in fast path deliberately avoids loading ``a_json`` / ``b_json``
+        and therefore avoids posterior factorization. ``AdaptiveRoutingStore.snapshot``
+        remains unchanged for public/plugin compatibility and callers that need means.
+        """
+        key = self._key(domain, "domain")
+        with self._lock, self._conn() as connection:
+            row = connection.execute(
+                "SELECT samples,reward_ewma,residual_ewma FROM routing_policy WHERE policy_key=?",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return {
+                "domain": domain,
+                "samples": 0,
+                "reward_ewma": 0.0,
+                "residual_ewma": 0.25,
+            }
+        return {
+            "domain": domain,
+            "samples": int(row["samples"]),
+            "reward_ewma": round(float(row["reward_ewma"]), 4),
+            "residual_ewma": round(float(row["residual_ewma"]), 4),
+        }
+
     def prepare_context_from_connection(
         self,
         connection,

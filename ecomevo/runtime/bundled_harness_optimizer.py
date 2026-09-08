@@ -1,14 +1,35 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
+import time
 import weakref
-from typing import Any, Callable, TypeVar
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from typing import Any, Callable, Iterable, TypeVar
 
 from .harness_optimizer import HarnessEvolutionOptimizer
 
 
+_REPLAY_GROUP_LIMIT = 64
+_OUTCOME_FUSION_LIMIT = 128
 _T = TypeVar("_T")
+
+
+@dataclass(slots=True)
+class _GroupedReplayCase:
+    domain: str
+    trajectory_json: str
+    created_at: float
+    future: asyncio.Future[None]
+
+
+@dataclass(slots=True)
+class _LoopReplayGroup:
+    queue: list[_GroupedReplayCase] = field(default_factory=list)
+    scheduled: bool = False
+    worker: asyncio.Task[None] | None = None
 
 
 class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
@@ -16,8 +37,8 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
 
     The public ``HarnessEvolutionOptimizer`` remains the compatibility surface. This
     subclass only adds optional methods used by the built-in Engine to keep phase-aligned
-    SQLite work off the asyncio thread and to avoid decoding a full optimizer snapshot
-    when the runtime needs only active/shadow generations.
+    SQLite work off the asyncio thread and to avoid unnecessary writer-slot acquisition
+    and full optimizer snapshots on steady-state paths.
     """
 
     def __init__(self, db_path, *, sandbox=None):
@@ -25,6 +46,13 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
         self._async_gates: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
         ] = weakref.WeakKeyDictionary()
+        self._replay_groups: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, _LoopReplayGroup
+        ] = weakref.WeakKeyDictionary()
+        self._skip_replay_record: ContextVar[bool] = ContextVar(
+            f"bundled_harness_skip_replay_record_{id(self)}",
+            default=False,
+        )
         super().__init__(db_path, sandbox=sandbox)
 
     def _async_gate(self, loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
@@ -55,8 +83,287 @@ class BundledHarnessEvolutionOptimizer(HarnessEvolutionOptimizer):
                     raise
                 raise cancelled
 
+    def record_outcome(
+        self,
+        domain: str,
+        component_ids: Iterable[str],
+        *,
+        verifier_score: float,
+        evidence_complete: bool,
+        session_id: str | None,
+        meta: dict[str, Any] | None = None,
+        evidence_completeness: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Persist one Harness outcome with set-based SQL in the original transaction.
+
+        The public optimizer contract and the one-outcome/one-writer-transaction boundary
+        stay unchanged. Only the per-component SQL shape is fused: valid selected rows are
+        updated together and their evidence rows are inserted in the original deduplicated
+        component order before the unchanged shadow-transition check runs.
+        """
+        ids = list(dict.fromkeys(str(value) for value in component_ids if str(value)))
+        if len(ids) > _OUTCOME_FUSION_LIMIT:
+            # The public Bundled type can be called directly with arbitrary iterables.
+            # Keep the historical unbounded per-row implementation for unusually large
+            # selections instead of depending on SQLite's build-specific bind limit.
+            return super().record_outcome(
+                domain,
+                ids,
+                verifier_score=verifier_score,
+                evidence_complete=evidence_complete,
+                session_id=session_id,
+                meta=meta,
+                evidence_completeness=evidence_completeness,
+            )
+
+        q = max(0.0, min(1.0, float(verifier_score)))
+        completeness = (
+            max(0.0, min(1.0, float(evidence_completeness)))
+            if evidence_completeness is not None
+            else (1.0 if evidence_complete else q)
+        )
+        reward = self.verifier_potential(q, completeness)
+        now = time.time()
+        outcome_meta = {
+            **(meta or {}),
+            "raw_verifier_score": q,
+            "evidence_completeness": completeness,
+            "reward": reward,
+            "reward_method": "verifier_harmonic_potential",
+        }
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if ids:
+                # The only constructed SQL fragment is a bounded sequence of literal
+                # parameter markers. Component IDs and the domain remain bound values.
+                placeholders = ",".join("?" for _ in ids)
+                connection.execute(
+                    "UPDATE harness_components "  # nosec B608
+                    "SET alpha=alpha+?,beta=beta+?,uses=uses+1,updated_at=? "
+                    f"WHERE domain=? AND component_id IN ({placeholders})",
+                    (reward, 1.0 - reward, now, domain, *ids),
+                )
+                # Likewise, ordinal literals come only from enumerate() over the bounded
+                # local ID list; every component ID is still supplied as a SQL parameter.
+                selected_rows = ",".join(
+                    f"(?,{ordinal})" for ordinal, _component_id in enumerate(ids)
+                )
+                connection.execute(
+                    f"WITH selected(component_id,ordinal) AS (VALUES {selected_rows}) "  # nosec B608
+                    "INSERT INTO harness_component_outcomes("
+                    "component_id,session_id,verifier_score,evidence_complete,meta_json,created_at) "
+                    "SELECT component.component_id,?,?,?,?,? "
+                    "FROM selected "
+                    "JOIN harness_components AS component "
+                    "ON component.component_id=selected.component_id "
+                    "WHERE component.domain=? "
+                    "ORDER BY selected.ordinal",
+                    (
+                        *ids,
+                        session_id,
+                        reward,
+                        int(bool(evidence_complete)),
+                        json.dumps(outcome_meta, ensure_ascii=False, default=str),
+                        now,
+                        domain,
+                    ),
+                )
+            return self._transition_shadows(connection, domain, now)
+
     async def record_outcome_async(self, *args, **kwargs) -> list[dict[str, Any]]:
         return await self._run_io(self.record_outcome, *args, **kwargs)
+
+    def _record_replay_case(self, *args, **kwargs) -> None:
+        if self._skip_replay_record.get():
+            return
+        super()._record_replay_case(*args, **kwargs)
+
+    async def _record_replay_case_grouped(
+        self,
+        domain: str,
+        trajectory: dict[str, Any],
+    ) -> None:
+        """Durably coalesce phase-aligned replay evidence without blocking the loop."""
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+        request = _GroupedReplayCase(
+            domain=str(domain),
+            trajectory_json=json.dumps(trajectory, ensure_ascii=False, default=str)[:24000],
+            created_at=time.time(),
+            future=future,
+        )
+        with self._async_gate_lock:
+            group = self._replay_groups.get(loop)
+            if group is None:
+                group = _LoopReplayGroup()
+                self._replay_groups[loop] = group
+            group.queue.append(request)
+            if not group.scheduled:
+                group.scheduled = True
+                group.worker = loop.create_task(self._flush_replay_group(group))
+
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError as cancelled:
+            # Once queued, preserve the synchronous evidence contract: cancellation is
+            # observable only after this replay case has committed or failed.
+            try:
+                await asyncio.shield(future)
+            except Exception:
+                raise
+            raise cancelled
+
+    @staticmethod
+    def _fail_replay_requests(
+        requests: list[_GroupedReplayCase],
+        error: BaseException,
+    ) -> None:
+        for request in requests:
+            if not request.future.done():
+                request.future.set_exception(error)
+
+    def _stop_replay_group(self, group: _LoopReplayGroup) -> list[_GroupedReplayCase]:
+        with self._async_gate_lock:
+            queued = list(group.queue)
+            group.queue.clear()
+            group.scheduled = False
+            group.worker = None
+        return queued
+
+    async def _flush_replay_group(self, group: _LoopReplayGroup) -> None:
+        try:
+            while True:
+                # One scheduler turn lets phase-aligned proposals join the bounded batch
+                # without adding a fixed latency window to isolated proposals.
+                await asyncio.sleep(0)
+                with self._async_gate_lock:
+                    if not group.queue:
+                        group.scheduled = False
+                        group.worker = None
+                        return
+                    batch = list(group.queue[:_REPLAY_GROUP_LIMIT])
+                    del group.queue[: len(batch)]
+
+                persist_task = asyncio.create_task(
+                    self._run_io(self._persist_replay_group, batch)
+                )
+                worker_cancelled: asyncio.CancelledError | None = None
+                try:
+                    await asyncio.shield(persist_task)
+                except asyncio.CancelledError as cancelled:
+                    worker_cancelled = cancelled
+                    try:
+                        await asyncio.shield(persist_task)
+                    except Exception as exc:
+                        self._fail_replay_requests(batch, exc)
+                        queued = self._stop_replay_group(group)
+                        self._fail_replay_requests(
+                            queued,
+                            RuntimeError("harness replay worker cancelled before persistence"),
+                        )
+                        raise cancelled
+                except Exception:
+                    # A shared transaction must roll back as a unit. Retry requests one by
+                    # one so an isolated SQLite/row failure does not poison valid peers.
+                    for index, request in enumerate(batch):
+                        if request.future.done():
+                            continue
+                        single_task = asyncio.create_task(
+                            self._run_io(self._persist_replay_group, [request])
+                        )
+                        try:
+                            await asyncio.shield(single_task)
+                        except asyncio.CancelledError as cancelled:
+                            try:
+                                await asyncio.shield(single_task)
+                            except Exception as exc:
+                                request.future.set_exception(exc)
+                            else:
+                                request.future.set_result(None)
+                            self._fail_replay_requests(
+                                batch[index + 1 :],
+                                RuntimeError(
+                                    "harness replay worker cancelled before isolated persistence"
+                                ),
+                            )
+                            queued = self._stop_replay_group(group)
+                            self._fail_replay_requests(
+                                queued,
+                                RuntimeError("harness replay worker cancelled before persistence"),
+                            )
+                            raise cancelled
+                        except Exception as exc:
+                            request.future.set_exception(exc)
+                        else:
+                            request.future.set_result(None)
+                    continue
+
+                for request in batch:
+                    if not request.future.done():
+                        request.future.set_result(None)
+
+                if worker_cancelled is not None:
+                    queued = self._stop_replay_group(group)
+                    self._fail_replay_requests(
+                        queued,
+                        RuntimeError("harness replay worker cancelled before persistence"),
+                    )
+                    raise worker_cancelled
+        except asyncio.CancelledError:
+            queued = self._stop_replay_group(group)
+            self._fail_replay_requests(
+                queued,
+                RuntimeError("harness replay worker cancelled before persistence"),
+            )
+            raise
+
+    def _persist_replay_group(self, batch: list[_GroupedReplayCase]) -> None:
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.executemany(
+                "INSERT INTO harness_replay_cases(domain,trajectory_json,created_at) VALUES(?,?,?)",
+                [
+                    (request.domain, request.trajectory_json, request.created_at)
+                    for request in batch
+                ],
+            )
+
+    async def propose(
+        self,
+        domain: str,
+        *,
+        trajectory: dict[str, Any],
+        tool_catalog: list[dict[str, Any]],
+        reasoner=None,
+    ) -> dict[str, Any] | None:
+        """Persist replay evidence cheaply and avoid read-only writer reservations.
+
+        Built-in replay evidence is phase-aligned across concurrent runs, so persist it
+        through the loop-local group-commit queue before inspecting optimizer state. Each
+        caller still waits for durable evidence before continuing, but SQLite work stays
+        off-loop and up to 64 replay cases share one writer transaction.
+
+        The base optimizer then remains the mutation authority. Existing-shadow proposals
+        return from a deferred WAL read snapshot. If no shadow is visible, delegation to
+        the base implementation retains its original bootstrap transaction, replay gate,
+        and final shadow/current-component rechecks before candidate insertion.
+        """
+        await self._record_replay_case_grouped(domain, trajectory)
+        with self._conn() as connection:
+            connection.execute("BEGIN")
+            if self._domain_initialized(connection, domain) and self._has_shadow(connection, domain):
+                return None
+
+        token = self._skip_replay_record.set(True)
+        try:
+            return await super().propose(
+                domain,
+                trajectory=trajectory,
+                tool_catalog=tool_catalog,
+                reasoner=reasoner,
+            )
+        finally:
+            self._skip_replay_record.reset(token)
 
     def state_summary(self, domain: str) -> dict[str, Any]:
         """Return the post-proposal state required by RuntimeSummary in one small read.
