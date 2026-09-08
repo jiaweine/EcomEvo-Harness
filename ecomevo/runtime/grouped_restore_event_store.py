@@ -93,19 +93,13 @@ class GroupedRestoreBundledEventStore(BundledEventStore):
     async def restore_checkpoint_async(
         self,
         session_id: str,
-        seq: int | None = None,
+        seq: int,
     ) -> dict[str, Any] | None:
+        """Restore an exact durable checkpoint without blocking the event loop."""
         # Preserve explicit synchronous overrides instead of silently bypassing plugin or
         # profiling semantics through the grouped built-in helper.
         if type(self).restore_checkpoint is not EventStore.restore_checkpoint:
-            return await asyncio.to_thread(self.restore_checkpoint, session_id, seq)
-
-        # Latest-checkpoint reads have timing-sensitive semantics: a delayed grouped read
-        # could observe a checkpoint created after the call. Only exact-sequence recovery
-        # requests are eligible for coalescing.
-        if seq is None:
-            return await asyncio.to_thread(self.restore_checkpoint, session_id, None)
-
+            return await asyncio.to_thread(self.restore_checkpoint, session_id, int(seq))
         return await self.restore_checkpoint_grouped(session_id, int(seq))
 
     async def restore_checkpoint_grouped(
