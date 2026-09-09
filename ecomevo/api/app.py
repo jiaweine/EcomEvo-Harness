@@ -21,7 +21,7 @@ async def _compat_emit(
     job_id: str | None = None,
     worker_id: str | None = None,
 ):
-    """Append durably, then replace stale process-local wake data with the full event.
+    """Append durably without blocking the event loop, then publish a wake hint.
 
     WebSocket delivery still treats SQLite ``task_events`` as authoritative and drains
     by event id, so the queue payload is only a low-latency compatibility/wake hint.
@@ -29,9 +29,15 @@ async def _compat_emit(
     if job_id is not None or worker_id is not None:
         if not job_id or not worker_id:
             return None
-        event = _application.store.add_job_event(job_id, worker_id, event_type, payload)
+        event = await asyncio.to_thread(
+            _application.store.add_job_event,
+            job_id,
+            worker_id,
+            event_type,
+            payload,
+        )
     else:
-        event = _application.store.add_event(cid, event_type, payload)
+        event = await asyncio.to_thread(_application.store.add_event, cid, event_type, payload)
     if not event:
         return None
     event_cid = str(event["conversation_id"])
