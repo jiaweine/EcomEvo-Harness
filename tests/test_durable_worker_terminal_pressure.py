@@ -8,7 +8,8 @@ from ecomevo.api.durable_jobs import DurableConversationWorker
 
 
 class TerminalStore:
-    def __init__(self):
+    def __init__(self, *, turn_owned: bool = True):
+        self.turn_owned = turn_owned
         self.success_thread: int | None = None
         self.failure_thread: int | None = None
 
@@ -16,7 +17,7 @@ class TerminalStore:
         return True
 
     def renew_or_restore_turn(self, *_args, **_kwargs):
-        return True
+        return self.turn_owned
 
     def finish_job_success(self, *_args, **_kwargs):
         self.success_thread = threading.get_ident()
@@ -69,18 +70,21 @@ def _job() -> dict:
     }
 
 
+def _worker(store: TerminalStore, analyzer) -> DurableConversationWorker:
+    return DurableConversationWorker(
+        store,
+        analyzer,
+        NoopMCP(),
+        emit=_unused_emit,
+        wake=lambda _cid: None,
+    )
+
+
 def test_terminal_success_commit_runs_off_event_loop():
     async def exercise():
         store = TerminalStore()
         loop_thread = threading.get_ident()
-        worker = DurableConversationWorker(
-            store,
-            SuccessAnalyzer(),
-            NoopMCP(),
-            emit=_unused_emit,
-            wake=lambda _cid: None,
-        )
-        await worker._execute(_job())
+        await _worker(store, SuccessAnalyzer())._execute(_job())
         assert store.success_thread is not None
         assert store.success_thread != loop_thread
 
@@ -91,15 +95,20 @@ def test_terminal_failure_commit_runs_off_event_loop():
     async def exercise():
         store = TerminalStore()
         loop_thread = threading.get_ident()
-        worker = DurableConversationWorker(
-            store,
-            FailureAnalyzer(),
-            NoopMCP(),
-            emit=_unused_emit,
-            wake=lambda _cid: None,
-        )
-        await worker._execute(_job())
+        await _worker(store, FailureAnalyzer())._execute(_job())
         assert store.failure_thread is not None
         assert store.failure_thread != loop_thread
+
+    asyncio.run(exercise())
+
+
+def test_turn_loss_failure_commit_runs_off_event_loop():
+    async def exercise():
+        store = TerminalStore(turn_owned=False)
+        loop_thread = threading.get_ident()
+        await _worker(store, SuccessAnalyzer())._execute(_job())
+        assert store.failure_thread is not None
+        assert store.failure_thread != loop_thread
+        assert store.success_thread is None
 
     asyncio.run(exercise())
