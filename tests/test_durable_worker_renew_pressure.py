@@ -32,16 +32,18 @@ def test_slow_durable_lease_renewal_does_not_block_event_loop():
         job = {
             "id": "job-pressure",
             "conversation_id": "conversation-pressure",
-            "turn_token": "lease-pressure",
+            "payload": {"lease_token": "lease-pressure"},
         }
+        renew_stop = asyncio.Event()
+        lease_lost = asyncio.Event()
 
         gaps: list[float] = []
-        stop = asyncio.Event()
+        heartbeat_stop = asyncio.Event()
 
         async def heartbeat():
             loop = asyncio.get_running_loop()
             previous = loop.time()
-            while not stop.is_set():
+            while not heartbeat_stop.is_set():
                 await asyncio.sleep(0.005)
                 now = loop.time()
                 gaps.append(now - previous)
@@ -49,11 +51,12 @@ def test_slow_durable_lease_renewal_does_not_block_event_loop():
 
         heartbeat_task = asyncio.create_task(heartbeat())
         await asyncio.sleep(0.01)
-        await worker._renew(job)
+        await worker._renew(job, renew_stop, lease_lost)
         await asyncio.sleep(0.01)
-        stop.set()
+        heartbeat_stop.set()
         await heartbeat_task
 
+        assert lease_lost.is_set()
         assert gaps
         assert max(gaps) < 0.04
 
