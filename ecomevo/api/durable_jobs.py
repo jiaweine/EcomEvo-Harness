@@ -129,7 +129,12 @@ class DurableConversationWorker:
         token = str(payload.get("lease_token") or "")
         # Fence a stale in-memory claim before doing provider or tool work.
         try:
-            job_owned = self.store.renew_job(job["id"], self.worker_id, self.lease_seconds)
+            job_owned = await asyncio.to_thread(
+                self.store.renew_job,
+                job["id"],
+                self.worker_id,
+                self.lease_seconds,
+            )
         except Exception:
             self.logger.exception(
                 "durable conversation job initial ownership check failed: %s", job.get("id")
@@ -139,8 +144,11 @@ class DurableConversationWorker:
             self.logger.warning("durable conversation job ownership changed before start: %s", job.get("id"))
             return
         try:
-            turn_owned = bool(token) and self.store.renew_or_restore_turn(
-                cid, token, self.lease_seconds
+            turn_owned = bool(token) and await asyncio.to_thread(
+                self.store.renew_or_restore_turn,
+                cid,
+                token,
+                self.lease_seconds,
             )
         except Exception:
             self.logger.exception(
@@ -251,7 +259,12 @@ class DurableConversationWorker:
                         pass
 
     async def run_once(self, job_id: str | None = None) -> bool:
-        job = self.store.claim_job(self.worker_id, job_id=job_id, lease_seconds=self.lease_seconds)
+        job = await asyncio.to_thread(
+            self.store.claim_job,
+            self.worker_id,
+            job_id=job_id,
+            lease_seconds=self.lease_seconds,
+        )
         if not job:
             return False
         await self._execute(job)
