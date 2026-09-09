@@ -309,8 +309,9 @@ class ConversationStore(BaseConversationStore):
         now = time.time()
         with self._conn() as c:
             cur = c.execute(
-                "UPDATE conversation_jobs SET lease_until=?,updated_at=? WHERE id=? AND status='running' AND worker_id=?",
-                (now + max(30.0, float(lease_seconds)), now, job_id, worker_id),
+                "UPDATE conversation_jobs SET lease_until=?,updated_at=? "
+                "WHERE id=? AND status='running' AND worker_id=? AND COALESCE(lease_until,0)>?",
+                (now + max(30.0, float(lease_seconds)), now, job_id, worker_id, now),
             )
         return cur.rowcount == 1
 
