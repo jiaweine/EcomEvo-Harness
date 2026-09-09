@@ -2,15 +2,40 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 import weakref
 from collections.abc import Iterable
 from contextvars import ContextVar
+from dataclasses import dataclass, field
 from typing import Any, Callable, TypeVar
 
 from .skills import AdaptiveSkillLibrary
 
 
+_NOTE_RUN_GROUP_LIMIT = 64
 _T = TypeVar("_T")
+
+
+@dataclass(slots=True)
+class _QueuedNoteRun:
+    domain: str
+    success: bool
+    skill_used: bool
+    future: asyncio.Future[None]
+    started: bool = False
+
+    @property
+    def metadata_only(self) -> bool:
+        # In AdaptiveSkillLibrary._adapt_policy_in_transaction this exact case leaves
+        # promotion / retirement / exploration unchanged and advances only updates/time.
+        return self.success and not self.skill_used
+
+
+@dataclass(slots=True)
+class _LoopNoteRunGroup:
+    queue: list[_QueuedNoteRun] = field(default_factory=list)
+    scheduled: bool = False
+    worker: asyncio.Task[None] | None = None
 
 
 class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
@@ -20,6 +45,9 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         self._async_gate_lock = threading.RLock()
         self._async_gates: weakref.WeakKeyDictionary[
             asyncio.AbstractEventLoop, asyncio.Lock
+        ] = weakref.WeakKeyDictionary()
+        self._note_run_groups: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, _LoopNoteRunGroup
         ] = weakref.WeakKeyDictionary()
         self._decision_policy_snapshot: ContextVar[
             tuple[str, dict[str, Any]] | None
@@ -118,7 +146,7 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         """
         with self._conn() as connection:
             # A deferred read transaction pins both SELECTs to one WAL snapshot without
-            # taking the SQLite writer lock. Writer-stage profiling counts deferred BEGIN
+            # taking the writer lock. Writer-stage profiling counts deferred BEGIN
             # as a writer only if DML follows, so this stays a read-only boundary.
             connection.execute("BEGIN")
             return self._relevant_with_policy_from_connection(
@@ -224,6 +252,202 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         self._invalidate_decision_policy_snapshot()
         return super().record_outcome(*args, **kwargs)
 
+    @staticmethod
+    def _fail_note_run_requests(
+        requests: list[_QueuedNoteRun],
+        error: BaseException,
+    ) -> None:
+        for request in requests:
+            if not request.future.done():
+                request.future.set_exception(error)
+
+    def _stop_note_run_group(self, group: _LoopNoteRunGroup) -> list[_QueuedNoteRun]:
+        with self._async_gate_lock:
+            queued = list(group.queue)
+            group.queue.clear()
+            group.scheduled = False
+            group.worker = None
+        return queued
+
+    async def _record_note_run_grouped(
+        self,
+        domain: str,
+        *,
+        success: bool,
+        skill_used: bool,
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[None] = loop.create_future()
+        request = _QueuedNoteRun(
+            domain=str(domain),
+            success=bool(success),
+            skill_used=bool(skill_used),
+            future=future,
+        )
+        with self._async_gate_lock:
+            group = self._note_run_groups.get(loop)
+            if group is None:
+                group = _LoopNoteRunGroup()
+                self._note_run_groups[loop] = group
+            group.queue.append(request)
+            if not group.scheduled:
+                group.scheduled = True
+                group.worker = loop.create_task(self._flush_note_run_group(group))
+
+        try:
+            await asyncio.shield(future)
+        except asyncio.CancelledError as cancelled:
+            removed = False
+            with self._async_gate_lock:
+                if not request.started and not future.done():
+                    try:
+                        group.queue.remove(request)
+                    except ValueError:
+                        pass
+                    else:
+                        future.cancel()
+                        removed = True
+            if removed:
+                raise cancelled
+            # Once dequeued for persistence, preserve #51's durability-before-cancel rule.
+            try:
+                await asyncio.shield(future)
+            except Exception:
+                raise
+            raise cancelled
+
+    async def _flush_note_run_group(self, group: _LoopNoteRunGroup) -> None:
+        try:
+            while True:
+                # One scheduler turn admits naturally phase-aligned finalizers without
+                # imposing a fixed batching window on isolated runs.
+                await asyncio.sleep(0)
+                with self._async_gate_lock:
+                    if not group.queue:
+                        group.scheduled = False
+                        group.worker = None
+                        return
+
+                    first = group.queue[0]
+                    if first.metadata_only:
+                        batch: list[_QueuedNoteRun] = []
+                        while (
+                            group.queue
+                            and len(batch) < _NOTE_RUN_GROUP_LIMIT
+                            and group.queue[0].metadata_only
+                        ):
+                            request = group.queue.pop(0)
+                            request.started = True
+                            batch.append(request)
+                    else:
+                        request = group.queue.pop(0)
+                        request.started = True
+                        batch = [request]
+
+                persist_task = asyncio.create_task(
+                    self._run_io(self._persist_note_run_group, batch)
+                )
+                worker_cancelled: asyncio.CancelledError | None = None
+                try:
+                    await asyncio.shield(persist_task)
+                except asyncio.CancelledError as cancelled:
+                    worker_cancelled = cancelled
+                    try:
+                        await asyncio.shield(persist_task)
+                    except Exception as exc:
+                        self._fail_note_run_requests(batch, exc)
+                        queued = self._stop_note_run_group(group)
+                        self._fail_note_run_requests(
+                            queued,
+                            RuntimeError("skill note-run worker cancelled before persistence"),
+                        )
+                        raise cancelled
+                except Exception:
+                    # Shared metadata-only batches roll back as a unit. Retry one request
+                    # at a time so an isolated SQLite failure cannot poison valid peers.
+                    for index, request in enumerate(batch):
+                        if request.future.done():
+                            continue
+                        single_task = asyncio.create_task(
+                            self._run_io(self._persist_note_run_group, [request])
+                        )
+                        try:
+                            await asyncio.shield(single_task)
+                        except asyncio.CancelledError as cancelled:
+                            try:
+                                await asyncio.shield(single_task)
+                            except Exception as exc:
+                                request.future.set_exception(exc)
+                            else:
+                                request.future.set_result(None)
+                            self._fail_note_run_requests(
+                                batch[index + 1 :],
+                                RuntimeError(
+                                    "skill note-run worker cancelled before isolated persistence"
+                                ),
+                            )
+                            queued = self._stop_note_run_group(group)
+                            self._fail_note_run_requests(
+                                queued,
+                                RuntimeError("skill note-run worker cancelled before persistence"),
+                            )
+                            raise cancelled
+                        except Exception as exc:
+                            request.future.set_exception(exc)
+                        else:
+                            request.future.set_result(None)
+                    continue
+
+                for request in batch:
+                    if not request.future.done():
+                        request.future.set_result(None)
+
+                if worker_cancelled is not None:
+                    queued = self._stop_note_run_group(group)
+                    self._fail_note_run_requests(
+                        queued,
+                        RuntimeError("skill note-run worker cancelled before persistence"),
+                    )
+                    raise worker_cancelled
+        except asyncio.CancelledError:
+            queued = self._stop_note_run_group(group)
+            self._fail_note_run_requests(
+                queued,
+                RuntimeError("skill note-run worker cancelled before persistence"),
+            )
+            raise
+
+    def _persist_note_run_group(self, batch: list[_QueuedNoteRun]) -> None:
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if all(request.metadata_only for request in batch):
+                # This path deliberately batches only the adaptation no-op case. Preserve
+                # the exact durable update count while leaving all strategy parameters
+                # untouched. Distinct domains can safely share the same SQLite transaction.
+                counts: dict[str, int] = {}
+                for request in batch:
+                    counts[request.domain] = counts.get(request.domain, 0) + 1
+                for domain, count in counts.items():
+                    now = time.time()
+                    self._policy_in_transaction(connection, domain, now=now)
+                    connection.execute(
+                        "UPDATE evolution_policy SET updates=updates+?,updated_at=? WHERE domain=?",
+                        (count, now, domain),
+                    )
+                return
+
+            # Learning-bearing requests are barriers and therefore always reach here alone.
+            if len(batch) != 1:  # pragma: no cover - guarded by queue partitioning
+                raise RuntimeError("learning-bearing skill note runs must not be grouped")
+            request = batch[0]
+            self._adapt_policy_in_transaction(
+                connection,
+                request.domain,
+                success=request.success,
+                skill_used=request.skill_used,
+                now=time.time(),
+            )
+
     async def note_run_async(
         self,
         domain: str,
@@ -234,8 +458,19 @@ class BundledAdaptiveSkillLibrary(AdaptiveSkillLibrary):
         # ContextVar updates made inside ``asyncio.to_thread`` do not propagate back to
         # the event-loop task. Clear in the caller context before offloading the write.
         self._invalidate_decision_policy_snapshot()
-        await self._run_io(
-            self.note_run,
+
+        # Preserve the established extension behavior for subclasses that override the
+        # synchronous method: the built-in batching fast path must not bypass custom logic.
+        if type(self).note_run is not AdaptiveSkillLibrary.note_run:
+            await self._run_io(
+                self.note_run,
+                domain,
+                success=success,
+                skill_used=skill_used,
+            )
+            return
+
+        await self._record_note_run_grouped(
             domain,
             success=success,
             skill_used=skill_used,

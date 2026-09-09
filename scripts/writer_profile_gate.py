@@ -12,10 +12,10 @@ from typing import Any, Callable
 
 from ecomevo.runtime.adaptive_routing import AdaptiveRoutingStore
 from ecomevo.runtime.bundled_event_store import BundledEventStore
+from ecomevo.runtime.bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
+from ecomevo.runtime.bundled_skills import BundledAdaptiveSkillLibrary
 from ecomevo.runtime.engine import EcomEvoEngine
-from ecomevo.runtime.harness_optimizer import HarnessEvolutionOptimizer
 from ecomevo.runtime.sandbox import ActionSandbox
-from ecomevo.runtime.skills import AdaptiveSkillLibrary
 
 
 _stage: contextvars.ContextVar[str] = contextvars.ContextVar("writer_profile_stage", default="unattributed")
@@ -137,11 +137,11 @@ class ProfiledEventStore(BundledEventStore):
         )
         return connection
 
-    def create_session_events_checkpoint(self, *args, **kwargs):
+    def _persist_bootstrap_group(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
             "event.bootstrap",
-            lambda: super(ProfiledEventStore, self).create_session_events_checkpoint(*args, **kwargs),
+            lambda: super(ProfiledEventStore, self)._persist_bootstrap_group(*args, **kwargs),
         )
 
     def create_session_and_append(self, session_id, event_type, payload, **kwargs):
@@ -192,6 +192,18 @@ class ProfiledEventStore(BundledEventStore):
             lambda: super(ProfiledEventStore, self).save_checkpoint_and_append(*args, **kwargs),
         )
 
+    async def save_checkpoint_and_append_grouped(self, *args, **kwargs):
+        stage = "event.checkpoint_audit"
+        token = _stage.set(stage)
+        started = time.perf_counter()
+        try:
+            return await super().save_checkpoint_and_append_grouped(*args, **kwargs)
+        finally:
+            self._writer_profile.operation(
+                stage, (time.perf_counter() - started) * 1000.0
+            )
+            _stage.reset(token)
+
     def save_patch_if_novel(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
@@ -200,7 +212,7 @@ class ProfiledEventStore(BundledEventStore):
         )
 
 
-class ProfiledSkills(AdaptiveSkillLibrary):
+class ProfiledSkills(BundledAdaptiveSkillLibrary):
     def __init__(self, path: Path, profile: WriterProfile):
         self._writer_profile = profile
         super().__init__(path)
@@ -220,11 +232,11 @@ class ProfiledSkills(AdaptiveSkillLibrary):
             lambda: super(ProfiledSkills, self).policy(*args, **kwargs),
         )
 
-    def note_run(self, *args, **kwargs):
+    def _persist_note_run_group(self, *args, **kwargs):
         return _timed(
             self._writer_profile,
             "skills.note_run",
-            lambda: super(ProfiledSkills, self).note_run(*args, **kwargs),
+            lambda: super(ProfiledSkills, self)._persist_note_run_group(*args, **kwargs),
         )
 
     def record_outcome(self, *args, **kwargs):
@@ -242,7 +254,7 @@ class ProfiledSkills(AdaptiveSkillLibrary):
         )
 
 
-class ProfiledHarness(HarnessEvolutionOptimizer):
+class ProfiledHarness(BundledHarnessEvolutionOptimizer):
     def __init__(self, path: Path, profile: WriterProfile, *, sandbox=None):
         self._writer_profile = profile
         super().__init__(path, sandbox=sandbox)
@@ -274,6 +286,13 @@ class ProfiledHarness(HarnessEvolutionOptimizer):
             self._writer_profile,
             "harness.replay_case",
             lambda: super(ProfiledHarness, self)._record_replay_case(*args, **kwargs),
+        )
+
+    def _persist_replay_group(self, *args, **kwargs):
+        return _timed(
+            self._writer_profile,
+            "harness.replay_case",
+            lambda: super(ProfiledHarness, self)._persist_replay_group(*args, **kwargs),
         )
 
     def _record_rejection(self, *args, **kwargs):
@@ -345,6 +364,45 @@ async def _run_batch(engine: EcomEvoEngine, tasks: int) -> list[Any]:
     return await asyncio.gather(*(one(index) for index in range(tasks)))
 
 
+async def _profile_metadata_note_runs(
+    skills: ProfiledSkills,
+    profile: WriterProfile,
+    *,
+    tasks: int = 32,
+    domain: str = "merchant_review",
+) -> dict[str, Any]:
+    before = skills.policy(domain)
+    profile.reset()
+    started = time.perf_counter()
+    await asyncio.gather(
+        *(
+            skills.note_run_async(domain, success=True, skill_used=False)
+            for _ in range(tasks)
+        )
+    )
+    wall = time.perf_counter() - started
+    after = skills.policy(domain)
+    report = profile.report(tasks)
+    stage = next(
+        (row for row in report["stages"] if row["stage"] == "skills.note_run"),
+        None,
+    )
+    strategy_keys = ("promotion_threshold", "retirement_threshold", "exploration")
+    return {
+        "tasks": tasks,
+        "writer_transactions": int(stage["transactions"]) if stage else 0,
+        "transactions_per_task": round(
+            (int(stage["transactions"]) if stage else 0) / max(1, tasks), 3
+        ),
+        "updates_delta": int(after["updates"]) - int(before["updates"]),
+        "strategy_parameters_unchanged": all(
+            float(after[key]) == float(before[key]) for key in strategy_keys
+        ),
+        "wall_seconds": round(wall, 4),
+        "unattributed_transactions": int(report["unattributed_transactions"]),
+    }
+
+
 async def main_async() -> dict[str, Any]:
     tasks = 32
     profile = WriterProfile()
@@ -398,6 +456,29 @@ async def main_async() -> dict[str, Any]:
         ]
         components.sort(key=lambda row: (row["transactions"], row["writer_hold_ms_total"]), reverse=True)
 
+        metadata_note_run_probe = await _profile_metadata_note_runs(
+            engine.skills,
+            profile,
+            tasks=tasks,
+        )
+        if metadata_note_run_probe["updates_delta"] != tasks:
+            failures.append(
+                "metadata-only skill note-run probe lost policy updates: "
+                f"{metadata_note_run_probe['updates_delta']} != {tasks}"
+            )
+        if not metadata_note_run_probe["strategy_parameters_unchanged"]:
+            failures.append("metadata-only skill note-run probe changed strategy parameters")
+        if metadata_note_run_probe["unattributed_transactions"]:
+            failures.append(
+                "metadata-only skill note-run probe lost writer attribution: "
+                f"{metadata_note_run_probe['unattributed_transactions']} transactions"
+            )
+        if metadata_note_run_probe["writer_transactions"] >= tasks:
+            failures.append(
+                "metadata-only skill note-run grouping was not observed: "
+                f"{metadata_note_run_probe['writer_transactions']} >= {tasks} transactions"
+            )
+
         return {
             "ok": not failures,
             "tasks": tasks,
@@ -405,6 +486,7 @@ async def main_async() -> dict[str, Any]:
             "throughput_tasks_per_second": round(tasks / wall, 3) if wall else 0.0,
             "profile": report,
             "components": components,
+            "metadata_note_run_probe": metadata_note_run_probe,
             "failures": failures,
         }
 

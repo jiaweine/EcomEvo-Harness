@@ -1,0 +1,31 @@
+name: Routing State Summary Gate
+
+on:
+  pull_request:
+    paths:
+      - ecomevo/runtime/factorized_routing.py
+      - ecomevo/runtime/engine.py
+      - tests/test_routing_state_summary.py
+      - scripts/routing_state_summary_gate.py
+      - .github/workflows/routing-state-summary-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  routing-state-summary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6.0.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade 'pip==26.2.1'
+          python -m pip install -e '.[dev]'
+      - name: Routing state-summary semantics and compatibility
+        run: python -m pytest -q tests/test_routing_state_summary.py
+      - name: Fixed-input production A/B
+        run: python scripts/routing_state_summary_gate.py

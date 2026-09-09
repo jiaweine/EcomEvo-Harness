@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ecomevo.models import EvolutionPatch, RuntimeSummary
-from .bundled_event_store import BundledEventStore
+from .grouped_restore_event_store import GroupedRestoreBundledEventStore
 from .bundled_harness_optimizer import BundledHarnessEvolutionOptimizer
 from .bundled_skills import BundledAdaptiveSkillLibrary
 from .counterfactual_routing import CounterfactualAdaptiveAutonomousController
@@ -49,7 +49,7 @@ class EcomEvoEngine:
         def component(key: str, factory):
             return overrides[key] if key in overrides else factory()
 
-        self.events = component('event.store', lambda: BundledEventStore(db_path))
+        self.events = component('event.store', lambda: GroupedRestoreBundledEventStore(db_path))
         self.skills = component('memory.skills', lambda: BundledAdaptiveSkillLibrary(db_path))
         self.sandbox = component('sandbox.action', ActionSandbox)
         self.harness = component('evolver.harness', lambda: BundledHarnessEvolutionOptimizer(db_path, sandbox=self.sandbox))
@@ -201,6 +201,13 @@ class EcomEvoEngine:
         if sink:await sink(t,p)
         return ev
 
+    @staticmethod
+    def _routing_state_summary(routing: Any, domain: str) -> dict[str, Any]:
+        compact = getattr(routing, 'state_summary', None)
+        if callable(compact):
+            return compact(domain)
+        return routing.snapshot(domain)
+
     async def run(self,text:str,assets:list[dict[str,Any]],sink:EventSink|None=None,domain_hint:str|None=None,context_text:str|None=None,reasoner=None)->RuntimeSummary:
         with self._plugin_lock:self._active_runs+=1
         try:
@@ -310,6 +317,9 @@ class EcomEvoEngine:
             return reference
         async def controller_restore(reference):
             seq=reference.get('seq') if isinstance(reference,dict) else None
+            restore_async=getattr(self.events,'restore_checkpoint_async',None)
+            if sink is None and seq is not None and callable(restore_async):
+                return await restore_async(sid,seq)
             return self.events.restore_checkpoint(sid,seq)
         profile_token=bind_harness_profile(harness_profile)
         try:
@@ -419,7 +429,7 @@ class EcomEvoEngine:
 
         belief.facts.update({'tool_results':len([x for x in tool_results if x.ok]),'review_count':len(agents),'autonomy_steps':outcome.autonomy_steps,'delegations':outcome.delegations,'skill_count':len(outcome.skills_used),'tool_cost_used':tool_cost_used,'tool_cost_budget':tool_cost_budget,'tool_cost_remaining':tool_cost_remaining,'stop_reason':stop_reason,'evidence_complete':bool(final_verify.evidence_complete)})
         try:
-            routing=self.autonomy.policy.routing.snapshot(goal.domain.value)
+            routing=self._routing_state_summary(self.autonomy.policy.routing,goal.domain.value)
             belief.facts['routing_policy']={
                 'samples':routing.get('samples',0),
                 'reward_ewma':routing.get('reward_ewma',0.0),
