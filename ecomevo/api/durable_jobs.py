@@ -156,8 +156,10 @@ class DurableConversationWorker:
             )
             return
         if not turn_owned:
-            event = self.store.finish_job_failure(
-                job["id"], worker_id=self.worker_id,
+            event = await asyncio.to_thread(
+                self.store.finish_job_failure,
+                job["id"],
+                worker_id=self.worker_id,
                 message="本次处理没有完成",
                 detail="任务执行权已发生变化，系统已停止旧任务以避免重复处理。",
             )
@@ -228,9 +230,14 @@ class DurableConversationWorker:
                 if binding:
                     action.payload.update(binding)
                 actions.append(action)
-            completed = self.store.finish_job_success(
-                job["id"], worker_id=self.worker_id, session_id=result["session_id"],
-                actions=actions, answer=result["answer"], result=result,
+            completed = await asyncio.to_thread(
+                self.store.finish_job_success,
+                job["id"],
+                worker_id=self.worker_id,
+                session_id=result["session_id"],
+                actions=actions,
+                answer=result["answer"],
+                result=result,
             )
             if completed:
                 self.wake(cid)
@@ -240,8 +247,10 @@ class DurableConversationWorker:
             self.logger.warning("durable conversation job lease lost; stale work stopped: %s", job.get("id"))
         except Exception:
             self.logger.exception("durable conversation job failed: %s", job.get("id"))
-            event = self.store.finish_job_failure(
-                job["id"], worker_id=self.worker_id,
+            event = await asyncio.to_thread(
+                self.store.finish_job_failure,
+                job["id"],
+                worker_id=self.worker_id,
                 message="本次处理没有完成",
                 detail="服务执行异常，任务资料仍然保留；请重试，如持续失败请联系管理员。",
             )
