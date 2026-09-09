@@ -96,12 +96,20 @@ class DurableConversationWorker:
             except asyncio.TimeoutError:
                 pass
             try:
-                job_ok = self.store.renew_job(job["id"], self.worker_id, self.lease_seconds)
+                job_ok = await asyncio.to_thread(
+                    self.store.renew_job,
+                    job["id"],
+                    self.worker_id,
+                    self.lease_seconds,
+                )
                 if not job_ok:
                     lease_lost.set()
                     return
-                turn_ok = bool(token) and self.store.renew_or_restore_turn(
-                    cid, token, self.lease_seconds
+                turn_ok = bool(token) and await asyncio.to_thread(
+                    self.store.renew_or_restore_turn,
+                    cid,
+                    token,
+                    self.lease_seconds,
                 )
                 if not turn_ok:
                     lease_lost.set()
