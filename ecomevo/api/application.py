@@ -495,7 +495,7 @@ async def conversation_message(cid: str, req: ChatRequest, background_tasks: Bac
         raise HTTPException(409, "任务资料刚刚发生变化，请重新发送以纳入最新资料") from exc
 
     task_assets = store.list_assets(cid, include_excluded=False)
-    lease = store.claim_turn(cid)
+    lease = await asyncio.to_thread(store.claim_turn, cid)
     if lease is None:
         raise HTTPException(409, "当前任务正在处理上一条消息，请在结果返回后继续")
     try:
@@ -521,7 +521,8 @@ async def conversation_message(cid: str, req: ChatRequest, background_tasks: Bac
             {"id": row["id"], "sha256": str((row.get("meta") or {}).get("sha256") or ""), "name": row.get("name")}
             for row in assets
         ]
-        user, accepted, job = store.accept_message_job(
+        user, accepted, job = await asyncio.to_thread(
+            store.accept_message_job,
             cid,
             lease_token=lease,
             content=req.content,
@@ -533,7 +534,7 @@ async def conversation_message(cid: str, req: ChatRequest, background_tasks: Bac
         )
         wake(cid)
     except Exception:
-        store.release_turn(cid, lease)
+        await asyncio.to_thread(store.release_turn, cid, lease)
         raise
     if unavailable:
         await emit(cid, "notice", {"title": "部分历史资料已不可用", "detail": "、".join(unavailable[:5]) + " 已从本轮核对中排除。"})
