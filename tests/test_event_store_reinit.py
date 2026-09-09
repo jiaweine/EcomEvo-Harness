@@ -31,23 +31,24 @@ def _patch(index: int, *, patch_id: str | None = None) -> EvolutionPatch:
     )
 
 
+def _fingerprint_updates(store: TracingEventStore) -> list[str]:
+    return [
+        statement
+        for statement in store.sql
+        if statement.lstrip().upper().startswith("UPDATE EVOLUTION_PATCHES SET FINGERPRINT")
+    ]
+
+
 def test_clean_reopen_does_not_rewrite_evolution_patch_fingerprints(tmp_path):
     path = tmp_path / "reopen.db"
     store = EventStore(path)
     for index in range(128):
         assert store.save_patch_if_novel(_patch(index)) is None
 
-    reopened = TracingEventStore(path)
-    fingerprint_updates = [
-        statement
-        for statement in reopened.sql
-        if statement.lstrip().upper().startswith("UPDATE EVOLUTION_PATCHES SET FINGERPRINT")
-    ]
-
-    assert fingerprint_updates == []
+    assert _fingerprint_updates(TracingEventStore(path)) == []
 
 
-def test_reopen_still_repairs_legacy_null_fingerprint_rows(tmp_path):
+def test_reopen_repairs_newer_legacy_null_fingerprint_once(tmp_path):
     path = tmp_path / "legacy-null.db"
     store = EventStore(path)
     original = _patch(1)
@@ -65,9 +66,12 @@ def test_reopen_still_repairs_legacy_null_fingerprint_rows(tmp_path):
 
     fingerprint = EventStore._patch_fingerprint(original)
     with sqlite3.connect(path) as connection:
-        rows = connection.execute(
-            "SELECT patch_id,fingerprint FROM evolution_patches ORDER BY created_at DESC"
-        ).fetchall()
+        rows = dict(
+            connection.execute(
+                "SELECT patch_id,fingerprint FROM evolution_patches ORDER BY created_at DESC"
+            ).fetchall()
+        )
 
-    assert sum(row[1] == fingerprint for row in rows) == 1
-    assert sum(row[1] is None for row in rows) == 1
+    assert rows[duplicate.patch_id] == fingerprint
+    assert rows[original.patch_id] is None
+    assert _fingerprint_updates(TracingEventStore(path)) == []
