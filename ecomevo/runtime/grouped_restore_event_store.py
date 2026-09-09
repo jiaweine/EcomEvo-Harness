@@ -146,8 +146,13 @@ class GroupedRestoreBundledEventStore(BundledEventStore):
                         group.scheduled = False
                         group.worker = None
                         return
-                    batch = list(group.queue[:_RESTORE_GROUP_LIMIT])
-                    del group.queue[: len(batch)]
+                    candidates = list(group.queue[:_RESTORE_GROUP_LIMIT])
+                    del group.queue[: len(candidates)]
+                    batch = [
+                        request for request in candidates if not request.future.done()
+                    ]
+                if not batch:
+                    continue
 
                 read_task = asyncio.create_task(
                     asyncio.to_thread(self._restore_checkpoint_group, batch)
