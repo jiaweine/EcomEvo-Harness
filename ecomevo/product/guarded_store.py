@@ -250,7 +250,11 @@ class ConversationStore(BaseConversationStore):
                 "SELECT token,expires_at FROM turn_leases WHERE conversation_id=?",
                 (cid,),
             ).fetchone()
-            if not lease or str(lease["token"]) != lease_token:
+            if (
+                not lease
+                or str(lease["token"]) != lease_token
+                or float(lease["expires_at"]) <= now
+            ):
                 raise HTTPException(409, "当前任务处理权已发生变化，请重新发送")
             had_messages = bool(c.execute(
                 "SELECT 1 FROM messages WHERE conversation_id=? LIMIT 1", (cid,)
