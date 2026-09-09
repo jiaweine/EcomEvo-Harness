@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 
 from ecomevo.api import application
 
 
 class SlowEmitStore:
+    def __init__(self):
+        self.job_thread: int | None = None
+        self.event_thread: int | None = None
+
     def add_job_event(self, job_id, worker_id, event_type, payload):
+        self.job_thread = threading.get_ident()
         time.sleep(0.08)
         return {
             "id": 1,
@@ -16,39 +22,40 @@ class SlowEmitStore:
             "payload": payload,
         }
 
+    def add_event(self, conversation_id, event_type, payload):
+        self.event_thread = threading.get_ident()
+        time.sleep(0.08)
+        return {
+            "id": 2,
+            "conversation_id": conversation_id,
+            "type": event_type,
+            "payload": payload,
+        }
 
-def test_durable_progress_emit_does_not_block_event_loop(monkeypatch):
+
+def test_async_emit_persists_off_event_loop_for_both_event_paths(monkeypatch):
     async def exercise():
-        monkeypatch.setattr(application, "store", SlowEmitStore())
+        slow = SlowEmitStore()
+        monkeypatch.setattr(application, "store", slow)
         monkeypatch.setattr(application, "wake", lambda _cid: None)
+        loop_thread = threading.get_ident()
 
-        gaps: list[float] = []
-        stop = asyncio.Event()
-
-        async def heartbeat():
-            loop = asyncio.get_running_loop()
-            previous = loop.time()
-            while not stop.is_set():
-                await asyncio.sleep(0.005)
-                now = loop.time()
-                gaps.append(now - previous)
-                previous = now
-
-        heartbeat_task = asyncio.create_task(heartbeat())
-        await asyncio.sleep(0.01)
-        event = await application.emit(
+        durable = await application.emit(
             "conversation-pressure",
             "planning.progress",
             {"detail": "pressure"},
             "job-pressure",
             "worker-pressure",
         )
-        await asyncio.sleep(0.01)
-        stop.set()
-        await heartbeat_task
+        ordinary = await application.emit(
+            "conversation-pressure",
+            "notice",
+            {"detail": "pressure"},
+        )
 
-        assert event and event["type"] == "planning.progress"
-        assert gaps
-        assert max(gaps) < 0.04
+        assert durable and durable["type"] == "planning.progress"
+        assert ordinary and ordinary["type"] == "notice"
+        assert slow.job_thread is not None and slow.job_thread != loop_thread
+        assert slow.event_thread is not None and slow.event_thread != loop_thread
 
     asyncio.run(exercise())
