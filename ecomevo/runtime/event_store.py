@@ -72,26 +72,53 @@ class EventStore:
                 c.execute("ALTER TABLE snapshots ADD COLUMN state_hash TEXT")
             if "event_hash" not in snapshot_cols:
                 c.execute("ALTER TABLE snapshots ADD COLUMN event_hash TEXT")
-            rows = c.execute(
-                "SELECT patch_id,payload_json,created_at FROM evolution_patches ORDER BY created_at DESC"
-            ).fetchall()
-            seen = set()
-            for r in rows:
-                try:
-                    data = json.loads(r["payload_json"])
-                    fp = self._patch_fingerprint(data)
-                except Exception:
-                    fp = None
-                if fp and fp not in seen:
+
+            repair_candidates: list[tuple[str, str]] = []
+            if c.execute(
+                "SELECT 1 FROM evolution_patches WHERE fingerprint IS NULL LIMIT 1"
+            ).fetchone():
+                null_rows = c.execute(
+                    "SELECT patch_id,payload_json,created_at FROM evolution_patches "
+                    "WHERE fingerprint IS NULL ORDER BY created_at DESC"
+                ).fetchall()
+                for r in null_rows:
+                    try:
+                        fp = self._patch_fingerprint(json.loads(r["payload_json"]))
+                    except Exception:
+                        continue
+                    owner = c.execute(
+                        "SELECT created_at FROM evolution_patches WHERE fingerprint=? LIMIT 1",
+                        (fp,),
+                    ).fetchone()
+                    if owner is None or float(r["created_at"]) > float(owner["created_at"]):
+                        repair_candidates.append((str(r["patch_id"]), fp))
+
+            if repair_candidates:
+                c.execute("BEGIN IMMEDIATE")
+                for patch_id, fp in repair_candidates:
+                    candidate = c.execute(
+                        "SELECT created_at,fingerprint FROM evolution_patches WHERE patch_id=?",
+                        (patch_id,),
+                    ).fetchone()
+                    if candidate is None or candidate["fingerprint"] is not None:
+                        continue
+                    owner = c.execute(
+                        "SELECT patch_id,created_at FROM evolution_patches "
+                        "WHERE fingerprint=? LIMIT 1",
+                        (fp,),
+                    ).fetchone()
+                    if owner is not None and float(owner["created_at"]) >= float(
+                        candidate["created_at"]
+                    ):
+                        continue
+                    if owner is not None:
+                        c.execute(
+                            "UPDATE evolution_patches SET fingerprint=NULL WHERE patch_id=?",
+                            (owner["patch_id"],),
+                        )
                     c.execute(
                         "UPDATE evolution_patches SET fingerprint=? WHERE patch_id=?",
-                        (fp, r["patch_id"]),
-                    )
-                    seen.add(fp)
-                elif fp:
-                    c.execute(
-                        "UPDATE evolution_patches SET fingerprint=NULL WHERE patch_id=?",
-                        (r["patch_id"],),
+                        (fp, patch_id),
                     )
             c.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_evolution_fingerprint "
