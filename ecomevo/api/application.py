@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from ecomevo.product import ConversationStore, ProductAnalyzer, extract_video_frames, probe_media
+from ecomevo.product.asset_binding import AssetBindingConflict, bind_assets_atomically
 from ecomevo.providers import ProviderRegistry
 from ecomevo.runtime import EcomEvoEngine
 from ecomevo.runtime.mcp import MCPRegistry
@@ -473,15 +474,25 @@ async def conversation_message(cid: str, req: ChatRequest, background_tasks: Bac
     prior_messages = store.list_messages(cid, limit=12)
     for aid in req.asset_ids:
         try:
-            row = store.bind_asset(aid, cid)
+            row = store.get_asset(aid)
         except KeyError:
             raise HTTPException(404, f"资料不存在：{aid}")
-        if row is None:
+        if row.get("conversation_id") not in (None, cid):
             raise HTTPException(409, "不能引用其他任务中的资料")
         if not row.get("active", True):
             raise HTTPException(409, f"资料已排除后续分析：{row['name']}；如需使用请先重新启用")
         if not Path(row["path"]).is_file():
             raise HTTPException(410, f"资料文件已不可用：{row['name']}")
+    try:
+        bind_assets_atomically(store, req.asset_ids, cid)
+    except KeyError as exc:
+        raise HTTPException(404, f"资料不存在：{exc.args[0]}") from exc
+    except AssetBindingConflict as exc:
+        if exc.kind == "foreign":
+            raise HTTPException(409, "不能引用其他任务中的资料") from exc
+        if exc.kind == "inactive":
+            raise HTTPException(409, f"资料已排除后续分析：{exc.name}；如需使用请先重新启用") from exc
+        raise HTTPException(409, "任务资料刚刚发生变化，请重新发送以纳入最新资料") from exc
 
     task_assets = store.list_assets(cid, include_excluded=False)
     lease = await asyncio.to_thread(store.claim_turn, cid)

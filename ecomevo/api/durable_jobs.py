@@ -96,12 +96,20 @@ class DurableConversationWorker:
             except asyncio.TimeoutError:
                 pass
             try:
-                job_ok = self.store.renew_job(job["id"], self.worker_id, self.lease_seconds)
+                job_ok = await asyncio.to_thread(
+                    self.store.renew_job,
+                    job["id"],
+                    self.worker_id,
+                    self.lease_seconds,
+                )
                 if not job_ok:
                     lease_lost.set()
                     return
-                turn_ok = bool(token) and self.store.renew_or_restore_turn(
-                    cid, token, self.lease_seconds
+                turn_ok = bool(token) and await asyncio.to_thread(
+                    self.store.renew_or_restore_turn,
+                    cid,
+                    token,
+                    self.lease_seconds,
                 )
                 if not turn_ok:
                     lease_lost.set()
@@ -121,7 +129,12 @@ class DurableConversationWorker:
         token = str(payload.get("lease_token") or "")
         # Fence a stale in-memory claim before doing provider or tool work.
         try:
-            job_owned = self.store.renew_job(job["id"], self.worker_id, self.lease_seconds)
+            job_owned = await asyncio.to_thread(
+                self.store.renew_job,
+                job["id"],
+                self.worker_id,
+                self.lease_seconds,
+            )
         except Exception:
             self.logger.exception(
                 "durable conversation job initial ownership check failed: %s", job.get("id")
@@ -131,8 +144,11 @@ class DurableConversationWorker:
             self.logger.warning("durable conversation job ownership changed before start: %s", job.get("id"))
             return
         try:
-            turn_owned = bool(token) and self.store.renew_or_restore_turn(
-                cid, token, self.lease_seconds
+            turn_owned = bool(token) and await asyncio.to_thread(
+                self.store.renew_or_restore_turn,
+                cid,
+                token,
+                self.lease_seconds,
             )
         except Exception:
             self.logger.exception(
@@ -140,8 +156,10 @@ class DurableConversationWorker:
             )
             return
         if not turn_owned:
-            event = self.store.finish_job_failure(
-                job["id"], worker_id=self.worker_id,
+            event = await asyncio.to_thread(
+                self.store.finish_job_failure,
+                job["id"],
+                worker_id=self.worker_id,
                 message="本次处理没有完成",
                 detail="任务执行权已发生变化，系统已停止旧任务以避免重复处理。",
             )
@@ -212,9 +230,14 @@ class DurableConversationWorker:
                 if binding:
                     action.payload.update(binding)
                 actions.append(action)
-            completed = self.store.finish_job_success(
-                job["id"], worker_id=self.worker_id, session_id=result["session_id"],
-                actions=actions, answer=result["answer"], result=result,
+            completed = await asyncio.to_thread(
+                self.store.finish_job_success,
+                job["id"],
+                worker_id=self.worker_id,
+                session_id=result["session_id"],
+                actions=actions,
+                answer=result["answer"],
+                result=result,
             )
             if completed:
                 self.wake(cid)
@@ -224,8 +247,10 @@ class DurableConversationWorker:
             self.logger.warning("durable conversation job lease lost; stale work stopped: %s", job.get("id"))
         except Exception:
             self.logger.exception("durable conversation job failed: %s", job.get("id"))
-            event = self.store.finish_job_failure(
-                job["id"], worker_id=self.worker_id,
+            event = await asyncio.to_thread(
+                self.store.finish_job_failure,
+                job["id"],
+                worker_id=self.worker_id,
                 message="本次处理没有完成",
                 detail="服务执行异常，任务资料仍然保留；请重试，如持续失败请联系管理员。",
             )
@@ -243,7 +268,12 @@ class DurableConversationWorker:
                         pass
 
     async def run_once(self, job_id: str | None = None) -> bool:
-        job = self.store.claim_job(self.worker_id, job_id=job_id, lease_seconds=self.lease_seconds)
+        job = await asyncio.to_thread(
+            self.store.claim_job,
+            self.worker_id,
+            job_id=job_id,
+            lease_seconds=self.lease_seconds,
+        )
         if not job:
             return False
         await self._execute(job)
