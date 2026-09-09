@@ -243,7 +243,12 @@ class DurableConversationWorker:
                         pass
 
     async def run_once(self, job_id: str | None = None) -> bool:
-        job = self.store.claim_job(self.worker_id, job_id=job_id, lease_seconds=self.lease_seconds)
+        job = await asyncio.to_thread(
+            self.store.claim_job,
+            self.worker_id,
+            job_id=job_id,
+            lease_seconds=self.lease_seconds,
+        )
         if not job:
             return False
         await self._execute(job)
