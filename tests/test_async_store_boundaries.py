@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
+from io import BytesIO
 
-from fastapi import BackgroundTasks, WebSocketDisconnect
+from fastapi import BackgroundTasks, UploadFile, WebSocketDisconnect
 
 from ecomevo.api import application
 
@@ -72,6 +73,24 @@ class SlowAssetStore:
     def delete_asset_if_unreferenced(self, asset_id):
         self._stall("delete_asset_if_unreferenced")
         return {"id": asset_id, "name": "asset-pressure"}
+
+
+class SlowUploadStore:
+    def __init__(self, asset_dir):
+        self.asset_dir = asset_dir
+
+    def get_conversation(self, cid):
+        return {"id": cid, "scene": "merchant_review"}
+
+    def has_active_turn(self, _cid):
+        return False
+
+    def list_assets(self, *_args, **_kwargs):
+        return []
+
+    def add_asset(self, cid, **kwargs):
+        time.sleep(0.08)
+        return {"id": "asset-pressure", "conversation_id": cid, **kwargs}
 
 
 class NoopWorker:
@@ -181,5 +200,18 @@ def test_asset_delete_does_not_block_event_loop(monkeypatch):
         monkeypatch.setattr(application, "store", SlowAssetStore("delete_asset_if_unreferenced"))
         monkeypatch.setattr(application, "emit", lambda *_args, **_kwargs: asyncio.sleep(0))
         await application.asset_delete("asset-pressure")
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_asset_upload_store_write_does_not_block_event_loop(tmp_path, monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowUploadStore(tmp_path))
+        monkeypatch.setattr(application, "_normalize_upload_type", lambda *_args: (".txt", "text/plain"))
+        monkeypatch.setattr(application, "_validate_uploaded_file", lambda *_args: None)
+        monkeypatch.setattr(application, "probe_media", lambda *_args: {})
+        monkeypatch.setattr(application, "_public_asset", lambda row: row)
+        upload = UploadFile(filename="asset.txt", file=BytesIO(b"pressure"))
+        await application.asset_upload(upload, "conversation-pressure")
 
     assert asyncio.run(_max_loop_gap(exercise())) < 0.04
