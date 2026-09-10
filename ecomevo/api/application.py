@@ -437,7 +437,7 @@ async def asset_scope(asset_id: str, req: AssetScopePatch):
     if cid and store.has_active_turn(cid):
         raise HTTPException(409, "任务正在处理，结果返回后再调整资料范围")
     try:
-        row = store.set_asset_active(asset_id, req.active, req.reason)
+        row = await asyncio.to_thread(store.set_asset_active, asset_id, req.active, req.reason)
     except KeyError:
         raise HTTPException(404, "资料不存在")
     if cid:
@@ -459,7 +459,7 @@ async def asset_delete(asset_id: str):
     if cid and store.has_active_turn(cid):
         raise HTTPException(409, "任务正在处理，结果返回后再删除资料")
     try:
-        row = store.delete_asset_if_unreferenced(asset_id)
+        row = await asyncio.to_thread(store.delete_asset_if_unreferenced, asset_id)
     except KeyError:
         raise HTTPException(404, "资料不存在")
     if row is None:
