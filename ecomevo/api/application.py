@@ -490,7 +490,7 @@ async def conversation_message(cid: str, req: ChatRequest, background_tasks: Bac
         if not Path(row["path"]).is_file():
             raise HTTPException(410, f"资料文件已不可用：{row['name']}")
     try:
-        bind_assets_atomically(store, req.asset_ids, cid)
+        await asyncio.to_thread(bind_assets_atomically, store, req.asset_ids, cid)
     except KeyError as exc:
         raise HTTPException(404, f"资料不存在：{exc.args[0]}") from exc
     except AssetBindingConflict as exc:
@@ -569,7 +569,13 @@ async def action_decide(action_id: str, req: ActionDecision):
     except KeyError:
         raise HTTPException(404, "操作不存在")
     if req.decision == "reject":
-        completed = store.transition_action_with_event(action_id, "proposed", "rejected", {"operator_note": req.note})
+        completed = await asyncio.to_thread(
+            store.transition_action_with_event,
+            action_id,
+            "proposed",
+            "rejected",
+            {"operator_note": req.note},
+        )
         if completed is None:
             raise HTTPException(409, "该操作已经处理过")
         row, _ = completed
@@ -580,7 +586,13 @@ async def action_decide(action_id: str, req: ActionDecision):
     if not decision.allowed:
         raise HTTPException(409, decision.reason)
     payload_patch = {"operator_note": req.note, "execution_mode": "awaiting_dispatch"}
-    approved = store.transition_action_with_event(action_id, "proposed", "approved", payload_patch)
+    approved = await asyncio.to_thread(
+        store.transition_action_with_event,
+        action_id,
+        "proposed",
+        "approved",
+        payload_patch,
+    )
     if approved is None:
         raise HTTPException(409, "该操作已经处理过")
     claimed, _ = approved
@@ -601,18 +613,33 @@ async def action_decide(action_id: str, req: ActionDecision):
             status = "simulated"
     except httpx.TransportError as exc:
         logger.exception("business action result is uncertain: %s", action_id)
-        row, _ = store.update_action_with_event(action_id, "uncertain", {
-            "execution_error": "与业务系统通信中断，暂无法确认下游是否已执行；请先核对业务系统结果，不要直接重复操作。",
-            "execution_outcome": "unknown",
-        })
+        row, _ = await asyncio.to_thread(
+            store.update_action_with_event,
+            action_id,
+            "uncertain",
+            {
+                "execution_error": "与业务系统通信中断，暂无法确认下游是否已执行；请先核对业务系统结果，不要直接重复操作。",
+                "execution_outcome": "unknown",
+            },
+        )
         wake(action["conversation_id"])
         raise HTTPException(502, "业务系统响应中断，当前操作结果暂无法确认，请先核对实际业务状态") from exc
     except Exception as exc:
         logger.exception("business action execution failed: %s", action_id)
-        row, _ = store.update_action_with_event(action_id, "failed", {"execution_error": "下游业务服务明确返回执行失败", "execution_outcome": "failed"})
+        row, _ = await asyncio.to_thread(
+            store.update_action_with_event,
+            action_id,
+            "failed",
+            {"execution_error": "下游业务服务明确返回执行失败", "execution_outcome": "failed"},
+        )
         wake(action["conversation_id"])
         raise HTTPException(502, "业务操作执行失败") from exc
-    row, _ = store.update_action_with_event(action_id, status, payload_patch)
+    row, _ = await asyncio.to_thread(
+        store.update_action_with_event,
+        action_id,
+        status,
+        payload_patch,
+    )
     wake(action["conversation_id"])
     return row
 
