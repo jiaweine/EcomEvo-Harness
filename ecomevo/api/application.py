@@ -647,19 +647,26 @@ async def action_decide(action_id: str, req: ActionDecision):
 @app.websocket("/ws/conversations/{cid}")
 async def conversation_ws(ws: WebSocket, cid: str, after_id: int = 0):
     await ws.accept()
+
+    async def db_call(method, *args, **kwargs):
+        return await asyncio.to_thread(method, *args, **kwargs)
+
     try:
-        store.get_conversation(cid)
+        await db_call(store.get_conversation, cid)
     except KeyError:
         await ws.close(code=4404)
         return
     queue: asyncio.Queue = asyncio.Queue(maxsize=500)
     queues.setdefault(cid, []).append(queue)
     try:
-        latest_rows = store.list_events(cid, limit=1)
+        latest_rows = await db_call(store.list_events, cid, limit=1)
         durable_latest = int(latest_rows[-1]["id"]) if latest_rows else 0
         requested_after = max(0, int(after_id or 0))
         start_after = min(requested_after, durable_latest)
-        history = store.list_events(cid, after_id=start_after, limit=600) if start_after else store.list_events(cid, limit=600)
+        if start_after:
+            history = await db_call(store.list_events, cid, after_id=start_after, limit=600)
+        else:
+            history = await db_call(store.list_events, cid, limit=600)
         cutoff = start_after
         for event in history:
             event_id = int(event.get("id", 0) or 0)
@@ -669,7 +676,7 @@ async def conversation_ws(ws: WebSocket, cid: str, after_id: int = 0):
             cutoff = max(cutoff, event_id)
         last_heartbeat = time.monotonic()
         while True:
-            pending = store.list_events(cid, after_id=cutoff, limit=200)
+            pending = await db_call(store.list_events, cid, after_id=cutoff, limit=200)
             if pending:
                 for event in pending:
                     event_id = int(event.get("id", 0) or 0)
@@ -684,7 +691,7 @@ async def conversation_ws(ws: WebSocket, cid: str, after_id: int = 0):
                 await asyncio.wait_for(queue.get(), timeout=WS_POLL_SECONDS)
                 continue
             except asyncio.TimeoutError:
-                recovered = store.recover_interrupted_turn(cid)
+                recovered = await db_call(store.recover_interrupted_turn, cid)
                 if recovered:
                     event_id = int(recovered.get("id", 0) or 0)
                     if event_id > cutoff:
