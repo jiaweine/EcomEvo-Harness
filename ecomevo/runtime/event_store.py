@@ -72,26 +72,53 @@ class EventStore:
                 c.execute("ALTER TABLE snapshots ADD COLUMN state_hash TEXT")
             if "event_hash" not in snapshot_cols:
                 c.execute("ALTER TABLE snapshots ADD COLUMN event_hash TEXT")
-            rows = c.execute(
-                "SELECT patch_id,payload_json,created_at FROM evolution_patches ORDER BY created_at DESC"
-            ).fetchall()
-            seen = set()
-            for r in rows:
-                try:
-                    data = json.loads(r["payload_json"])
-                    fp = self._patch_fingerprint(data)
-                except Exception:
-                    fp = None
-                if fp and fp not in seen:
+
+            repair_candidates: list[tuple[str, str]] = []
+            if c.execute(
+                "SELECT 1 FROM evolution_patches WHERE fingerprint IS NULL LIMIT 1"
+            ).fetchone():
+                null_rows = c.execute(
+                    "SELECT patch_id,payload_json,created_at FROM evolution_patches "
+                    "WHERE fingerprint IS NULL ORDER BY created_at DESC"
+                ).fetchall()
+                for r in null_rows:
+                    try:
+                        fp = self._patch_fingerprint(json.loads(r["payload_json"]))
+                    except Exception:
+                        continue
+                    owner = c.execute(
+                        "SELECT created_at FROM evolution_patches WHERE fingerprint=? LIMIT 1",
+                        (fp,),
+                    ).fetchone()
+                    if owner is None or float(r["created_at"]) > float(owner["created_at"]):
+                        repair_candidates.append((str(r["patch_id"]), fp))
+
+            if repair_candidates:
+                c.execute("BEGIN IMMEDIATE")
+                for patch_id, fp in repair_candidates:
+                    candidate = c.execute(
+                        "SELECT created_at,fingerprint FROM evolution_patches WHERE patch_id=?",
+                        (patch_id,),
+                    ).fetchone()
+                    if candidate is None or candidate["fingerprint"] is not None:
+                        continue
+                    owner = c.execute(
+                        "SELECT patch_id,created_at FROM evolution_patches "
+                        "WHERE fingerprint=? LIMIT 1",
+                        (fp,),
+                    ).fetchone()
+                    if owner is not None and float(owner["created_at"]) >= float(
+                        candidate["created_at"]
+                    ):
+                        continue
+                    if owner is not None:
+                        c.execute(
+                            "UPDATE evolution_patches SET fingerprint=NULL WHERE patch_id=?",
+                            (owner["patch_id"],),
+                        )
                     c.execute(
                         "UPDATE evolution_patches SET fingerprint=? WHERE patch_id=?",
-                        (fp, r["patch_id"]),
-                    )
-                    seen.add(fp)
-                elif fp:
-                    c.execute(
-                        "UPDATE evolution_patches SET fingerprint=NULL WHERE patch_id=?",
-                        (r["patch_id"],),
+                        (fp, patch_id),
                     )
             c.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_evolution_fingerprint "
@@ -490,25 +517,43 @@ class EventStore:
         new_session_id: str,
         meta: dict[str, Any] | None = None,
     ):
-        if not self.has_session(source_session_id):
-            raise KeyError(source_session_id)
-        source = self.list_events(source_session_id)
-        max_seq = source[-1].seq if source else 0
-        if at_seq < 0 or at_seq > max_seq:
-            raise ValueError(f"at_seq must be between 0 and {max_seq}")
-        self.create_session(
-            new_session_id,
-            meta=meta,
-            parent_session_id=source_session_id,
-            parent_seq=at_seq,
-        )
-        for e in source:
-            if e.seq > at_seq:
-                break
-            payload = dict(e.payload)
-            payload["_forked_from"] = source_session_id
-            payload["_source_seq"] = e.seq
-            self.append(new_session_id, e.event_type, payload)
+        with self._lock, self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            source_tail = self._session_tail(c, source_session_id)
+            if source_tail is None:
+                raise KeyError(source_session_id)
+            max_seq = int(source_tail["seq"] or 0)
+            if at_seq < 0 or at_seq > max_seq:
+                raise ValueError(f"at_seq must be between 0 and {max_seq}")
+
+            c.execute(
+                "INSERT INTO sessions VALUES(?,?,?,?,?)",
+                (
+                    new_session_id,
+                    source_session_id,
+                    at_seq,
+                    time.time(),
+                    json.dumps(meta or {}, ensure_ascii=False, default=str),
+                ),
+            )
+            rows = c.execute(
+                "SELECT seq,event_type,payload_json FROM events "
+                "WHERE session_id=? AND seq<=? ORDER BY seq",
+                (source_session_id, at_seq),
+            ).fetchall()
+            tail: dict[str, Any] = {"seq": None, "hash": None}
+            for row in rows:
+                payload = json.loads(row["payload_json"])
+                payload["_forked_from"] = source_session_id
+                payload["_source_seq"] = int(row["seq"])
+                event = self._append_in_transaction(
+                    c,
+                    new_session_id,
+                    str(row["event_type"]),
+                    payload,
+                    tail=tail,
+                )
+                tail = {"seq": event.seq, "hash": event.hash}
 
     def save_patch_if_novel(self, patch: EvolutionPatch) -> dict[str, Any] | None:
         fp = self._patch_fingerprint(patch)
