@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, WebSocketDisconnect
 
 from ecomevo.api import application
 
@@ -46,6 +46,26 @@ class SlowBoundaryStore:
 class NoopWorker:
     async def run_once(self, *_args, **_kwargs):
         return False
+
+
+class SlowWebSocketStore:
+    def get_conversation(self, cid):
+        return {"id": cid, "scene": "merchant_review"}
+
+    def list_events(self, *_args, **_kwargs):
+        time.sleep(0.08)
+        raise WebSocketDisconnect()
+
+
+class FakeWebSocket:
+    async def accept(self):
+        return None
+
+    async def send_json(self, _payload):
+        return None
+
+    async def close(self, **_kwargs):
+        return None
 
 
 async def _max_loop_gap(coro) -> float:
@@ -101,5 +121,13 @@ def test_action_rejection_does_not_block_event_loop(monkeypatch):
             "action-pressure",
             application.ActionDecision(decision="reject"),
         )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_websocket_event_polling_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowWebSocketStore())
+        await application.conversation_ws(FakeWebSocket(), "conversation-pressure")
 
     assert asyncio.run(_max_loop_gap(exercise())) < 0.04
