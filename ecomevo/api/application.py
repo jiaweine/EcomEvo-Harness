@@ -375,9 +375,14 @@ async def asset_upload(file: UploadFile = File(...), conversation_id: str = Form
                 frame: await asyncio.to_thread(_file_sha256, frame)
                 for frame in frames if Path(frame).is_file()
             }
-        row = store.add_asset(
-            conversation_id, name=_safe_download_name(filename), mime=mime,
-            path=str(tmp), size=size, meta=meta,
+        row = await asyncio.to_thread(
+            store.add_asset,
+            conversation_id,
+            name=_safe_download_name(filename),
+            mime=mime,
+            path=str(tmp),
+            size=size,
+            meta=meta,
         )
         return _public_asset(row)
     except Exception:
