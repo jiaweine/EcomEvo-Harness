@@ -1,4 +1,5 @@
 import importlib
+from threading import Event
 
 from fastapi.testclient import TestClient
 
@@ -66,9 +67,20 @@ def test_websocket_too_high_cursor_is_clamped_and_does_not_starve_future_events(
     isolated = _isolated_store(tmp_path, monkeypatch)
     cid = isolated.create_conversation()['id']
     first = isolated.add_event(cid, 'history.event', {'seq': 1})
+    snapshot_ready = Event()
+    original_list_events = isolated.list_events
+
+    def list_events(*args, **kwargs):
+        rows = original_list_events(*args, **kwargs)
+        if kwargs.get('limit') == 1 and kwargs.get('after_id', 0) == 0:
+            snapshot_ready.set()
+        return rows
+
+    monkeypatch.setattr(isolated, 'list_events', list_events)
 
     with TestClient(api.app) as client:
         with client.websocket_connect(f'/ws/conversations/{cid}?after_id=999999') as socket:
+            assert snapshot_ready.wait(2)
             second = isolated.add_event(cid, 'external.process', {'seq': 2})
             received = socket.receive_json()
 
