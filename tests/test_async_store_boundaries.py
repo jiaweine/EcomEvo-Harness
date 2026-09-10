@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, WebSocketDisconnect
 
 from ecomevo.api import application
 
@@ -43,9 +43,60 @@ class SlowBoundaryStore:
         return ({"id": action_id, "status": "rejected"}, {"id": 1})
 
 
+class SlowAssetStore:
+    def __init__(self, slow_method: str):
+        self.slow_method = slow_method
+
+    def _stall(self, method: str) -> None:
+        if self.slow_method == method:
+            time.sleep(0.08)
+
+    def get_asset(self, asset_id):
+        return {
+            "id": asset_id,
+            "conversation_id": "conversation-pressure",
+            "active": True,
+            "name": "asset-pressure",
+            "mime": "text/plain",
+            "path": "/tmp/asset-pressure.txt",
+            "meta": {},
+        }
+
+    def has_active_turn(self, _cid):
+        return False
+
+    def set_asset_active(self, asset_id, active, reason):
+        self._stall("set_asset_active")
+        return {"id": asset_id, "active": active, "excluded_reason": reason, "name": "asset-pressure"}
+
+    def delete_asset_if_unreferenced(self, asset_id):
+        self._stall("delete_asset_if_unreferenced")
+        return {"id": asset_id, "name": "asset-pressure"}
+
+
 class NoopWorker:
     async def run_once(self, *_args, **_kwargs):
         return False
+
+
+class SlowWebSocketStore:
+    def get_conversation(self, cid):
+        return {"id": cid, "scene": "merchant_review"}
+
+    def list_events(self, *_args, **_kwargs):
+        time.sleep(0.08)
+        raise WebSocketDisconnect()
+
+
+class FakeWebSocket:
+    async def accept(self):
+        return None
+
+    async def send_json(self, _payload):
+        return None
+
+    async def close(self, **_kwargs):
+        return None
 
 
 async def _max_loop_gap(coro) -> float:
@@ -101,5 +152,34 @@ def test_action_rejection_does_not_block_event_loop(monkeypatch):
             "action-pressure",
             application.ActionDecision(decision="reject"),
         )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_websocket_event_polling_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowWebSocketStore())
+        await application.conversation_ws(FakeWebSocket(), "conversation-pressure")
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_asset_scope_update_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowAssetStore("set_asset_active"))
+        monkeypatch.setattr(application, "emit", lambda *_args, **_kwargs: asyncio.sleep(0))
+        await application.asset_scope(
+            "asset-pressure",
+            application.AssetScopePatch(active=False, reason="stress"),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_asset_delete_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowAssetStore("delete_asset_if_unreferenced"))
+        monkeypatch.setattr(application, "emit", lambda *_args, **_kwargs: asyncio.sleep(0))
+        await application.asset_delete("asset-pressure")
 
     assert asyncio.run(_max_loop_gap(exercise())) < 0.04
