@@ -333,12 +333,12 @@ def conversation_get(cid: str):
 @app.post("/api/assets")
 async def asset_upload(file: UploadFile = File(...), conversation_id: str = Form(...)):
     try:
-        store.get_conversation(conversation_id)
+        await asyncio.to_thread(store.get_conversation, conversation_id)
     except KeyError:
         raise HTTPException(404, "任务不存在")
-    if store.has_active_turn(conversation_id):
+    if await asyncio.to_thread(store.has_active_turn, conversation_id):
         raise HTTPException(409, "当前任务正在处理中，请在本轮完成后再追加资料")
-    existing = store.list_assets(conversation_id, include_excluded=True)
+    existing = await asyncio.to_thread(store.list_assets, conversation_id, include_excluded=True)
     if len(existing) >= 120:
         raise HTTPException(409, "单个任务最多保留 120 份资料，请新建任务或整理现有资料")
     task_bytes = sum(int(row.get("size") or 0) for row in existing)
@@ -435,11 +435,11 @@ def asset_preview(asset_id: str, index: int = 0):
 @app.patch("/api/assets/{asset_id}/scope")
 async def asset_scope(asset_id: str, req: AssetScopePatch):
     try:
-        current = store.get_asset(asset_id)
+        current = await asyncio.to_thread(store.get_asset, asset_id)
     except KeyError:
         raise HTTPException(404, "资料不存在")
     cid = current.get("conversation_id")
-    if cid and store.has_active_turn(cid):
+    if cid and await asyncio.to_thread(store.has_active_turn, cid):
         raise HTTPException(409, "任务正在处理，结果返回后再调整资料范围")
     try:
         row = await asyncio.to_thread(store.set_asset_active, asset_id, req.active, req.reason)
@@ -457,11 +457,11 @@ async def asset_scope(asset_id: str, req: AssetScopePatch):
 @app.delete("/api/assets/{asset_id}")
 async def asset_delete(asset_id: str):
     try:
-        current = store.get_asset(asset_id)
+        current = await asyncio.to_thread(store.get_asset, asset_id)
     except KeyError:
         raise HTTPException(404, "资料不存在")
     cid = current.get("conversation_id")
-    if cid and store.has_active_turn(cid):
+    if cid and await asyncio.to_thread(store.has_active_turn, cid):
         raise HTTPException(409, "任务正在处理，结果返回后再删除资料")
     try:
         row = await asyncio.to_thread(store.delete_asset_if_unreferenced, asset_id)
@@ -477,15 +477,15 @@ async def asset_delete(asset_id: str):
 @app.post("/api/conversations/{cid}/messages")
 async def conversation_message(cid: str, req: ChatRequest, background_tasks: BackgroundTasks):
     try:
-        conversation = store.get_conversation(cid)
+        conversation = await asyncio.to_thread(store.get_conversation, cid)
     except KeyError:
         raise HTTPException(404, "任务不存在")
     if req.provider not in {"auto", "demo"} and req.provider not in providers.providers:
         raise HTTPException(422, "未知模型服务")
-    prior_messages = store.list_messages(cid, limit=12)
+    prior_messages = await asyncio.to_thread(store.list_messages, cid, limit=12)
     for aid in req.asset_ids:
         try:
-            row = store.get_asset(aid)
+            row = await asyncio.to_thread(store.get_asset, aid)
         except KeyError:
             raise HTTPException(404, f"资料不存在：{aid}")
         if row.get("conversation_id") not in (None, cid):
@@ -505,7 +505,7 @@ async def conversation_message(cid: str, req: ChatRequest, background_tasks: Bac
             raise HTTPException(409, f"资料已排除后续分析：{exc.name}；如需使用请先重新启用") from exc
         raise HTTPException(409, "任务资料刚刚发生变化，请重新发送以纳入最新资料") from exc
 
-    task_assets = store.list_assets(cid, include_excluded=False)
+    task_assets = await asyncio.to_thread(store.list_assets, cid, include_excluded=False)
     lease = await asyncio.to_thread(store.claim_turn, cid)
     if lease is None:
         raise HTTPException(409, "当前任务正在处理上一条消息，请在结果返回后继续")
@@ -570,7 +570,7 @@ def action_list(cid: str, status: str | None = None):
 @app.post("/api/actions/{action_id}/decision")
 async def action_decide(action_id: str, req: ActionDecision):
     try:
-        action = store.get_action(action_id)
+        action = await asyncio.to_thread(store.get_action, action_id)
     except KeyError:
         raise HTTPException(404, "操作不存在")
     if req.decision == "reject":
@@ -691,8 +691,6 @@ async def conversation_ws(ws: WebSocket, cid: str, after_id: int = 0):
                     cutoff = max(cutoff, event_id)
                 continue
             try:
-                # Process-local queues are wake signals only. SQLite task_events remains
-                # the authoritative cross-worker ordering source and is always drained above.
                 await asyncio.wait_for(queue.get(), timeout=WS_POLL_SECONDS)
                 continue
             except asyncio.TimeoutError:

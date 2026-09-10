@@ -18,13 +18,28 @@ class SlowBoundaryStore:
             time.sleep(0.08)
 
     def get_conversation(self, cid):
+        self._stall("get_conversation")
         return {"id": cid, "scene": "merchant_review"}
 
     def list_messages(self, *_args, **_kwargs):
+        self._stall("list_messages")
         return []
 
     def list_assets(self, *_args, **_kwargs):
+        self._stall("list_assets")
         return []
+
+    def get_asset(self, asset_id):
+        self._stall("get_asset")
+        return {
+            "id": asset_id,
+            "conversation_id": "conversation-pressure",
+            "active": True,
+            "name": "asset-pressure",
+            "mime": "text/plain",
+            "path": application.__file__,
+            "meta": {},
+        }
 
     def claim_turn(self, _cid):
         return "lease-pressure"
@@ -37,6 +52,7 @@ class SlowBoundaryStore:
         )
 
     def get_action(self, action_id):
+        self._stall("get_action")
         return {"id": action_id, "conversation_id": "conversation-pressure", "side_effect": {}}
 
     def transition_action_with_event(self, action_id, *_args, **_kwargs):
@@ -53,6 +69,7 @@ class SlowAssetStore:
             time.sleep(0.08)
 
     def get_asset(self, asset_id):
+        self._stall("get_asset")
         return {
             "id": asset_id,
             "conversation_id": "conversation-pressure",
@@ -64,6 +81,7 @@ class SlowAssetStore:
         }
 
     def has_active_turn(self, _cid):
+        self._stall("has_active_turn")
         return False
 
     def set_asset_active(self, asset_id, active, reason):
@@ -213,5 +231,106 @@ def test_asset_upload_store_write_does_not_block_event_loop(tmp_path, monkeypatc
         monkeypatch.setattr(application, "_public_asset", lambda row: row)
         upload = UploadFile(filename="asset.txt", file=BytesIO(b"pressure"))
         await application.asset_upload(upload, "conversation-pressure")
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_message_conversation_lookup_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        store = SlowBoundaryStore("get_conversation")
+        monkeypatch.setattr(application, "store", store)
+        monkeypatch.setattr(application, "job_worker", NoopWorker())
+        monkeypatch.setattr(application, "wake", lambda _cid: None)
+        monkeypatch.setattr(application, "bind_assets_atomically", lambda *_args: None)
+        await application.conversation_message(
+            "conversation-pressure",
+            application.ChatRequest(content="审核商家", provider="auto"),
+            BackgroundTasks(),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_message_history_lookup_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        store = SlowBoundaryStore("list_messages")
+        monkeypatch.setattr(application, "store", store)
+        monkeypatch.setattr(application, "job_worker", NoopWorker())
+        monkeypatch.setattr(application, "wake", lambda _cid: None)
+        monkeypatch.setattr(application, "bind_assets_atomically", lambda *_args: None)
+        await application.conversation_message(
+            "conversation-pressure",
+            application.ChatRequest(content="审核商家", provider="auto"),
+            BackgroundTasks(),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_message_asset_listing_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        store = SlowBoundaryStore("list_assets")
+        monkeypatch.setattr(application, "store", store)
+        monkeypatch.setattr(application, "job_worker", NoopWorker())
+        monkeypatch.setattr(application, "wake", lambda _cid: None)
+        monkeypatch.setattr(application, "bind_assets_atomically", lambda *_args: None)
+        await application.conversation_message(
+            "conversation-pressure",
+            application.ChatRequest(content="审核商家", provider="auto"),
+            BackgroundTasks(),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_message_asset_lookup_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        store = SlowBoundaryStore("get_asset")
+        monkeypatch.setattr(application, "store", store)
+        monkeypatch.setattr(application, "job_worker", NoopWorker())
+        monkeypatch.setattr(application, "wake", lambda _cid: None)
+        monkeypatch.setattr(application, "bind_assets_atomically", lambda *_args: None)
+        await application.conversation_message(
+            "conversation-pressure",
+            application.ChatRequest(content="审核商家", provider="auto", asset_ids=["asset-pressure"]),
+            BackgroundTasks(),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_asset_scope_lookup_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowAssetStore("get_asset"))
+        monkeypatch.setattr(application, "emit", lambda *_args, **_kwargs: asyncio.sleep(0))
+        await application.asset_scope(
+            "asset-pressure",
+            application.AssetScopePatch(active=False, reason="stress"),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_asset_scope_turn_check_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        monkeypatch.setattr(application, "store", SlowAssetStore("has_active_turn"))
+        monkeypatch.setattr(application, "emit", lambda *_args, **_kwargs: asyncio.sleep(0))
+        await application.asset_scope(
+            "asset-pressure",
+            application.AssetScopePatch(active=False, reason="stress"),
+        )
+
+    assert asyncio.run(_max_loop_gap(exercise())) < 0.04
+
+
+def test_action_lookup_does_not_block_event_loop(monkeypatch):
+    async def exercise():
+        store = SlowBoundaryStore("get_action")
+        monkeypatch.setattr(application, "store", store)
+        monkeypatch.setattr(application, "wake", lambda _cid: None)
+        await application.action_decide(
+            "action-pressure",
+            application.ActionDecision(decision="reject"),
+        )
 
     assert asyncio.run(_max_loop_gap(exercise())) < 0.04
