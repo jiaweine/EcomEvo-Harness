@@ -24,18 +24,28 @@ def test_readme_leads_with_product_language_not_engineering_deep_dive():
     assert "适合这些电商场景" in README
 
 
-def test_readme_uses_current_high_resolution_product_captures():
+def test_readme_uses_current_browser_e2e_product_captures():
     captures = {
-        "product-customer-overview.png": (3000, 1800),
-        "product-customer-evidence.png": (3000, 1800),
-        "product-customer-mobile.png": (700, 1500),
+        "product-customer-overview-v5.webp": (800, 500),
+        "product-customer-evidence-v5.webp": (800, 500),
+        "product-customer-mobile-v5.webp": (300, 600),
     }
     for name, minimum in captures.items():
         path = IMAGES / name
         assert path.is_file(), name
-        width, height = Image.open(path).size
+        with Image.open(path) as image:
+            assert image.format == "WEBP", (name, image.format)
+            width, height = image.size
         assert width >= minimum[0] and height >= minimum[1], (name, width, height)
         assert f"./docs/images/{name}" in README
+
+    assert README.count("Browser E2E 实际页面") == 3
+    for stale in (
+        "./docs/images/product-customer-overview.png",
+        "./docs/images/product-customer-evidence.png",
+        "./docs/images/product-customer-mobile.png",
+    ):
+        assert stale not in README
 
 
 def test_low_resolution_customer_thumbnail_stays_removed():
