@@ -10,12 +10,12 @@
 </div>
 
 <p align="center">
-  <a href="./docs/images/product-customer-overview.png">
-    <img src="./docs/images/product-customer-overview.png" alt="EcomEvo 业务服务工作台" width="100%" />
+  <a href="./docs/images/product-customer-overview-v5.webp">
+    <img src="./docs/images/product-customer-overview-v5.webp" alt="EcomEvo 业务服务工作台" width="100%" />
   </a>
 </p>
 
-<p align="center"><sub>业务服务工作台 · 点击查看 3840 × 2400 高清原图</sub></p>
+<p align="center"><sub>业务服务工作台 · Browser E2E 实际页面</sub></p>
 
 ---
 
@@ -50,12 +50,12 @@ EcomEvo 面向真实电商业务中的复杂问题。您只需要说明情况并
 处理完成后，结果和它所依据的资料会放在同一个任务里。您可以继续追问，也可以直接查看右侧的资料、待确认事项和已上传内容。
 
 <p align="center">
-  <a href="./docs/images/product-customer-evidence.png">
-    <img src="./docs/images/product-customer-evidence.png" alt="EcomEvo 处理结果与判断依据" width="100%" />
+  <a href="./docs/images/product-customer-evidence-v5.webp">
+    <img src="./docs/images/product-customer-evidence-v5.webp" alt="EcomEvo 处理结果与判断依据" width="100%" />
   </a>
 </p>
 
-<p align="center"><sub>处理结果与判断依据 · 点击查看 3840 × 2400 高清原图</sub></p>
+<p align="center"><sub>处理结果与判断依据 · Browser E2E 实际页面</sub></p>
 
 ---
 
@@ -78,12 +78,12 @@ EcomEvo 把每一次补充、处理和确认都留在当前任务中。页面刷
 办理详情在窄屏下会变成独立侧栏，进度、资料和待确认事项仍然保持清晰。
 
 <p align="center">
-  <a href="./docs/images/product-customer-mobile.png">
-    <img src="./docs/images/product-customer-mobile.png" alt="EcomEvo 移动端办理详情" width="360" />
+  <a href="./docs/images/product-customer-mobile-v5.webp">
+    <img src="./docs/images/product-customer-mobile-v5.webp" alt="EcomEvo 移动端办理详情" width="330" />
   </a>
 </p>
 
-<p align="center"><sub>移动端办理详情 · 点击查看高清原图</sub></p>
+<p align="center"><sub>移动端办理详情 · Browser E2E 实际页面</sub></p>
 
 ---
 
