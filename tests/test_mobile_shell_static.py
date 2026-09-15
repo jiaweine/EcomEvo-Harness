@@ -24,6 +24,12 @@ def test_drawer_controller_loads_mobile_layer_and_tracks_visual_viewport():
     assert "drawer-active" in js
 
 
+def test_primary_app_uses_same_contextual_right_rail_breakpoint():
+    app = (ROOT / "frontend" / "app.js").read_text(encoding="utf-8")
+    assert "function isNarrowRight(){return matchMedia('(max-width:1379px)').matches}" in app
+    assert "max-width:1080px" not in app
+
+
 def test_mobile_shell_reduces_empty_state_and_provider_noise():
     css = (ROOT / "frontend" / "mobile-shell.css").read_text(encoding="utf-8")
     assert ".workspace:not(:has(#messageList .msg)) .task-head" in css
