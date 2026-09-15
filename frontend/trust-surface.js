@@ -19,6 +19,10 @@
     },
   };
 
+  let refreshTimer = null;
+  let refreshSeq = 0;
+  let renderedFingerprint = '';
+
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>"']/g, character => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -72,7 +76,10 @@
     const box = document.getElementById('evidenceList');
     if (!box) return;
     box.querySelector(':scope > .trust-surface')?.remove();
-    if (!audit) return;
+    if (!audit) {
+      renderedFingerprint = '';
+      return;
+    }
 
     const status = inferStatus(audit);
     const meta = STATUS[status] || STATUS.insufficient;
@@ -86,6 +93,7 @@
 
     const surface = document.createElement('div');
     surface.className = `trust-surface ${meta.tone}`;
+    surface.dataset.evidenceSufficiency = status || 'insufficient';
     surface.innerHTML = `<section class="trust-overview">
       <div class="trust-overview-head">
         <div><span class="trust-state-dot" aria-hidden="true"></span><b>${escapeHtml(meta.label)}</b></div>
@@ -105,6 +113,64 @@
     box.prepend(surface);
   }
 
-  window.addEventListener('ecomevo:evidence-rendered', event => renderSnapshot(event.detail || {}));
-  if (window.ecomevoTrustSnapshot) renderSnapshot(window.ecomevoTrustSnapshot);
+  function conversationId() {
+    try {
+      return new URL(location.href).searchParams.get('conversation') || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  async function refreshFromPersistedResult() {
+    const cid = conversationId();
+    const box = document.getElementById('evidenceList');
+    if (!cid || !box) return;
+    const seq = ++refreshSeq;
+    try {
+      const response = await fetch(`/api/conversations/${encodeURIComponent(cid)}`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return;
+      const task = await response.json();
+      if (seq !== refreshSeq || cid !== conversationId()) return;
+      const latest = [...(task.messages || [])].reverse().find(message => message.role === 'assistant');
+      const grounding = latest?.payload?.grounding || null;
+      const rows = latest?.payload?.evidence || [];
+      const fingerprint = grounding ? `${cid}:${latest?.id || ''}:${grounding.schema_version || 0}:${grounding.evidence_sufficiency || ''}` : '';
+      const surface = box.querySelector(':scope > .trust-surface');
+      if (fingerprint && fingerprint === renderedFingerprint && surface) return;
+      renderedFingerprint = fingerprint;
+      renderSnapshot({ grounding, rows });
+    } catch (_) {
+      // The trust surface is supplementary. A transient refresh failure must never
+      // block the task, mutate actions or weaken the deterministic evidence gate.
+    }
+  }
+
+  function scheduleRefresh(delay = 40) {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refreshFromPersistedResult, delay);
+  }
+
+  window.addEventListener('ecomevo:evidence-rendered', event => {
+    const detail = event.detail || {};
+    renderedFingerprint = '';
+    renderSnapshot(detail);
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const box = document.getElementById('evidenceList');
+    if (!box) return;
+    const observer = new MutationObserver(() => {
+      if (!box.querySelector(':scope > .trust-surface')) scheduleRefresh();
+    });
+    observer.observe(box, { childList: true });
+    scheduleRefresh(0);
+  });
+
+  window.addEventListener('popstate', () => {
+    renderedFingerprint = '';
+    scheduleRefresh(0);
+  });
 })();
