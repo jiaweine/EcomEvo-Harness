@@ -84,7 +84,10 @@ class NeuralEvidenceReranker:
                     continue
                 seen.add(index)
                 scores[index] = score
-            if not seen:
+            # We request top_n == candidate count. A partial response is treated as
+            # malformed instead of silently assigning zero to missing candidates and
+            # turning transport/provider behavior into a fake ranking signal.
+            if len(seen) != len(candidates):
                 return None, "invalid_response"
             return scores, "used"
         except Exception:
