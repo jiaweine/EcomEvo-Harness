@@ -22,6 +22,7 @@
   let refreshTimer = null;
   let refreshSeq = 0;
   let renderedFingerprint = '';
+  let initialized = false;
 
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>"']/g, character => ({
@@ -153,21 +154,29 @@
     refreshTimer = setTimeout(refreshFromPersistedResult, delay);
   }
 
+  function init() {
+    if (initialized) return;
+    const box = document.getElementById('evidenceList');
+    if (!box) return;
+    initialized = true;
+    const observer = new MutationObserver(() => {
+      if (!box.querySelector(':scope > .trust-surface')) scheduleRefresh();
+    });
+    observer.observe(box, { childList: true });
+    scheduleRefresh(0);
+  }
+
   window.addEventListener('ecomevo:evidence-rendered', event => {
     const detail = event.detail || {};
     renderedFingerprint = '';
     renderSnapshot(detail);
   });
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const box = document.getElementById('evidenceList');
-    if (!box) return;
-    const observer = new MutationObserver(() => {
-      if (!box.querySelector(':scope > .trust-surface')) scheduleRefresh();
-    });
-    observer.observe(box, { childList: true });
-    scheduleRefresh(0);
-  });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
 
   window.addEventListener('popstate', () => {
     renderedFingerprint = '';
