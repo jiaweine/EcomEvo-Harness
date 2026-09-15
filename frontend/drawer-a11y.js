@@ -4,7 +4,9 @@
   const drawerIds = ['leftbar', 'rightbar'];
   const returnFocus = new Map();
   const leftDrawerMedia = matchMedia('(max-width:820px)');
-  const rightDrawerMedia = matchMedia('(max-width:1180px)');
+  // workbench-v5 promotes the right rail to persistent context at 1380px.
+  // Keep modal semantics/focus trapping for every width below that threshold.
+  const rightDrawerMedia = matchMedia('(max-width:1379px)');
   let activeDrawer = null;
 
   function installMobileStylesheet() {
@@ -106,7 +108,7 @@
       .map(id => document.getElementById(id))
       .find(node => node?.classList.contains('open') && drawerMode(node)) || null;
     if (open) activate(open);
-    else if (activeDrawer) deactivate(activeDrawer, false);
+    else if (activeDrawer) deactivate(activeDrawer, true);
     else syncBodyState();
   }
 
