@@ -18,15 +18,17 @@ class AtomicClaimGroundingGuard:
     deterministically verify high-risk anchors, search for contradictory evidence,
     and only then reconstruct the user-facing answer.
 
-    The two primary quality signals are query coverage and claim verifiability. They
-    are intentionally separate from model confidence and from the deterministic
-    BusinessAction authority boundary.
+    Quality is reported as query coverage + atomic-claim verifiability plus a
+    conservative set-level evidence state: sufficient / insufficient / conflicted.
+    These signals are intentionally separate from model confidence and from the
+    deterministic BusinessAction authority boundary.
     """
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
     FACTUAL_KINDS = {"fact", "rule"}
     ADVISORY_KINDS = {"inference", "recommendation"}
     VERDICTS = {"supported", "unsupported", "contradicted"}
+    EVIDENCE_STATES = {"sufficient", "insufficient", "conflicted"}
     MAX_EVIDENCE = 28
     MAX_CLAIMS = 24
     MAX_SUBQUERIES = 8
@@ -305,8 +307,22 @@ class AtomicClaimGroundingGuard:
         unsupported = [x for x in factual if x["verdict"] == "unsupported"]
         claim_verifiability = 1.0 if not factual else len(supported) / len(factual)
         query_coverage = None if not subqueries else sum(1 for x in subqueries if x["covered"]) / len(subqueries)
+
+        # Set-level sufficiency is intentionally conservative. A collection of
+        # individually grounded snippets is not considered sufficient if any asked
+        # sub-question remains uncovered, a factual claim is unsupported, or direct
+        # counter-evidence exists. Missing decomposition is also insufficient rather
+        # than being interpreted as perfect coverage.
+        if contradicted:
+            evidence_sufficiency = "conflicted"
+        elif not subqueries or any(not x["covered"] for x in subqueries) or not factual or unsupported:
+            evidence_sufficiency = "insufficient"
+        else:
+            evidence_sufficiency = "sufficient"
+
         return {
             "schema_version": cls.SCHEMA_VERSION,
+            "evidence_sufficiency": evidence_sufficiency,
             "subqueries": subqueries,
             "subquery_count": len(subqueries),
             "covered_subquery_count": sum(1 for x in subqueries if x["covered"]),
@@ -339,19 +355,25 @@ class AtomicClaimGroundingGuard:
         risks = [str(x) for x in (runtime.get("risks") or []) if str(x).strip()]
         missing = [str(x) for x in (runtime.get("missing_evidence") or []) if str(x).strip()]
         actions = [x for x in (result.get("actions") or []) if isinstance(x, dict)]
-
-        if status == "needs_evidence" or missing:
-            conclusion = "当前资料还不足以支持最终处置；系统会保留现有核对结果，但不会用模型推测补齐缺失事实。"
-        elif risks:
-            conclusion = "当前证据已达到本轮核对门槛，同时存在需要优先复核的风险点；涉及真实业务变更的动作仍需人工确认。"
-        else:
-            conclusion = "当前证据已达到本轮核对门槛，暂未发现需要立即升级的强风险信号；涉及真实业务变更的动作仍需人工确认。"
+        evidence_state = str((audit or {}).get("evidence_sufficiency") or "insufficient")
 
         claims = (audit or {}).get("claims") or []
         supported = [x for x in claims if x.get("kind") in cls.FACTUAL_KINDS and x.get("verdict") == "supported"]
         advisory = [x for x in claims if x.get("kind") in cls.ADVISORY_KINDS and x.get("verdict") != "contradicted"]
         removed = [x for x in claims if x.get("kind") in cls.FACTUAL_KINDS and x.get("verdict") != "supported"]
+        contradicted = [x for x in claims if x.get("kind") in cls.FACTUAL_KINDS and x.get("verdict") == "contradicted"]
         uncovered = [x for x in ((audit or {}).get("subqueries") or []) if not x.get("covered")]
+
+        if status == "needs_evidence" or missing:
+            conclusion = "当前资料还不足以支持最终处置；系统会保留现有核对结果，但不会用模型推测补齐缺失事实。"
+        elif evidence_state == "conflicted":
+            conclusion = "当前证据存在直接冲突，不能把本轮结果视为完整结论；已保留可核验事实，并优先提示需要人工复核的冲突点。"
+        elif evidence_state == "insufficient":
+            conclusion = "Runtime 已达到基础证据门槛，但最终回答核验发现仍有问题覆盖不足或事实性表述缺少直接支撑，因此当前只保留可核验部分。"
+        elif risks:
+            conclusion = "当前证据已达到本轮核对门槛，同时存在需要优先复核的风险点；涉及真实业务变更的动作仍需人工确认。"
+        else:
+            conclusion = "当前问题已被证据覆盖，最终事实性表述也通过逐条核验；涉及真实业务变更的动作仍需人工确认。"
 
         lines = ["### 处理结论", conclusion]
         lines.extend(["", "### 已核验依据"])
@@ -376,9 +398,11 @@ class AtomicClaimGroundingGuard:
         lines.extend(["", "### 下一步"])
         if missing:
             lines.append("优先补充：" + "、".join(missing[:6]) + "。")
+        elif contradicted:
+            lines.append("优先人工核对存在冲突的事实：" + "、".join(str(x.get("text") or "") for x in contradicted[:4]) + "。")
         elif uncovered:
             lines.append("当前仍有问题未被直接证据覆盖：" + "、".join(str(x.get("text") or "") for x in uncovered[:4]) + "。")
-        elif actions:
+        elif actions and evidence_state == "sufficient":
             titles = [str(x.get("title") or x.get("description") or "待确认操作") for x in actions[:4]]
             lines.append("可进入人工确认：" + "、".join(titles) + "。")
         else:
@@ -390,7 +414,7 @@ class AtomicClaimGroundingGuard:
 
 
 class ProductAnalyzer(BaseProductAnalyzer):
-    """Base analyzer plus a query-coverage and atomic-claim grounding pass.
+    """Base analyzer plus query coverage, atomic claims and set-level sufficiency.
 
     This intentionally does not change Runtime authority. It only narrows what prose
     is allowed to leave the system after Runtime verification.
@@ -432,7 +456,7 @@ class ProductAnalyzer(BaseProductAnalyzer):
                     "progress",
                     {
                         "step": "逐条核验结论",
-                        "detail": "正在检查问题覆盖率、原子声明、证据引用、关键数字和反证",
+                        "detail": "正在检查问题覆盖率、原子声明、集合证据充分性、关键数字和反证",
                         "percent": 97,
                     },
                 )
@@ -451,7 +475,7 @@ class ProductAnalyzer(BaseProductAnalyzer):
                 )
                 parsed = AtomicClaimGroundingGuard._json_payload(raw)
                 audit = AtomicClaimGroundingGuard.normalize(parsed, evidence)
-                audit["mode"] = "query_coverage_atomic_claim_verification"
+                audit["mode"] = "query_coverage_atomic_claim_set_sufficiency"
                 audit["provider"] = getattr(getattr(provider, "info", None), "name", None) or "configured"
             except Exception:
                 audit = None
@@ -460,6 +484,7 @@ class ProductAnalyzer(BaseProductAnalyzer):
             audit = {
                 "schema_version": AtomicClaimGroundingGuard.SCHEMA_VERSION,
                 "mode": "deterministic_evidence_fallback",
+                "evidence_sufficiency": "insufficient",
                 "subqueries": [],
                 "subquery_count": 0,
                 "covered_subquery_count": 0,
