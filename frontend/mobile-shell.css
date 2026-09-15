@@ -1,0 +1,627 @@
+/* EcomEvo mobile shell v6
+   Loaded after the desktop design layers by drawer-a11y.js.
+   The goal is a stable one-handed workspace: compact chrome, no horizontal
+   overflow, keyboard-safe composer, GPU-transformed drawers and accessible
+   44px touch targets. */
+
+@media (max-width: 820px) {
+  :root {
+    --mobile-topbar: 56px;
+    --mobile-pad: 12px;
+    --mobile-control: 44px;
+  }
+
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overscroll-behavior: none;
+    overflow: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .app-shell {
+    width: 100%;
+    height: var(--app-viewport-height, 100dvh) !important;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: var(--mobile-topbar) minmax(0, 1fr) !important;
+    overflow: hidden;
+  }
+
+  /* Compact top chrome. Keep search reachable without letting it consume the
+     center of the phone layout. */
+  .topbar {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    grid-template-columns: minmax(0, 1fr) 38px auto !important;
+    gap: 6px !important;
+    height: var(--mobile-topbar) !important;
+    min-width: 0;
+    padding: 0 8px !important;
+  }
+
+  .top-left {
+    min-width: 0;
+    height: 100%;
+    padding: 0 !important;
+    gap: 7px !important;
+    overflow: hidden;
+    background: transparent !important;
+    color: var(--v5-ink, #1d1d20) !important;
+  }
+
+  #navToggle,
+  #detailToggle,
+  .command-trigger {
+    min-width: var(--mobile-control) !important;
+    min-height: var(--mobile-control) !important;
+  }
+
+  #navToggle {
+    width: var(--mobile-control) !important;
+    height: var(--mobile-control) !important;
+    flex: 0 0 auto;
+  }
+
+  .brand {
+    min-width: 0;
+    gap: 7px !important;
+    overflow: hidden;
+  }
+
+  .brand-mark {
+    width: 30px !important;
+    height: 30px !important;
+    flex: 0 0 30px;
+    border-radius: 8px !important;
+    font-size: 15px !important;
+  }
+
+  .brand-copy {
+    min-width: 0;
+    gap: 0 !important;
+    overflow: hidden;
+  }
+
+  .brand-copy b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 14px !important;
+  }
+
+  .brand-copy small {
+    display: none !important;
+  }
+
+  .command-trigger {
+    justify-self: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    padding: 0 !important;
+    border-radius: 10px !important;
+  }
+
+  .command-trigger .command-placeholder,
+  .command-trigger kbd {
+    display: none !important;
+  }
+
+  .command-symbol {
+    margin: auto !important;
+  }
+
+  .top-actions {
+    min-width: 0;
+    gap: 4px !important;
+  }
+
+  .top-action,
+  .avatar {
+    display: none !important;
+  }
+
+  #detailToggle {
+    display: inline-flex !important;
+    width: auto !important;
+    height: var(--mobile-control) !important;
+    padding: 0 10px !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+  }
+
+  #detailToggle::after {
+    content: none !important;
+  }
+
+  /* Main workspace: the empty state does not need a desktop task header. */
+  .workspace {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .workspace:not(:has(#messageList .msg)) .task-head {
+    display: none !important;
+  }
+
+  .workspace:has(#messageList .msg) .task-head,
+  .task-head {
+    min-height: 54px !important;
+    padding: 7px var(--mobile-pad) 8px !important;
+    gap: 6px !important;
+    align-items: center !important;
+  }
+
+  .workspace:has(#messageList .msg) .task-head-main,
+  .task-head-main {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-areas: "eyebrow" "title" !important;
+    gap: 1px !important;
+  }
+
+  .task-head-actions,
+  .task-head p,
+  .task-chips {
+    display: none !important;
+  }
+
+  .eyebrow {
+    grid-area: eyebrow !important;
+    min-height: 14px !important;
+    gap: 5px !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .task-title-row {
+    grid-area: title !important;
+    min-width: 0 !important;
+  }
+
+  .task-head h1,
+  .workspace:has(#messageList .msg) .task-head h1 {
+    display: block !important;
+    margin: 1px 0 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 15px !important;
+    line-height: 1.3 !important;
+    letter-spacing: -.02em !important;
+  }
+
+  .ai-provider-trigger,
+  .provider-control {
+    display: none !important;
+  }
+
+  .history-notice {
+    padding: 7px var(--mobile-pad) !important;
+    font-size: 11px !important;
+  }
+
+  /* Conversation surface. */
+  .chat-scroll {
+    min-width: 0;
+    padding: 0 var(--mobile-pad) 14px !important;
+    scroll-padding-bottom: 12px;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .message-list,
+  .work-card,
+  .welcome,
+  .composer,
+  .pending-assets,
+  .composer-note {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .msg,
+  .msg-body,
+  .msg-content,
+  .msg-assets,
+  .msg-asset,
+  .evidence-card,
+  .action-card,
+  .asset-card,
+  .status-card,
+  .follow-card {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .msg.user .msg-body,
+  .msg.assistant .msg-body {
+    padding-left: 36px !important;
+  }
+
+  .msg.user .msg-body::before,
+  .assistant-logo {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 8px !important;
+  }
+
+  .msg-content,
+  .msg.user .msg-content {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    font-size: 14px !important;
+    line-height: 1.66 !important;
+  }
+
+  .msg-assets {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Empty state: lower cognitive load and far less vertical waste. */
+  .welcome {
+    padding: clamp(24px, 6vh, 48px) 0 24px !important;
+  }
+
+  .welcome-layout {
+    display: block !important;
+  }
+
+  .agent-map {
+    display: none !important;
+  }
+
+  html body #welcomePanel.welcome h2,
+  .welcome h2 {
+    margin: 0 0 8px !important;
+    max-width: 100% !important;
+    font-size: clamp(25px, 8vw, 32px) !important;
+    line-height: 1.16 !important;
+    letter-spacing: -.045em !important;
+  }
+
+  .welcome-copy > p,
+  .welcome > p {
+    max-width: 100% !important;
+    font-size: 13px !important;
+    line-height: 1.65 !important;
+  }
+
+  .quick-grid {
+    margin-top: 20px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .quick-card {
+    min-height: 92px !important;
+    padding: 12px !important;
+    border-radius: 13px !important;
+    gap: 10px !important;
+  }
+
+  .quick-card b {
+    font-size: 12.5px !important;
+  }
+
+  .quick-card small {
+    font-size: 10.5px !important;
+    line-height: 1.42 !important;
+  }
+
+  .input-types {
+    margin-top: 12px !important;
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    scrollbar-width: none;
+  }
+
+  .input-types::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Composer: iOS-safe 16px textarea avoids focus zoom; 44px controls improve
+     thumb reachability. */
+  .composer-zone {
+    grid-row: 4 !important;
+    min-width: 0;
+    padding: 8px var(--mobile-pad) calc(8px + env(safe-area-inset-bottom)) !important;
+    background: rgba(255, 255, 255, .98) !important;
+    border-top: 1px solid var(--v5-line, #e7e7eb) !important;
+  }
+
+  .composer {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    box-shadow: 0 5px 20px rgba(24, 24, 30, .06) !important;
+  }
+
+  .composer-head,
+  .composer-note {
+    display: none !important;
+  }
+
+  .composer textarea {
+    width: 100% !important;
+    min-height: 48px !important;
+    max-height: min(132px, 24vh) !important;
+    padding: 12px 12px 7px !important;
+    font-size: 16px !important;
+    line-height: 1.45 !important;
+    resize: none !important;
+  }
+
+  .composer-bottom {
+    min-width: 0;
+    padding: 5px 6px 7px !important;
+    gap: 6px !important;
+    align-items: center !important;
+  }
+
+  .attach-row,
+  .send-row {
+    min-width: 0;
+  }
+
+  .attach-row > .attach:not(.mobile-attach) {
+    display: none !important;
+  }
+
+  .mobile-attach {
+    display: inline-flex !important;
+    min-width: 44px !important;
+    height: 40px !important;
+    padding: 0 10px !important;
+    border-radius: 10px !important;
+    justify-content: center !important;
+    white-space: nowrap;
+    font-size: 11.5px !important;
+  }
+
+  .send-row {
+    margin-left: auto;
+  }
+
+  .send-row small {
+    display: none !important;
+  }
+
+  .send-btn {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 40px !important;
+    border-radius: 10px !important;
+    padding: 0 !important;
+    font-size: 12px !important;
+  }
+
+  .pending-assets {
+    margin: 0 0 6px !important;
+    gap: 6px !important;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .pending-assets::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pending-asset {
+    min-width: min(252px, 82vw) !important;
+    scroll-snap-align: start;
+  }
+
+  /* Drawers use transforms instead of animating left/right, which removes
+     layout thrash on low-end mobile devices. */
+  .leftbar,
+  .rightbar {
+    position: fixed !important;
+    top: var(--mobile-topbar) !important;
+    bottom: 0 !important;
+    height: auto !important;
+    will-change: transform;
+    transition: transform .22s cubic-bezier(.2, .8, .2, 1) !important;
+    contain: layout paint;
+  }
+
+  .leftbar {
+    left: 0 !important;
+    width: min(340px, 88vw) !important;
+    transform: translate3d(-103%, 0, 0) !important;
+    box-shadow: 18px 0 50px rgba(6, 12, 22, .18) !important;
+  }
+
+  .leftbar.open {
+    transform: translate3d(0, 0, 0) !important;
+  }
+
+  .rightbar {
+    right: 0 !important;
+    left: auto !important;
+    width: min(410px, 96vw) !important;
+    max-width: 96vw !important;
+    transform: translate3d(103%, 0, 0) !important;
+    box-shadow: -18px 0 50px rgba(6, 12, 22, .16) !important;
+  }
+
+  .rightbar.open {
+    right: 0 !important;
+    transform: translate3d(0, 0, 0) !important;
+  }
+
+  .right-head {
+    padding-top: env(safe-area-inset-top) !important;
+  }
+
+  .right-tabs {
+    overflow-x: auto !important;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .right-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .right-tab,
+  .right-close {
+    min-height: 44px !important;
+  }
+
+  .right-panel {
+    padding: 12px !important;
+  }
+
+  .drawer-scrim {
+    top: var(--mobile-topbar) !important;
+    backdrop-filter: blur(2px);
+  }
+
+  html.drawer-active,
+  body.drawer-active {
+    overflow: hidden !important;
+    touch-action: none;
+  }
+
+  body.drawer-active .leftbar,
+  body.drawer-active .rightbar {
+    touch-action: pan-y;
+  }
+
+  /* Dialogs become phone-sized sheets instead of narrow desktop cards. */
+  .modal-backdrop,
+  .runtime-backdrop,
+  .command-backdrop,
+  .tour-backdrop {
+    padding: 10px !important;
+    align-items: flex-end !important;
+  }
+
+  .modal,
+  .runtime-modal,
+  .command-modal,
+  .tour-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: min(86vh, calc(var(--app-viewport-height, 100dvh) - 20px)) !important;
+    border-radius: 18px !important;
+    overflow: auto !important;
+  }
+
+  .toast {
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: none !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  :root {
+    --mobile-pad: 10px;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) 38px auto !important;
+  }
+
+  .brand-copy b {
+    max-width: 88px;
+  }
+
+  .quick-grid {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-template-columns: none !important;
+    grid-auto-columns: minmax(160px, 72vw) !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x mandatory;
+    padding: 1px 2px 6px !important;
+    scrollbar-width: none;
+  }
+
+  .quick-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .quick-card {
+    min-height: 88px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    scroll-snap-align: start;
+  }
+
+  .quick-card em {
+    display: inline-flex !important;
+  }
+
+  .input-types {
+    font-size: 10px !important;
+  }
+
+  .msg.user .msg-body,
+  .msg.assistant .msg-body {
+    padding-left: 34px !important;
+  }
+
+  #detailToggle {
+    min-width: 48px !important;
+    padding: 0 8px !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .brand-copy b {
+    max-width: 70px;
+  }
+
+  #detailToggle {
+    min-width: 44px !important;
+    padding-inline: 7px !important;
+    font-size: 11px !important;
+  }
+
+  .mobile-attach {
+    padding-inline: 8px !important;
+  }
+}
+
+@media (max-width: 820px) and (orientation: landscape) {
+  :root {
+    --mobile-topbar: 52px;
+  }
+
+  .welcome {
+    padding-top: 16px !important;
+  }
+
+  .workspace:has(#messageList .msg) .task-head,
+  .task-head {
+    min-height: 48px !important;
+    padding-top: 4px !important;
+    padding-bottom: 5px !important;
+  }
+
+  .composer textarea {
+    max-height: 88px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .leftbar,
+  .rightbar {
+    transition: none !important;
+  }
+}
