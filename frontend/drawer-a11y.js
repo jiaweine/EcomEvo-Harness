@@ -19,6 +19,22 @@
     document.head.appendChild(link);
   }
 
+  function installTrustSurface() {
+    if (!document.querySelector('link[data-ecomevo-trust-surface]')) {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = '/assets/trust-surface.css';
+      style.dataset.ecomevoTrustSurface = '1';
+      document.head.appendChild(style);
+    }
+    if (!document.querySelector('script[data-ecomevo-trust-surface]')) {
+      const script = document.createElement('script');
+      script.src = '/assets/trust-surface.js';
+      script.dataset.ecomevoTrustSurface = '1';
+      document.head.appendChild(script);
+    }
+  }
+
   function syncViewport() {
     const viewport = window.visualViewport;
     const height = Math.max(320, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
@@ -144,6 +160,7 @@
   }, true);
 
   installMobileStylesheet();
+  installTrustSurface();
   syncViewport();
   window.visualViewport?.addEventListener?.('resize', syncViewport, { passive: true });
   window.visualViewport?.addEventListener?.('scroll', syncViewport, { passive: true });
