@@ -29,7 +29,11 @@ def test_customer_shell_is_light_two_column_workbench_with_context_drawer():
     assert ".rightbar.open{right:0!important}" in POLISH
     assert "#detailToggle" in POLISH
     assert "display:inline-flex!important" in POLISH
-    assert "return true;" in DRAWER
+    # Drawer semantics now follow the same responsive boundaries as the
+    # contextual workbench instead of treating every width as modal.
+    assert "matchMedia('(max-width:820px)')" in DRAWER
+    assert "matchMedia('(max-width:1379px)')" in DRAWER
+    assert "return true;" not in DRAWER
 
 
 def test_customer_primary_column_matches_chat_first_ai_layout():
