@@ -20,7 +20,7 @@ def test_drawer_controller_loads_mobile_layer_and_tracks_visual_viewport():
     assert "/assets/mobile-shell.css" in js
     assert "window.visualViewport" in js
     assert "matchMedia('(max-width:820px)')" in js
-    assert "matchMedia('(max-width:1180px)')" in js
+    assert "matchMedia('(max-width:1379px)')" in js
     assert "drawer-active" in js
 
 
