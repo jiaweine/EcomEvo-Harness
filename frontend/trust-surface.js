@@ -19,9 +19,10 @@
     },
   };
 
-  function latestGrounding() {
-    const latest = [...state.messages].reverse().find(message => message.role === 'assistant');
-    return latest?.payload?.grounding || null;
+  function escapeHtml(value = '') {
+    return String(value).replace(/[&<>"']/g, character => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[character]));
   }
 
   function inferStatus(grounding) {
@@ -53,26 +54,26 @@
   function claimGroup(title, rows, tone, byId) {
     if (!rows.length) return '';
     return `<section class="trust-claim-group ${tone}">
-      <header><b>${esc(title)}</b><span>${rows.length}</span></header>
+      <header><b>${escapeHtml(title)}</b><span>${rows.length}</span></header>
       <div class="trust-claim-list">${rows.slice(0, 10).map(row => {
         const source = evidenceName(row.evidence_ids, byId);
         const reason = String(row.reason || '').trim();
         return `<div class="trust-claim-row">
           <i aria-hidden="true"></i>
-          <div><b>${esc(row.text || '未命名声明')}</b>${source ? `<small>依据：${esc(source)}</small>` : ''}${reason ? `<small>${esc(reason)}</small>` : ''}</div>
+          <div><b>${escapeHtml(row.text || '未命名声明')}</b>${source ? `<small>依据：${escapeHtml(source)}</small>` : ''}${reason ? `<small>${escapeHtml(reason)}</small>` : ''}</div>
         </div>`;
       }).join('')}</div>
     </section>`;
   }
 
-  const baseRenderEvidence = renderEvidence;
-  renderEvidence = function renderEvidenceWithTrust(rows = [], grounding = null) {
-    baseRenderEvidence(rows);
-    const audit = grounding || latestGrounding();
+  function renderSnapshot(snapshot) {
+    const audit = snapshot?.grounding;
+    const rows = Array.isArray(snapshot?.rows) ? snapshot.rows : [];
+    const box = document.getElementById('evidenceList');
+    if (!box) return;
+    box.querySelector(':scope > .trust-surface')?.remove();
     if (!audit) return;
 
-    const box = $('evidenceList');
-    if (!box) return;
     const status = inferStatus(audit);
     const meta = STATUS[status] || STATUS.insufficient;
     const claims = Array.isArray(audit.claims) ? audit.claims : [];
@@ -80,17 +81,17 @@
     const contradicted = claims.filter(row => ['fact', 'rule'].includes(row.kind) && row.verdict === 'contradicted');
     const unsupported = claims.filter(row => ['fact', 'rule'].includes(row.kind) && row.verdict === 'unsupported');
     const uncovered = (audit.subqueries || []).filter(row => !row.covered);
-    const byId = new Map((rows || []).map(row => [String(row.evidence_id || ''), row]));
+    const byId = new Map(rows.map(row => [String(row.evidence_id || ''), row]));
     const deterministicOnly = audit.mode === 'deterministic_evidence_fallback';
 
     const surface = document.createElement('div');
     surface.className = `trust-surface ${meta.tone}`;
     surface.innerHTML = `<section class="trust-overview">
       <div class="trust-overview-head">
-        <div><span class="trust-state-dot" aria-hidden="true"></span><b>${esc(meta.label)}</b></div>
+        <div><span class="trust-state-dot" aria-hidden="true"></span><b>${escapeHtml(meta.label)}</b></div>
         <small>不是模型置信度</small>
       </div>
-      <p>${esc(deterministicOnly ? '本轮只完成确定性业务证据门禁，逐声明核验未运行，因此不会把当前状态显示成“证据充分”。' : meta.detail)}</p>
+      <p>${escapeHtml(deterministicOnly ? '本轮只完成确定性业务证据门禁，逐声明核验未运行，因此不会把当前状态显示成“证据充分”。' : meta.detail)}</p>
       <div class="trust-metrics" aria-label="证据核验指标">
         <div><span>问题覆盖</span><b>${percent(audit.query_coverage)}</b></div>
         <div><span>事实已支持</span><b>${Number(audit.supported_factual_claim_count || 0)}/${Number(audit.factual_claim_count || 0)}</b></div>
@@ -100,16 +101,10 @@
     ${claimGroup('已支持', supported, 'supported', byId)}
     ${claimGroup('存在反证', contradicted, 'contradicted', byId)}
     ${claimGroup('缺少直接支持', unsupported, 'unsupported', byId)}
-    ${uncovered.length ? `<section class="trust-gap"><header><b>尚未覆盖的问题</b><span>${uncovered.length}</span></header>${uncovered.slice(0, 6).map(row => `<p>${esc(row.text || '')}${row.reason ? `<small>${esc(row.reason)}</small>` : ''}</p>`).join('')}</section>` : ''}`;
+    ${uncovered.length ? `<section class="trust-gap"><header><b>尚未覆盖的问题</b><span>${uncovered.length}</span></header>${uncovered.slice(0, 6).map(row => `<p>${escapeHtml(row.text || '')}${row.reason ? `<small>${escapeHtml(row.reason)}</small>` : ''}</p>`).join('')}</section>` : ''}`;
     box.prepend(surface);
-  };
-
-  // The enhancement can arrive after app.js has already painted the current task.
-  // Re-render once so an existing conversation immediately gains the trust surface.
-  try {
-    renderAll();
-  } catch (_) {
-    // Initial boot may still be constructing the workspace; later renderEvidence calls
-    // will apply the enhancement automatically.
   }
+
+  window.addEventListener('ecomevo:evidence-rendered', event => renderSnapshot(event.detail || {}));
+  if (window.ecomevoTrustSnapshot) renderSnapshot(window.ecomevoTrustSnapshot);
 })();
