@@ -17,11 +17,14 @@ def test_mobile_drawer_traps_and_restores_keyboard_focus():
     assert "returnFocus.set(drawer.id" in DRAWER
     assert "target.focus()" in DRAWER
     assert "aria-modal" in DRAWER
-    assert "matchMedia('(max-width:1080px)')" in DRAWER
+    assert "matchMedia('(max-width:820px)')" in DRAWER
+    assert "matchMedia('(max-width:1379px)')" in DRAWER
+    assert "window.visualViewport" in DRAWER
 
 
 def test_switching_drawers_does_not_restore_focus_into_closed_drawer():
     assert "deactivate(activeDrawer, false)" in DRAWER
     assert "currentInsideClosedDrawer" in DRAWER
     assert "deactivate(activeDrawer, true)" in DRAWER
-    assert "if (activeDrawer) deactivate(activeDrawer, false)" in DRAWER
+    assert "if (activeDrawer && activeDrawer !== drawer) deactivate(activeDrawer, false)" in DRAWER
+    assert "else if (activeDrawer) deactivate(activeDrawer, true)" in DRAWER
