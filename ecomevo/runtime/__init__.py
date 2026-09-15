@@ -5,6 +5,7 @@ from .verifier import DecisionVerifier
 from .sandbox import ActionSandbox
 from .tools import ToolRegistry, PTCExecutor
 from .hybrid_retrieval import install_hybrid_evidence_search
+from .neural_rerank import install_neural_evidence_reranker
 from .evolver import FailureDrivenEvolver
 from .autonomy import AutonomousController, TaskGraph
 from .skills import AdaptiveSkillLibrary
@@ -20,9 +21,11 @@ from .plugins import (
     PluginRegistry,
 )
 
-# Evidence retrieval is read-only. Installing the hybrid layer upgrades candidate
-# selection while leaving Verifier/Governance/Action authority unchanged.
+# Retrieval upgrades are read-only. Hybrid candidate selection and the optional
+# neural reranker can improve evidence recall/ranking while Verifier/Governance/
+# Action remain the only authority for business decisions and side effects.
 install_hybrid_evidence_search()
+install_neural_evidence_reranker()
 
 __all__=[
     'EcomEvoEngine','EventStore','AdaptivePlanner','DecisionVerifier','ActionSandbox',
