@@ -3,18 +3,40 @@
 
   const drawerIds = ['leftbar', 'rightbar'];
   const returnFocus = new Map();
+  const leftDrawerMedia = matchMedia('(max-width:820px)');
+  const rightDrawerMedia = matchMedia('(max-width:1180px)');
   let activeDrawer = null;
 
-  function narrow() {
-    // The detail inspector is a contextual drawer at every desktop width in the
-    // unified AI-workbench layout. The left navigation only receives `.open`
-    // on compact screens, so keeping the focus trap available here is safe.
-    return true;
+  function installMobileStylesheet() {
+    if (document.querySelector('link[data-ecomevo-mobile-shell]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/assets/mobile-shell.css';
+    link.media = '(max-width:820px)';
+    link.dataset.ecomevoMobileShell = '1';
+    document.head.appendChild(link);
+  }
+
+  function syncViewport() {
+    const viewport = window.visualViewport;
+    const height = Math.max(320, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
+    const layoutHeight = Math.max(height, Math.round(window.innerHeight || height));
+    const keyboardOffset = viewport
+      ? Math.max(0, Math.round(layoutHeight - viewport.height - viewport.offsetTop))
+      : 0;
+    document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
+    document.documentElement.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
+    document.documentElement.classList.toggle('keyboard-visible', keyboardOffset > 80);
+  }
+
+  function drawerMode(drawer) {
+    if (!drawer) return false;
+    return drawer.id === 'leftbar' ? leftDrawerMedia.matches : rightDrawerMedia.matches;
   }
 
   function focusables(drawer) {
     return [...drawer.querySelectorAll('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])')]
-      .filter(node => !node.hidden && node.getAttribute('aria-hidden') !== 'true');
+      .filter(node => !node.hidden && node.getAttribute('aria-hidden') !== 'true' && node.getClientRects().length > 0);
   }
 
   function triggerFor(id) {
@@ -26,7 +48,13 @@
     const preferred = drawer.id === 'rightbar'
       ? drawer.querySelector('#rightClose,.right-tab:not(:disabled)')
       : drawer.querySelector('#newTaskBtn,.scene:not(:disabled)');
-    return preferred || rows[0] || drawer;
+    return (preferred && preferred.getClientRects().length > 0 ? preferred : null) || rows[0] || drawer;
+  }
+
+  function syncBodyState() {
+    const locked = Boolean(activeDrawer && drawerMode(activeDrawer));
+    document.documentElement.classList.toggle('drawer-active', locked);
+    document.body?.classList.toggle('drawer-active', locked);
   }
 
   function deactivate(drawer, restore = true) {
@@ -34,13 +62,14 @@
     activeDrawer = null;
     drawer.removeAttribute('aria-modal');
     if (drawer.getAttribute('role') === 'dialog') drawer.removeAttribute('role');
+    syncBodyState();
     const target = returnFocus.get(drawer.id) || triggerFor(drawer.id);
     returnFocus.delete(drawer.id);
     if (restore && target && document.contains(target)) requestAnimationFrame(() => target.focus());
   }
 
   function activate(drawer) {
-    if (!narrow() || activeDrawer === drawer) return;
+    if (!drawerMode(drawer) || activeDrawer === drawer) return;
     if (activeDrawer && activeDrawer !== drawer) deactivate(activeDrawer, false);
     activeDrawer = drawer;
     const trigger = triggerFor(drawer.id);
@@ -52,22 +81,43 @@
     returnFocus.set(drawer.id, !currentInsideClosedDrawer && current && current !== document.body ? current : trigger);
     drawer.setAttribute('aria-modal', 'true');
     if (!drawer.hasAttribute('role')) drawer.setAttribute('role', 'dialog');
+    syncBodyState();
     requestAnimationFrame(() => firstFocus(drawer)?.focus?.());
   }
 
-  function sync() {
-    if (!narrow()) {
-      if (activeDrawer) deactivate(activeDrawer, false);
-      return;
+  function normalizeBreakpointState() {
+    const left = document.getElementById('leftbar');
+    const right = document.getElementById('rightbar');
+    if (left && !leftDrawerMedia.matches) {
+      left.classList.remove('open');
+      document.getElementById('navToggle')?.setAttribute('aria-expanded', 'false');
     }
-    const open = drawerIds.map(id => document.getElementById(id)).find(node => node?.classList.contains('open')) || null;
+    if (right && !rightDrawerMedia.matches) {
+      right.classList.remove('open');
+      document.getElementById('detailToggle')?.setAttribute('aria-expanded', 'false');
+    }
+    const scrim = document.getElementById('drawerScrim');
+    if (scrim && !left?.classList.contains('open') && !right?.classList.contains('open')) scrim.hidden = true;
+  }
+
+  function sync() {
+    normalizeBreakpointState();
+    const open = drawerIds
+      .map(id => document.getElementById(id))
+      .find(node => node?.classList.contains('open') && drawerMode(node)) || null;
     if (open) activate(open);
-    else if (activeDrawer) deactivate(activeDrawer, true);
+    else if (activeDrawer) deactivate(activeDrawer, false);
+    else syncBodyState();
   }
 
   document.addEventListener('keydown', event => {
     const drawer = activeDrawer;
-    if (!drawer || event.key !== 'Tab') return;
+    if (!drawer || !drawerMode(drawer)) return;
+    if (event.key === 'Escape') {
+      triggerFor(drawer.id)?.click?.();
+      return;
+    }
+    if (event.key !== 'Tab') return;
     const rows = focusables(drawer);
     if (!rows.length) {
       event.preventDefault();
@@ -87,9 +137,16 @@
 
   document.addEventListener('focusin', event => {
     const drawer = activeDrawer;
-    if (!drawer || drawer.contains(event.target)) return;
+    if (!drawer || !drawerMode(drawer) || drawer.contains(event.target)) return;
     firstFocus(drawer)?.focus?.();
   }, true);
+
+  installMobileStylesheet();
+  syncViewport();
+  window.visualViewport?.addEventListener?.('resize', syncViewport, { passive: true });
+  window.visualViewport?.addEventListener?.('scroll', syncViewport, { passive: true });
+  window.addEventListener('resize', syncViewport, { passive: true });
+  window.addEventListener('orientationchange', syncViewport, { passive: true });
 
   document.addEventListener('DOMContentLoaded', () => {
     const observer = new MutationObserver(sync);
@@ -97,7 +154,9 @@
       const drawer = document.getElementById(id);
       if (drawer) observer.observe(drawer, { attributes: true, attributeFilter: ['class'] });
     }
-    matchMedia('(max-width:1080px)').addEventListener?.('change', sync);
+    leftDrawerMedia.addEventListener?.('change', sync);
+    rightDrawerMedia.addEventListener?.('change', sync);
+    syncViewport();
     sync();
   });
 })();
