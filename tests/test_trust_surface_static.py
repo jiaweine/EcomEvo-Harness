@@ -33,6 +33,18 @@ def test_trust_surface_exposes_supported_conflicted_and_missing_claim_groups():
     assert "尚未覆盖的问题" in script
 
 
+def test_trust_surface_refreshes_from_persisted_result_without_reaching_into_module_state():
+    script = (ROOT / "frontend" / "trust-surface.js").read_text(encoding="utf-8")
+    assert "new MutationObserver" in script
+    assert "/api/conversations/${encodeURIComponent(cid)}" in script
+    assert "message.role === 'assistant'" in script
+    assert "latest?.payload?.grounding" in script
+    assert "latest?.payload?.evidence" in script
+    assert "credentials: 'same-origin'" in script
+    assert "state.messages" not in script
+    assert "const baseRenderEvidence" not in script
+
+
 def test_trust_surface_mobile_css_keeps_metrics_compact():
     css = (ROOT / "frontend" / "trust-surface.css").read_text(encoding="utf-8")
     assert ".trust-metrics" in css
