@@ -73,6 +73,7 @@ async def test_hybrid_search_streams_source_after_persisted_index_limit(tmp_path
     assert result["hits"]
     assert result["hits"][0]["asset_id"] == "very-long"
     assert "stream_tail" in result["hits"][0]["channels"]
+    assert result["residual_recall"] is False
     assert result["stream_tail_recall"] is True
     assert "ORDER-TAIL-9917" in result["hits"][0]["snippet"]
 
@@ -98,3 +99,5 @@ async def test_residual_recall_does_not_resurrect_generic_text_when_requested_id
     )
 
     assert result["hits"] == []
+    assert result["residual_recall"] is False
+    assert result["stream_tail_recall"] is False
