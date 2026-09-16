@@ -5,7 +5,15 @@ from typing import Any
 
 from .engine import EcomEvoEngine as BaseEcomEvoEngine
 from .policy_control import PolicyStore
+from .policy_view import runtime_policy_view
 from .tools import PolicyLookupTool
+
+
+class VersionedPolicyLookupTool(PolicyLookupTool):
+    """Policy lookup that preserves audit provenance but limits runtime rule prose."""
+
+    async def execute(self, ctx, args):
+        return runtime_policy_view(await super().execute(ctx, args))
 
 
 class EcomEvoEngine(BaseEcomEvoEngine):
@@ -36,4 +44,4 @@ class EcomEvoEngine(BaseEcomEvoEngine):
         self.policies = PolicyStore(db_path)
         if not custom_tool_registry:
             self.tools.policies = self.policies
-            self.tools.tools["policy.lookup"] = PolicyLookupTool(self.policies)
+            self.tools.tools["policy.lookup"] = VersionedPolicyLookupTool(self.policies)
