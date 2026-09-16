@@ -411,19 +411,28 @@ class PolicyStore:
         return value
 
     def list_versions(self, *, policy_id: str | None = None, domain: str | None = None) -> list[PolicyVersion]:
-        clauses: list[str] = []
-        args: list[Any] = []
-        if policy_id:
-            clauses.append("policy_id=?")
-            args.append(str(policy_id))
-        if domain:
-            clauses.append("domain=?")
-            args.append(str(domain))
-        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        policy_filter = str(policy_id) if policy_id else None
+        domain_filter = str(domain) if domain else None
         with self._connect() as connection:
-            rows = connection.execute(
-                f"SELECT * FROM policy_versions{where} ORDER BY policy_id, version DESC", tuple(args)
-            ).fetchall()
+            if policy_filter is not None and domain_filter is not None:
+                rows = connection.execute(
+                    "SELECT * FROM policy_versions WHERE policy_id=? AND domain=? ORDER BY policy_id, version DESC",
+                    (policy_filter, domain_filter),
+                ).fetchall()
+            elif policy_filter is not None:
+                rows = connection.execute(
+                    "SELECT * FROM policy_versions WHERE policy_id=? ORDER BY policy_id, version DESC",
+                    (policy_filter,),
+                ).fetchall()
+            elif domain_filter is not None:
+                rows = connection.execute(
+                    "SELECT * FROM policy_versions WHERE domain=? ORDER BY policy_id, version DESC",
+                    (domain_filter,),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM policy_versions ORDER BY policy_id, version DESC"
+                ).fetchall()
         return [value for row in rows if (value := self._row(row)) is not None]
 
     def publish(
