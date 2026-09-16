@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EcomEvo · 质量异议复核</title>
+  <link rel="stylesheet" href="/assets/feedback-admin.css" />
+</head>
+<body>
+  <main class="feedback-admin-shell">
+    <header class="feedback-admin-head">
+      <div>
+        <small>Evaluate · Feedback Review</small>
+        <h1>质量异议复核</h1>
+        <p>查看 operator 提交的事实、证据与规则异议。复核结果只进入质量治理，不会自动修改生产结论或权限。</p>
+      </div>
+      <a href="/" class="feedback-admin-back">返回工作台</a>
+    </header>
+
+    <section class="feedback-admin-guardrail" aria-label="权限边界">
+      <b>反馈是信号，不是 authority</b>
+      <span>accepted-for-eval 仅表示进入评估候选池；不会自动加入 Gold Set，不会修改 policy、routing、Verifier 或 BusinessAction。</span>
+    </section>
+
+    <section class="feedback-admin-toolbar">
+      <label><span>状态</span><select id="feedbackStatusFilter">
+        <option value="">全部</option>
+        <option value="open">待复核</option>
+        <option value="acknowledged">已确认收到</option>
+        <option value="accepted_for_eval">进入评估候选</option>
+        <option value="needs_followup">需要补充</option>
+        <option value="dismissed">已驳回</option>
+      </select></label>
+      <label><span>类型</span><select id="feedbackCategoryFilter">
+        <option value="">全部</option>
+        <option value="factual_error">事实有误</option>
+        <option value="missing_support">缺少直接支持</option>
+        <option value="wrong_rule">规则引用有误</option>
+        <option value="stale_source">来源已过期</option>
+        <option value="evidence_conflict">证据存在冲突</option>
+        <option value="other">其他问题</option>
+      </select></label>
+      <button id="feedbackRefreshBtn" type="button">刷新</button>
+    </section>
+
+    <section class="feedback-admin-metrics" id="feedbackMetrics" aria-label="异议概览"></section>
+
+    <div class="feedback-admin-grid">
+      <section class="feedback-admin-list-panel">
+        <div class="feedback-admin-section-title"><div><small>Queue</small><h2>异议队列</h2></div><span id="feedbackCount">0</span></div>
+        <div id="feedbackAdminList" class="feedback-admin-list"><div class="feedback-admin-empty">正在加载…</div></div>
+      </section>
+
+      <section class="feedback-admin-detail-panel" id="feedbackAdminDetail">
+        <div class="feedback-admin-empty">选择一条异议查看详情。</div>
+      </section>
+    </div>
+  </main>
+  <div class="feedback-admin-toast" id="feedbackAdminToast" role="status" aria-live="polite"></div>
+  <script src="/assets/feedback-admin.js"></script>
+</body>
+</html>
