@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from ecomevo.models import BeliefState, DecisionDomain, GoalState, SubAgentResult, ToolResult
 from ecomevo.runtime import DecisionVerifier, EcomEvoEngine, PolicyStore
 from ecomevo.runtime.governance import GovernanceBoundary
@@ -69,6 +71,33 @@ def test_publish_preserves_historical_resolution(tmp_path):
     assert old.effective_to == "2026-01-01T00:00:00Z"
 
 
+def test_policy_family_cannot_change_domain_or_bypass_publish(tmp_path):
+    store = PolicyStore(tmp_path / "policy.db", seed_defaults=False)
+    store.create_version(
+        policy_id="commerce.claims",
+        domain="product_governance",
+        rules=["v1"],
+        status="active",
+        effective_from="2025-01-01T00:00:00Z",
+    )
+
+    with pytest.raises(ValueError, match="same domain"):
+        store.create_version(
+            policy_id="commerce.claims",
+            domain="merchant_review",
+            rules=["wrong domain"],
+            status="draft",
+        )
+    with pytest.raises(ValueError, match="created as draft"):
+        store.create_version(
+            policy_id="commerce.claims",
+            domain="product_governance",
+            rules=["bypass publish"],
+            status="active",
+            effective_from="2026-01-01T00:00:00Z",
+        )
+
+
 def test_scope_specific_policy_overrides_global_without_false_conflict(tmp_path):
     store = PolicyStore(tmp_path / "policy.db", seed_defaults=False)
     _rule(store, "global.listing", "review")
@@ -112,17 +141,22 @@ def test_higher_priority_control_wins_and_records_override(tmp_path):
     assert result["overridden"][0]["policy_id"] == "policy.base"
 
 
-def test_runtime_engine_binds_persistent_policy_store_to_lookup(tmp_path):
+def test_runtime_engine_binds_persistent_policy_store_to_lookup_and_pins_time(tmp_path):
     engine = EcomEvoEngine(tmp_path / "runtime.db")
     tool = engine.tools.tools["policy.lookup"]
 
     assert tool.policies is engine.policies
     goal = GoalState(primary="核对商品功效声明", domain=DecisionDomain.PRODUCT_GOVERNANCE)
-    result = asyncio.run(tool.execute({"goal": goal, "text": goal.primary, "assets": []}, {}))
+    context = {"goal": goal, "text": goal.primary, "assets": []}
+    first = asyncio.run(tool.execute(context, {}))
+    pinned = context["_policy_decision_at"]
+    second = asyncio.run(tool.execute(context, {}))
 
-    assert result["status"] == "resolved"
-    assert result["resolution_mode"] == "versioned_policy_store"
-    assert result["policies"][0]["version_id"] == "builtin.product-governance@v1"
+    assert first["status"] == "resolved"
+    assert first["resolution_mode"] == "versioned_policy_store"
+    assert first["policies"][0]["version_id"] == "builtin.product-governance@v1"
+    assert first["as_of"] == pinned
+    assert second["as_of"] == pinned
 
 
 def test_verifier_fails_closed_on_policy_conflict():
@@ -146,6 +180,19 @@ def test_verifier_fails_closed_on_policy_conflict():
     assert result.evidence_complete is False
     assert "适用政策存在未解决冲突" in result.missing_evidence
     assert result.score <= 0.49
+
+
+def test_verifier_fails_closed_when_effective_policy_is_missing():
+    verifier = DecisionVerifier()
+    goal = GoalState(primary="一般核对", domain=DecisionDomain.GENERAL)
+    belief = BeliefState(facts={"asset_count": 0})
+    tools = [ToolResult(call_id="policy-1", tool="policy.lookup", ok=True, data={"status": "missing"}, cost=0.1)]
+    agents = [SubAgentResult(agent="reviewer", summary="done", confidence=1.0)]
+
+    result = verifier.verify(goal, belief, tools, agents, actions=[])
+
+    assert result.passed is False
+    assert "当前时间与业务范围内的有效政策" in result.missing_evidence
 
 
 def test_governance_policy_evidence_carries_version_and_conflict_state():
