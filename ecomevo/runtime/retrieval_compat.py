@@ -36,6 +36,18 @@ class StreamingTailRecallGuard:
         }
 
     @classmethod
+    def _qualifies(cls, query: str, matched: list[str]) -> bool:
+        if not matched:
+            return False
+        identifiers = cls._query_identifiers(query)
+        if not identifiers:
+            return True
+        matched_upper = {str(value).upper() for value in matched}
+        # When the operator supplied a concrete order/SKU/merchant identifier, a
+        # generic domain token is not enough to resurrect a long attachment.
+        return bool(identifiers & matched_upper)
+
+    @classmethod
     def _score(cls, query: str, matched: list[str], *, streamed: bool = False) -> float:
         identifiers = cls._query_identifiers(query)
         matched_upper = {str(value).upper() for value in matched}
@@ -58,7 +70,7 @@ class StreamingTailRecallGuard:
             return [], ""
         lowered = raw.lower()
         matched = [word for word in words if str(word).lower() in lowered]
-        if not matched:
+        if not cls._qualifies(query, matched):
             return [], ""
 
         # Center the snippet on the strongest available anchor. Exact order/SKU/merchant
@@ -110,7 +122,9 @@ class StreamingTailRecallGuard:
     @classmethod
     async def augment(cls, result: dict[str, Any], ctx: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
         query = " ".join(args.get("keywords") or []) or str(ctx.get("text") or "")
-        words = list(result.get("query_terms") or runtime_tools._query_terms(query))
+        # Never use the display-capped result[query_terms] for recall. The complete
+        # query-term set may contain a decisive identifier after the first 12 terms.
+        words = runtime_tools._query_terms(query)
         if not words:
             return result
 
@@ -127,6 +141,8 @@ class StreamingTailRecallGuard:
             channel = "residual_index"
             if not matched and bool((asset.get("meta") or {}).get("search_truncated")):
                 matched, snippet = runtime_tools._stream_text_hit(asset, words)
+                if not cls._qualifies(query, matched):
+                    matched, snippet = [], ""
                 channel = "stream_tail"
             if not matched:
                 continue
