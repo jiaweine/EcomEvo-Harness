@@ -107,12 +107,17 @@
     const left = document.getElementById('leftbar');
     const right = document.getElementById('rightbar');
     if (left && !leftDrawerMedia.matches) {
-      left.classList.remove('open');
-      document.getElementById('navToggle')?.setAttribute('aria-expanded', 'false');
+      // MutationObserver below watches drawer class changes. Only mutate the class
+      // when state actually changes, otherwise a desktop sync can recursively
+      // schedule itself forever before DOMContentLoaded finishes.
+      if (left.classList.contains('open')) left.classList.remove('open');
+      const navToggle = document.getElementById('navToggle');
+      if (navToggle?.getAttribute('aria-expanded') !== 'false') navToggle?.setAttribute('aria-expanded', 'false');
     }
     if (right && !rightDrawerMedia.matches) {
-      right.classList.remove('open');
-      document.getElementById('detailToggle')?.setAttribute('aria-expanded', 'false');
+      if (right.classList.contains('open')) right.classList.remove('open');
+      const detailToggle = document.getElementById('detailToggle');
+      if (detailToggle?.getAttribute('aria-expanded') !== 'false') detailToggle?.setAttribute('aria-expanded', 'false');
     }
     const scrim = document.getElementById('drawerScrim');
     if (scrim && !left?.classList.contains('open') && !right?.classList.contains('open')) scrim.hidden = true;
