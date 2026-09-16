@@ -102,18 +102,25 @@ class FeedbackConversationStore(TenantConversationStore):
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    def _assistant_message(self, cid: str, message_id: str, tenant_id: str | None) -> dict[str, Any]:
+    def _assistant_message(
+        self,
+        cid: str,
+        message_id: str,
+        tenant_id: str | None,
+    ) -> dict[str, Any]:
         tenant = self._request_tenant(tenant_id)
-        params: list[Any] = [cid, message_id]
-        where = "m.conversation_id=? AND m.id=? AND m.role='assistant'"
-        if tenant is not None:
-            where += " AND c.tenant_id=?"
-            params.append(tenant)
         with self._conn() as db:
             row = db.execute(
-                "SELECT m.*,c.tenant_id,c.scene FROM messages m "
-                "JOIN conversations c ON c.id=m.conversation_id WHERE " + where,
-                params,
+                """
+                SELECT m.*,c.tenant_id,c.scene
+                FROM messages m
+                JOIN conversations c ON c.id=m.conversation_id
+                WHERE m.conversation_id=?
+                  AND m.id=?
+                  AND m.role='assistant'
+                  AND (? IS NULL OR c.tenant_id=?)
+                """,
+                (cid, message_id, tenant, tenant),
             ).fetchone()
         if not row:
             raise KeyError(message_id)
@@ -186,7 +193,11 @@ class FeedbackConversationStore(TenantConversationStore):
         }
 
     @staticmethod
-    def _select_target(targets: dict[str, Any], target_type: str, target_ref: str) -> dict[str, Any]:
+    def _select_target(
+        targets: dict[str, Any],
+        target_type: str,
+        target_ref: str,
+    ) -> dict[str, Any]:
         if target_type == "answer":
             return {
                 "type": "answer",
@@ -211,6 +222,7 @@ class FeedbackConversationStore(TenantConversationStore):
         target_ref: str = "",
         explanation: str,
         proposed_correction: str = "",
+        submitted_role: str = "operator",
         tenant_id: str | None = None,
     ) -> dict[str, Any]:
         category = str(category or "").strip().lower()
@@ -218,6 +230,7 @@ class FeedbackConversationStore(TenantConversationStore):
         target_type = str(target_type or "").strip().lower()
         target_ref = str(target_ref or "").strip()
         actor = str(submitted_by or "").strip()
+        actor_role = str(submitted_role or "operator").strip().lower()[:64] or "operator"
         explanation = str(explanation or "").strip()
         proposed_correction = str(proposed_correction or "").strip()
         if category not in FEEDBACK_CATEGORIES:
@@ -250,16 +263,19 @@ class FeedbackConversationStore(TenantConversationStore):
         now = time.time()
         with self._conn() as db:
             db.execute("BEGIN IMMEDIATE")
-            # Re-check tenant/message ownership inside the write transaction so the
-            # append cannot race a mismatched conversation reference.
-            params: list[Any] = [cid, assistant_message_id]
-            where = "m.conversation_id=? AND m.id=? AND m.role='assistant'"
-            if tenant is not None:
-                where += " AND c.tenant_id=?"
-                params.append(tenant)
+            # Re-check ownership inside the same write transaction. The SQL shape is
+            # fixed; tenant is always a bound value and never interpolated.
             owned = db.execute(
-                "SELECT 1 FROM messages m JOIN conversations c ON c.id=m.conversation_id WHERE " + where,
-                params,
+                """
+                SELECT 1
+                FROM messages m
+                JOIN conversations c ON c.id=m.conversation_id
+                WHERE m.conversation_id=?
+                  AND m.id=?
+                  AND m.role='assistant'
+                  AND (? IS NULL OR c.tenant_id=?)
+                """,
+                (cid, assistant_message_id, tenant, tenant),
             ).fetchone()
             if not owned:
                 raise KeyError(assistant_message_id)
@@ -283,13 +299,13 @@ class FeedbackConversationStore(TenantConversationStore):
                 ),
             )
             db.execute(
-                "INSERT INTO evidence_dispute_events(dispute_id,event_type,actor_user_id,actor_role,payload,created_at) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO evidence_dispute_events("
+                "dispute_id,event_type,actor_user_id,actor_role,payload,created_at) VALUES(?,?,?,?,?,?)",
                 (
                     feedback_id,
                     "submitted",
                     actor,
-                    "operator",
+                    actor_role,
                     json.dumps({"authority_changed": False}, ensure_ascii=False),
                     now,
                 ),
@@ -313,22 +329,10 @@ class FeedbackConversationStore(TenantConversationStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         tenant = self._request_tenant(tenant_id)
-        where: list[str] = []
-        params: list[Any] = []
-        if tenant is not None:
-            where.append("c.tenant_id=?")
-            params.append(tenant)
-        if cid is not None:
-            where.append("d.conversation_id=?")
-            params.append(cid)
-        if feedback_id is not None:
-            where.append("d.id=?")
-            params.append(feedback_id)
-        predicate = " AND ".join(where) if where else "1=1"
-        params.append(max(1, min(500, int(limit))))
+        bounded_limit = max(1, min(500, int(limit)))
         with self._conn() as db:
             rows = db.execute(
-                f"""
+                """
                 SELECT d.*,
                   (SELECT e.event_type FROM evidence_dispute_events e
                    WHERE e.dispute_id=d.id AND e.event_type!='submitted'
@@ -344,11 +348,21 @@ class FeedbackConversationStore(TenantConversationStore):
                    ORDER BY e.id DESC LIMIT 1) AS reviewed_at
                 FROM evidence_disputes d
                 JOIN conversations c ON c.id=d.conversation_id
-                WHERE {predicate}
+                WHERE (? IS NULL OR c.tenant_id=?)
+                  AND (? IS NULL OR d.conversation_id=?)
+                  AND (? IS NULL OR d.id=?)
                 ORDER BY d.created_at DESC,d.id DESC
                 LIMIT ?
-                """,  # nosec - predicate is assembled only from fixed clauses above.
-                params,
+                """,
+                (
+                    tenant,
+                    tenant,
+                    cid,
+                    cid,
+                    feedback_id,
+                    feedback_id,
+                    bounded_limit,
+                ),
             ).fetchall()
         return [self._decode_feedback(row) for row in rows]
 
@@ -370,14 +384,20 @@ class FeedbackConversationStore(TenantConversationStore):
         category: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        rows = self._feedback_query(tenant_id=tenant_id, limit=max(200, limit))
+        scan_limit = 500 if status or category else max(200, limit)
+        rows = self._feedback_query(tenant_id=tenant_id, limit=scan_limit)
         if status:
             rows = [row for row in rows if row.get("status") == status]
         if category:
             rows = [row for row in rows if row.get("category") == category]
         return rows[: max(1, min(200, int(limit)))]
 
-    def get_feedback(self, feedback_id: str, *, tenant_id: str | None = None) -> dict[str, Any]:
+    def get_feedback(
+        self,
+        feedback_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         rows = self._feedback_query(tenant_id=tenant_id, feedback_id=feedback_id, limit=1)
         if not rows:
             raise KeyError(feedback_id)
@@ -401,21 +421,20 @@ class FeedbackConversationStore(TenantConversationStore):
         now = time.time()
         with self._conn() as db:
             db.execute("BEGIN IMMEDIATE")
-            params: list[Any] = [feedback_id]
-            tenant_clause = ""
-            if tenant is not None:
-                tenant_clause = " AND c.tenant_id=?"
-                params.append(tenant)
             owned = db.execute(
-                "SELECT 1 FROM evidence_disputes d JOIN conversations c ON c.id=d.conversation_id "
-                "WHERE d.id=?" + tenant_clause,
-                params,
+                """
+                SELECT 1
+                FROM evidence_disputes d
+                JOIN conversations c ON c.id=d.conversation_id
+                WHERE d.id=? AND (? IS NULL OR c.tenant_id=?)
+                """,
+                (feedback_id, tenant, tenant),
             ).fetchone()
             if not owned:
                 raise KeyError(feedback_id)
             db.execute(
-                "INSERT INTO evidence_dispute_events(dispute_id,event_type,actor_user_id,actor_role,payload,created_at) "
-                "VALUES(?,?,?,?,?,?)",
+                "INSERT INTO evidence_dispute_events("
+                "dispute_id,event_type,actor_user_id,actor_role,payload,created_at) VALUES(?,?,?,?,?,?)",
                 (
                     feedback_id,
                     decision,
@@ -430,7 +449,12 @@ class FeedbackConversationStore(TenantConversationStore):
             )
         return self.get_feedback(feedback_id, tenant_id=tenant)
 
-    def feedback_events(self, feedback_id: str, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
+    def feedback_events(
+        self,
+        feedback_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         tenant = self._request_tenant(tenant_id)
         self.get_feedback(feedback_id, tenant_id=tenant)
         with self._conn() as db:
@@ -445,7 +469,12 @@ class FeedbackConversationStore(TenantConversationStore):
             result.append(data)
         return result
 
-    def evaluation_sample(self, feedback_id: str, *, tenant_id: str | None = None) -> dict[str, Any]:
+    def evaluation_sample(
+        self,
+        feedback_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         feedback = self.get_feedback(feedback_id, tenant_id=tenant_id)
         tenant = self._request_tenant(tenant_id)
         message = self._assistant_message(
@@ -454,18 +483,24 @@ class FeedbackConversationStore(TenantConversationStore):
             tenant,
         )
         with self._conn() as db:
-            params: list[Any] = [feedback["conversation_id"], float(message["created_at"])]
-            tenant_clause = ""
-            if tenant is not None:
-                tenant_clause = " AND c.tenant_id=?"
-                params.append(tenant)
             user_row = db.execute(
-                "SELECT m.content,m.created_at FROM messages m "
-                "JOIN conversations c ON c.id=m.conversation_id "
-                "WHERE m.conversation_id=? AND m.role='user' AND m.created_at<=?"
-                + tenant_clause
-                + " ORDER BY m.created_at DESC,m.id DESC LIMIT 1",
-                params,
+                """
+                SELECT m.content,m.created_at
+                FROM messages m
+                JOIN conversations c ON c.id=m.conversation_id
+                WHERE m.conversation_id=?
+                  AND m.role='user'
+                  AND m.created_at<=?
+                  AND (? IS NULL OR c.tenant_id=?)
+                ORDER BY m.created_at DESC,m.id DESC
+                LIMIT 1
+                """,
+                (
+                    feedback["conversation_id"],
+                    float(message["created_at"]),
+                    tenant,
+                    tenant,
+                ),
             ).fetchone()
         payload = message["payload"]
         evidence = payload.get("evidence") if isinstance(payload.get("evidence"), list) else []
