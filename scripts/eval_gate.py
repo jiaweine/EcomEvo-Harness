@@ -5,10 +5,14 @@ import asyncio
 import json
 from pathlib import Path
 
-from ecomevo.evaluation import evaluate
+from ecomevo.evaluation import asset_for, evaluate, load_cases, validate
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GOLD = ROOT / "evals" / "gold_set.jsonl"
+
+# Keep the historical helper names importable from scripts.eval_gate while the
+# implementation lives in the packaged evaluation core used by the Test Center.
+__all__ = ["asset_for", "evaluate", "load_cases", "validate", "DEFAULT_GOLD"]
 
 
 def main() -> int:
