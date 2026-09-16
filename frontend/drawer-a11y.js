@@ -65,6 +65,22 @@
     else if (activeDrawer) deactivate(activeDrawer, true);
   }
 
+  function loadFeedbackSurface() {
+    if (!document.querySelector('link[data-ecomevo-feedback-surface]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = '/assets/feedback-surface.css';
+      link.dataset.ecomevoFeedbackSurface = '1';
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector('script[data-ecomevo-feedback-surface]')) {
+      const script = document.createElement('script');
+      script.src = '/assets/feedback-surface.js';
+      script.dataset.ecomevoFeedbackSurface = '1';
+      document.body.appendChild(script);
+    }
+  }
+
   document.addEventListener('keydown', event => {
     const drawer = activeDrawer;
     if (!drawer || event.key !== 'Tab') return;
@@ -92,6 +108,7 @@
   }, true);
 
   document.addEventListener('DOMContentLoaded', () => {
+    loadFeedbackSurface();
     const observer = new MutationObserver(sync);
     for (const id of drawerIds) {
       const drawer = document.getElementById(id);
