@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import os
 import time
+import uuid
 from typing import Any
 
 import httpx
 
-from ecomevo.runtime.mcp import MCPRegistry, MCPServer
+from ecomevo.runtime.mcp import LEGACY_VERSION, MODERN_VERSION, MCPRegistry, MCPServer, _LegacyRequired
 
 
 AUTHORITY_LEVELS = {
@@ -32,6 +35,19 @@ class MCPConnectionCatalog:
 
     def __init__(self, registry: MCPRegistry):
         self.registry = registry
+
+    @staticmethod
+    def _metadata() -> dict[str, dict[str, Any]]:
+        raw = os.environ.get("ECOMEVO_MCP_CONNECTION_META", "").strip()
+        if not raw:
+            return {}
+        try:
+            value = json.loads(raw)
+        except Exception:
+            return {}
+        if not isinstance(value, dict):
+            return {}
+        return {str(key): row for key, row in value.items() if isinstance(row, dict)}
 
     def _declared_tools(self, server_key: str) -> dict[str, dict[str, Any]]:
         tools: dict[str, dict[str, Any]] = {}
@@ -80,6 +96,7 @@ class MCPConnectionCatalog:
         declared = self._declared_tools(server.key)
         read_count = sum(1 for row in declared.values() if row["capability"] == "read")
         action_count = sum(1 for row in declared.values() if row["capability"] == "governed_action")
+        meta = self._metadata().get(server.key, {})
         return {
             "key": server.key,
             "name": server.name,
@@ -87,9 +104,9 @@ class MCPConnectionCatalog:
             "configured": True,
             "transport": "streamable_http",
             "scope": "deployment",
-            "authority": _enum(getattr(server, "authority", "unknown"), AUTHORITY_LEVELS),
-            "freshness": _enum(getattr(server, "freshness", "unknown"), FRESHNESS_LEVELS),
-            "auth_configured": bool(server.token_env and self.registry.has_server_credential(server.key)),
+            "authority": _enum(meta.get("authority"), AUTHORITY_LEVELS),
+            "freshness": _enum(meta.get("freshness"), FRESHNESS_LEVELS),
+            "auth_configured": bool(server.token_env and os.environ.get(server.token_env)),
             "health": {"state": "not_checked" if server.enabled else "disabled"},
             "summary": {
                 "declared_tools": len(declared),
@@ -120,6 +137,23 @@ class MCPConnectionCatalog:
             raise KeyError(key)
         return self._connection(server)
 
+    async def _discover(self, server: MCPServer) -> dict[str, Any]:
+        try:
+            result = await self.registry._modern_request(
+                server, "tools/list", {}, allow_legacy_probe=True
+            )
+            return {"protocol": MODERN_VERSION, "tools": result.get("tools", [])}
+        except _LegacyRequired:
+            version, session = self.registry._legacy_sessions.get(server.key) or await self.registry._legacy_initialize(server)
+            rid = uuid.uuid4().hex
+            payload = {"jsonrpc": "2.0", "id": rid, "method": "tools/list", "params": {}}
+            headers = {**self.registry._auth_headers(server), "MCP-Protocol-Version": version or LEGACY_VERSION}
+            if session:
+                headers["MCP-Session-Id"] = session
+            response, data = await self.registry._post(server, payload, headers)
+            result = self.registry._result_or_raise(response, data)
+            return {"protocol": version or LEGACY_VERSION, "tools": result.get("tools", [])}
+
     async def probe(self, key: str) -> dict[str, Any]:
         server = self.registry.servers.get(key)
         if server is None:
@@ -130,11 +164,14 @@ class MCPConnectionCatalog:
         started = time.perf_counter()
         checked_at = time.time()
         try:
-            discovery = await self.registry.discover_tools(key)
+            discovery = await self._discover(server)
             latency_ms = round((time.perf_counter() - started) * 1000, 1)
             declared = self._declared_tools(key)
             merged = []
-            for row in discovery.get("tools", []):
+            discovered_rows = discovery.get("tools", []) if isinstance(discovery.get("tools"), list) else []
+            for row in discovered_rows:
+                if not isinstance(row, dict):
+                    continue
                 name = str(row.get("name") or "").strip()
                 if not name:
                     continue
@@ -162,7 +199,7 @@ class MCPConnectionCatalog:
                 },
                 "summary": {
                     **base["summary"],
-                    "discovered_tools": len(discovery.get("tools", [])),
+                    "discovered_tools": len(discovered_rows),
                 },
                 "tools": sorted(merged, key=lambda row: row["name"]),
             }
