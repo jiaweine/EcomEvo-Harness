@@ -57,6 +57,8 @@ def _source_hash(
     rules: list[str],
     controls: dict[str, Any],
     scope: dict[str, str],
+    authority: int,
+    priority: int,
     source: str,
 ) -> str:
     payload = _canonical(
@@ -65,6 +67,8 @@ def _source_hash(
             "rules": rules,
             "controls": controls,
             "scope": scope,
+            "authority": authority,
+            "priority": priority,
             "source": source,
         }
     )
@@ -90,11 +94,15 @@ class PolicyVersion:
     source_hash: str
     created_at: str
 
+    @property
+    def version_id(self) -> str:
+        return f"{self.policy_id}@v{self.version}"
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "policy_id": self.policy_id,
             "version": self.version,
-            "version_id": f"{self.policy_id}@v{self.version}",
+            "version_id": self.version_id,
             "domain": self.domain,
             "status": self.status,
             "rules": list(self.rules),
@@ -113,13 +121,12 @@ class PolicyVersion:
 
 
 class PolicyStore:
-    """SQLite-backed immutable policy versions with deterministic lifecycle resolution.
+    """SQLite-backed immutable policy versions with deterministic resolution.
 
-    Policy content is immutable per (policy_id, version). Publishing/retiring only changes
-    lifecycle fields needed to define the effective interval. Runtime lookup never asks a
-    model to choose policy precedence: authority, scope specificity and explicit priority
-    are resolved deterministically, and equal-precedence incompatible controls are surfaced
-    as conflicts instead of silently picking one.
+    Content is immutable per ``(policy_id, version)``. Lifecycle operations only alter
+    status/effective interval/approver. Runtime precedence is deterministic:
+    authority -> scope specificity -> explicit priority. Equal-precedence incompatible
+    structured controls become an unresolved conflict; no model gets to silently choose.
     """
 
     BUILTINS: tuple[dict[str, Any], ...] = (
@@ -182,9 +189,7 @@ class PolicyStore:
                 "图文、视频、文案需做一致性与合规检查",
                 "无法直接理解的媒体应转视觉/音视频模型或人工复核",
             ],
-            "controls": {
-                "uninterpretable_media.action": "specialist_or_review",
-            },
+            "controls": {"uninterpretable_media.action": "specialist_or_review"},
         },
     )
 
@@ -238,10 +243,8 @@ class PolicyStore:
         clean: dict[str, str] = {}
         for key, value in dict(scope or {}).items():
             name = str(key).strip()
-            if not name:
-                continue
             text = str(value).strip()
-            if text:
+            if name and text:
                 clean[name] = text
         return clean
 
@@ -263,25 +266,28 @@ class PolicyStore:
         for row in self.BUILTINS:
             with self._connect() as connection:
                 exists = connection.execute(
-                    "SELECT 1 FROM policy_versions WHERE policy_id=? LIMIT 1",
-                    (row["policy_id"],),
+                    "SELECT 1 FROM policy_versions WHERE policy_id=? LIMIT 1", (row["policy_id"],)
                 ).fetchone()
             if exists:
                 continue
-            self.create_version(
-                policy_id=row["policy_id"],
-                domain=row["domain"],
-                rules=row["rules"],
-                controls=row.get("controls") or {},
-                scope={},
-                authority=50,
-                priority=0,
-                status="active",
-                effective_from="1970-01-01T00:00:00Z",
-                owner="system",
-                approver="system",
-                source="builtin:v1",
-            )
+            try:
+                self.create_version(
+                    policy_id=row["policy_id"],
+                    domain=row["domain"],
+                    rules=row["rules"],
+                    controls=row.get("controls") or {},
+                    scope={},
+                    authority=50,
+                    priority=0,
+                    status="active",
+                    effective_from="1970-01-01T00:00:00Z",
+                    owner="system",
+                    approver="system",
+                    source="builtin:v1",
+                )
+            except sqlite3.IntegrityError:
+                # Another worker may have seeded the same runtime DB concurrently.
+                pass
 
     def create_version(
         self,
@@ -311,7 +317,10 @@ class PolicyStore:
         authority = max(0, min(100, int(authority)))
         priority = int(priority)
         now = _utc_now()
-        start = _iso(effective_from, default=now if clean_status != "draft" else datetime(1970, 1, 1, tzinfo=timezone.utc))
+        start = _iso(
+            effective_from,
+            default=now if clean_status != "draft" else datetime(1970, 1, 1, tzinfo=timezone.utc),
+        )
         end = _iso(effective_to)
         if end is not None and _parse_time(end) <= _parse_time(start):
             raise ValueError("effective_to must be after effective_from")
@@ -320,16 +329,25 @@ class PolicyStore:
             rules=clean_rules,
             controls=clean_controls,
             scope=clean_scope,
+            authority=authority,
+            priority=priority,
             source=str(source or ""),
         )
         created_at = _iso(now)
 
         with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             current = connection.execute(
-                "SELECT COALESCE(MAX(version), 0) AS version FROM policy_versions WHERE policy_id=?",
+                "SELECT COALESCE(MAX(version), 0) AS version, MIN(domain) AS domain FROM policy_versions WHERE policy_id=?",
                 (policy_id,),
             ).fetchone()
-            version = int(current["version"] or 0) + 1
+            current_version = int(current["version"] or 0)
+            existing_domain = str(current["domain"] or "")
+            if existing_domain and existing_domain != domain:
+                raise ValueError("all versions of a policy_id must keep the same domain")
+            if clean_status == "active" and current_version > 0:
+                raise ValueError("new versions of an existing policy must be created as draft and published")
+            version = current_version + 1
             connection.execute(
                 """
                 INSERT INTO policy_versions(
@@ -404,8 +422,7 @@ class PolicyStore:
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         with self._connect() as connection:
             rows = connection.execute(
-                f"SELECT * FROM policy_versions{where} ORDER BY policy_id, version DESC",
-                tuple(args),
+                f"SELECT * FROM policy_versions{where} ORDER BY policy_id, version DESC", tuple(args)
             ).fetchall()
         return [value for row in rows if (value := self._row(row)) is not None]
 
@@ -417,18 +434,25 @@ class PolicyStore:
         effective_from: str | datetime | None = None,
         approver: str = "",
     ) -> PolicyVersion:
-        target = self.get_version(policy_id, version)
-        if target.status not in {"draft", "active"}:
-            raise ValueError("only draft/active policy versions can be published")
         start = _iso(effective_from, default=_utc_now())
         with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            target_row = connection.execute(
+                "SELECT * FROM policy_versions WHERE policy_id=? AND version=?",
+                (str(policy_id), int(version)),
+            ).fetchone()
+            target = self._row(target_row)
+            if target is None:
+                raise KeyError(f"unknown policy version: {policy_id}@v{version}")
+            if target.status not in {"draft", "active"}:
+                raise ValueError("only draft/active policy versions can be published")
             latest = connection.execute(
                 """
                 SELECT * FROM policy_versions
                 WHERE policy_id=? AND version<>? AND status='active' AND effective_to IS NULL
                 ORDER BY effective_from DESC, version DESC LIMIT 1
                 """,
-                (policy_id, int(version)),
+                (str(policy_id), int(version)),
             ).fetchone()
             if latest is not None:
                 latest_start = _parse_time(str(latest["effective_from"]))
@@ -436,23 +460,32 @@ class PolicyStore:
                     raise ValueError("cannot publish a version before the current active version")
                 connection.execute(
                     "UPDATE policy_versions SET status='superseded', effective_to=? WHERE policy_id=? AND version=?",
-                    (start, policy_id, int(latest["version"])),
+                    (start, str(policy_id), int(latest["version"])),
                 )
             connection.execute(
                 "UPDATE policy_versions SET status='active', effective_from=?, effective_to=NULL, approver=? WHERE policy_id=? AND version=?",
-                (start, str(approver or target.approver), policy_id, int(version)),
+                (start, str(approver or target.approver), str(policy_id), int(version)),
             )
         return self.get_version(policy_id, version)
 
     def retire(self, policy_id: str, version: int, *, effective_to: str | datetime | None = None) -> PolicyVersion:
-        target = self.get_version(policy_id, version)
         end = _iso(effective_to, default=_utc_now())
-        if _parse_time(end) <= _parse_time(target.effective_from):
-            raise ValueError("retirement must be after policy effective_from")
         with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            target_row = connection.execute(
+                "SELECT * FROM policy_versions WHERE policy_id=? AND version=?",
+                (str(policy_id), int(version)),
+            ).fetchone()
+            target = self._row(target_row)
+            if target is None:
+                raise KeyError(f"unknown policy version: {policy_id}@v{version}")
+            if target.status != "active":
+                raise ValueError("only an active policy version can be retired")
+            if _parse_time(end) <= _parse_time(target.effective_from):
+                raise ValueError("retirement must be after policy effective_from")
             connection.execute(
                 "UPDATE policy_versions SET status='retired', effective_to=? WHERE policy_id=? AND version=?",
-                (end, policy_id, int(version)),
+                (end, str(policy_id), int(version)),
             )
         return self.get_version(policy_id, version)
 
@@ -509,7 +542,7 @@ class PolicyStore:
             )
         )
         if not applicable:
-            return {
+            result = {
                 "domain": str(domain),
                 "as_of": _iso(moment),
                 "scope": request_scope,
@@ -519,8 +552,9 @@ class PolicyStore:
                 "policies": [],
                 "conflicts": [],
                 "overridden": [],
-                "resolution_hash": hashlib.sha256(b"missing").hexdigest(),
             }
+            result["resolution_hash"] = hashlib.sha256(_canonical(result).encode("utf-8")).hexdigest()
+            return result
 
         control_candidates: dict[str, list[tuple[PolicyVersion, int, Any]]] = {}
         for policy, specificity in applicable:
@@ -544,28 +578,25 @@ class PolicyStore:
                             "priority": top_precedence[2],
                         },
                         "candidates": [
-                            {
-                                "policy_id": policy.policy_id,
-                                "version": policy.version,
-                                "version_id": f"{policy.policy_id}@v{policy.version}",
-                                "value": value,
-                            }
+                            {"policy_id": policy.policy_id, "version": policy.version, "version_id": policy.version_id, "value": value}
                             for policy, _specificity, value in top
                         ],
                     }
                 )
                 continue
-            resolved_controls[key] = top[0][2]
+            winning_value = top[0][2]
+            winning_canonical = _canonical(winning_value)
+            resolved_controls[key] = winning_value
             for policy, specificity, value in candidates:
-                if (policy, specificity, value) in top:
+                if self._precedence(policy, specificity) == top_precedence and _canonical(value) == winning_canonical:
                     continue
-                if _canonical(value) != next(iter(distinct)):
+                if _canonical(value) != winning_canonical:
                     overridden.append(
                         {
                             "control": key,
                             "policy_id": policy.policy_id,
                             "version": policy.version,
-                            "version_id": f"{policy.policy_id}@v{policy.version}",
+                            "version_id": policy.version_id,
                             "value": value,
                             "precedence": {
                                 "authority": policy.authority,
@@ -593,16 +624,7 @@ class PolicyStore:
                     rules.append(rule)
 
         status = "conflicted" if conflicts else "resolved"
-        digest_payload = {
-            "domain": str(domain),
-            "as_of": _iso(moment),
-            "scope": request_scope,
-            "status": status,
-            "controls": resolved_controls,
-            "conflicts": conflicts,
-            "versions": [row["version_id"] for row in policies],
-        }
-        return {
+        result = {
             "domain": str(domain),
             "as_of": _iso(moment),
             "scope": request_scope,
@@ -612,5 +634,15 @@ class PolicyStore:
             "policies": policies,
             "conflicts": conflicts,
             "overridden": overridden,
-            "resolution_hash": hashlib.sha256(_canonical(digest_payload).encode("utf-8")).hexdigest(),
         }
+        digest_payload = {
+            "domain": result["domain"],
+            "as_of": result["as_of"],
+            "scope": request_scope,
+            "status": status,
+            "controls": resolved_controls,
+            "conflicts": conflicts,
+            "versions": [row["version_id"] for row in policies],
+        }
+        result["resolution_hash"] = hashlib.sha256(_canonical(digest_payload).encode("utf-8")).hexdigest()
+        return result
