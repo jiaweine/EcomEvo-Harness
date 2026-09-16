@@ -11,6 +11,7 @@ from PIL import Image
 from ecomevo.identity import IdentityMiddleware
 from . import application as _application
 from .policy_api import build_policy_router
+from .policy_worker import PolicyAwareDurableConversationWorker
 from .upload_security import validate_raster as _validate_raster
 
 
@@ -19,6 +20,20 @@ from .upload_security import validate_raster as _validate_raster
 # wake signals only and WebSocket delivery drains authoritative SQLite task_events.
 _application.Image = Image
 _application._validate_raster = _validate_raster
+
+# The lifespan worker may execute long after the originating HTTP request and may be
+# reclaimed by another process. Replace the pre-start worker with a tenant-aware wrapper
+# that derives policy scope from the durable conversation row rather than request-local
+# identity state. Core lease/execution behavior remains inherited unchanged.
+if not isinstance(_application.job_worker, PolicyAwareDurableConversationWorker):
+    _application.job_worker = PolicyAwareDurableConversationWorker(
+        _application.store,
+        _application.analyzer,
+        _application.mcp,
+        emit=_application.emit,
+        wake=_application.wake,
+        logger=_application.logger,
+    )
 
 if not getattr(_application.app.state, "policy_router_installed", False):
     _application.app.include_router(build_policy_router(_application.engine))
