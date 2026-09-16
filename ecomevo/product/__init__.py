@@ -1,5 +1,5 @@
 from . import lifecycle_store as _lifecycle_store  # patch the base schema before guarded/tenant subclasses load
-from .tenant_store import TenantConversationStore as ConversationStore
+from .feedback_store import FeedbackConversationStore as ConversationStore
 from .media import probe_media, extract_video_frames
 from .analyzer import ProductAnalyzer
 
