@@ -75,3 +75,26 @@ async def test_hybrid_search_streams_source_after_persisted_index_limit(tmp_path
     assert "stream_tail" in result["hits"][0]["channels"]
     assert result["stream_tail_recall"] is True
     assert "ORDER-TAIL-9917" in result["hits"][0]["snippet"]
+
+
+@pytest.mark.asyncio
+async def test_residual_recall_does_not_resurrect_generic_text_when_requested_id_is_absent(tmp_path: Path, monkeypatch):
+    _clear_remote_retrieval(monkeypatch)
+
+    content = "x" * 30000 + "\n该订单已发起退款，等待售后处理"
+    path = tmp_path / "generic-order.txt"
+    path.write_text(content, encoding="utf-8")
+    asset = {
+        "id": "generic-order",
+        "name": "generic-order.txt",
+        "mime": "text/plain",
+        "path": str(path),
+        "meta": probe_media(path, "text/plain"),
+    }
+
+    result = await ContextualHybridRetriever.search(
+        {"text": "核对 ORDER-NOT-HERE-7788 的退款", "assets": [asset]},
+        {},
+    )
+
+    assert result["hits"] == []
