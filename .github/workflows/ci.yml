@@ -172,7 +172,10 @@ jobs:
           uvicorn ecomevo.api.app:app --host 127.0.0.1 --port 8765 > /tmp/ecomevo-e2e.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          if ! python scripts/browser_e2e.py; then
+          # The job-level 20 minute limit is the outer safety net. The browser harness
+          # must normally finish quickly; a 3 minute watchdog turns hangs into a
+          # diagnostic failure with checkpoint output instead of consuming the runner.
+          if ! timeout --signal=TERM --kill-after=15s 180s python scripts/browser_e2e.py; then
             sed -n '1,240p' /tmp/ecomevo-e2e.log
             exit 1
           fi
