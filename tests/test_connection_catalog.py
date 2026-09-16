@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from ecomevo.api.connection_routes import install_connection_routes
 from ecomevo.identity import IdentityMiddleware
 from ecomevo.product.connection_catalog import MCPConnectionCatalog
-from ecomevo.runtime.mcp import MCPRegistry, MCPServer, MODERN_VERSION
+from ecomevo.runtime.mcp import LEGACY_VERSION, MODERN_VERSION, MCPRegistry, MCPServer
 
 
 def test_catalog_redacts_endpoint_secret_names_and_values(monkeypatch):
@@ -102,6 +102,41 @@ def test_probe_only_discovers_tools_and_unknown_stays_unknown():
     assert tools['mystery_tool']['risk'] == 'unknown'
 
 
+def test_probe_supports_legacy_discovery_without_tool_call():
+    calls = []
+
+    def handler(request: httpx.Request):
+        payload = json.loads(request.content.decode('utf-8'))
+        method = payload.get('method')
+        calls.append(method)
+        if method == 'tools/list' and 'mcp-protocol-version' in request.headers and request.headers['mcp-protocol-version'] == MODERN_VERSION:
+            return httpx.Response(400, request=request, content='legacy endpoint')
+        if method == 'initialize':
+            return httpx.Response(200, request=request, headers={'MCP-Session-Id': 'sess-console'}, json={
+                'jsonrpc': '2.0', 'id': payload['id'],
+                'result': {'protocolVersion': LEGACY_VERSION, 'capabilities': {'tools': {}}},
+            })
+        if method == 'notifications/initialized':
+            return httpx.Response(202, request=request)
+        if method == 'tools/list':
+            assert request.headers['mcp-session-id'] == 'sess-console'
+            return httpx.Response(200, request=request, json={
+                'jsonrpc': '2.0', 'id': payload['id'],
+                'result': {'tools': [{'name': 'legacy_lookup', 'description': 'legacy read discovery'}]},
+            })
+        raise AssertionError(payload)
+
+    registry = MCPRegistry(transport=httpx.MockTransport(handler))
+    registry.servers = {'legacy': MCPServer('legacy', '旧系统', 'https://legacy.example/mcp')}
+    result = asyncio.run(MCPConnectionCatalog(registry).probe('legacy'))
+
+    assert result['health']['state'] == 'healthy'
+    assert result['health']['protocol'] == LEGACY_VERSION
+    assert calls == ['tools/list', 'initialize', 'notifications/initialized', 'tools/list']
+    assert 'tools/call' not in calls
+    assert result['tools'][0]['capability'] == 'unknown'
+
+
 def test_probe_failure_is_sanitized(monkeypatch):
     monkeypatch.setenv('VERY_PRIVATE_TOKEN', 'do-not-leak')
 
@@ -146,6 +181,5 @@ def test_console_routes_do_not_expose_business_tool_execution():
     app = FastAPI()
     install_connection_routes(app, registry, Path('.'))
     paths = {(route.path, method) for route in app.routes for method in getattr(route, 'methods', set())}
-    assert ('POST', '/api/runtime/connections/{key}/probe') not in paths  # tuple order guard below
     assert ('/api/runtime/connections/{key}/probe', 'POST') in paths
     assert all('tools/call' not in path and 'execute' not in path for path, _method in paths)
