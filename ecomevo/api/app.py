@@ -10,6 +10,7 @@ from PIL import Image
 
 from ecomevo.identity import IdentityMiddleware
 from . import application as _application
+from .inbox_routes import install_inbox_routes
 from .upload_security import validate_raster as _validate_raster
 
 
@@ -18,6 +19,10 @@ from .upload_security import validate_raster as _validate_raster
 # wake signals only and WebSocket delivery drains authoritative SQLite task_events.
 _application.Image = Image
 _application._validate_raster = _validate_raster
+
+if not getattr(_application.app.state, "inbox_routes_installed", False):
+    install_inbox_routes(_application.app, _application.store, _application.FRONTEND)
+    _application.app.state.inbox_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
