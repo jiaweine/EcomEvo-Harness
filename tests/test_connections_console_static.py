@@ -10,7 +10,8 @@ ROUTES = (ROOT / 'ecomevo/api/connection_routes.py').read_text(encoding='utf-8')
 def test_connections_console_is_admin_runtime_surface():
     assert '/api/runtime/connections/ui' in ROUTES
     assert '/api/runtime/connections/{key}/probe' in ROUTES
-    assert 'tools/call' in ROUTES  # only appears in the explicit safety docstring
+    assert '.call_tool(' not in ROUTES
+    assert '"tools/call"' not in ROUTES
     assert 'No route in this module can execute an MCP business tool.' in ROUTES
 
 
