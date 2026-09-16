@@ -28,3 +28,12 @@ def test_switching_drawers_does_not_restore_focus_into_closed_drawer():
     assert "deactivate(activeDrawer, true)" in DRAWER
     assert "if (activeDrawer && activeDrawer !== drawer) deactivate(activeDrawer, false)" in DRAWER
     assert "else if (activeDrawer) deactivate(activeDrawer, true)" in DRAWER
+
+
+def test_breakpoint_normalization_does_not_self_trigger_drawer_observer():
+    # The MutationObserver watches drawer class attributes, so normalizeBreakpointState
+    # must not write the same class value on every sync. Requiring an explicit state
+    # guard prevents a microtask feedback loop that can starve DOMContentLoaded.
+    assert "if (left.classList.contains('open')) left.classList.remove('open')" in DRAWER
+    assert "if (right.classList.contains('open')) right.classList.remove('open')" in DRAWER
+    assert "observer.observe(drawer, { attributes: true, attributeFilter: ['class'] })" in DRAWER
