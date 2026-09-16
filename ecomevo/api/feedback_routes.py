@@ -92,6 +92,7 @@ def install_feedback_routes(app: FastAPI, store, frontend: Path) -> None:
                 cid,
                 req.assistant_message_id,
                 submitted_by=principal.user_id,
+                submitted_role=principal.role,
                 category=req.category,
                 impact=req.impact,
                 target_type=req.target_type,
