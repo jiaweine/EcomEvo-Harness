@@ -110,25 +110,25 @@ class QueueConversationStore(TenantConversationStore):
         tenant = self._request_tenant(tenant_id)
         now = time.time()
         where: list[str] = []
-        params: list[Any] = []
+        where_params: list[Any] = []
         if tenant is not None:
             where.append("c.tenant_id=?")
-            params.append(tenant)
+            where_params.append(tenant)
         if cid is not None:
             where.append("c.id=?")
-            params.append(cid)
+            where_params.append(cid)
         if scene:
             where.append("c.scene=?")
-            params.append(scene)
+            where_params.append(scene)
         if view == "mine":
             if not owner_user_id:
                 return []
             where.append("c.owner_user_id=?")
-            params.append(owner_user_id)
+            where_params.append(owner_user_id)
         elif view == "unassigned":
             where.append("c.owner_user_id IS NULL")
         predicate = " AND ".join(where) if where else "1=1"
-        params.extend([now, max(1, min(200, int(limit)))])
+        bounded_limit = max(1, min(200, int(limit)))
         sql = f"""
             SELECT c.*,
               EXISTS(SELECT 1 FROM conversation_jobs j
@@ -154,10 +154,13 @@ class QueueConversationStore(TenantConversationStore):
             FROM conversations c
             WHERE {predicate}
             ORDER BY CASE c.queue_priority
-                WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+                WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2
+                WHEN 'low' THEN 3 ELSE 4 END,
                 c.updated_at DESC,c.id DESC
             LIMIT ?
         """  # nosec - predicate is assembled exclusively from fixed clauses above.
+        # The active-lease placeholder appears in SELECT before all WHERE placeholders.
+        params: list[Any] = [now, *where_params, bounded_limit]
         with self._conn() as db:
             rows = db.execute(sql, params).fetchall()
         return [self._decode_inbox_row(row) for row in rows]
@@ -215,10 +218,20 @@ class QueueConversationStore(TenantConversationStore):
             if current and current != owner:
                 return None
             if not current:
-                db.execute(
-                    "UPDATE conversations SET owner_user_id=?,owner_claimed_at=?,queue_updated_at=? WHERE id=?",
-                    (owner, now, now, cid),
-                )
+                if tenant is None:
+                    cur = db.execute(
+                        "UPDATE conversations SET owner_user_id=?,owner_claimed_at=?,queue_updated_at=? "
+                        "WHERE id=? AND owner_user_id IS NULL",
+                        (owner, now, now, cid),
+                    )
+                else:
+                    cur = db.execute(
+                        "UPDATE conversations SET owner_user_id=?,owner_claimed_at=?,queue_updated_at=? "
+                        "WHERE id=? AND tenant_id=? AND owner_user_id IS NULL",
+                        (owner, now, now, cid, tenant),
+                    )
+                if cur.rowcount != 1:
+                    return None
         return self.get_inbox_item(cid, tenant_id=tenant)
 
     def release_claim(
@@ -247,10 +260,17 @@ class QueueConversationStore(TenantConversationStore):
             if owner and owner != actor and not allow_override:
                 raise PermissionError(owner)
             if owner:
-                db.execute(
-                    "UPDATE conversations SET owner_user_id=NULL,owner_claimed_at=NULL,queue_updated_at=? WHERE id=?",
-                    (now, cid),
-                )
+                if tenant is None:
+                    db.execute(
+                        "UPDATE conversations SET owner_user_id=NULL,owner_claimed_at=NULL,queue_updated_at=? WHERE id=?",
+                        (now, cid),
+                    )
+                else:
+                    db.execute(
+                        "UPDATE conversations SET owner_user_id=NULL,owner_claimed_at=NULL,queue_updated_at=? "
+                        "WHERE id=? AND tenant_id=?",
+                        (now, cid, tenant),
+                    )
         return self.get_inbox_item(cid, tenant_id=tenant)
 
     def update_queue_priority(self, cid: str, priority: str, *, tenant_id: str | None = None) -> dict[str, Any]:
