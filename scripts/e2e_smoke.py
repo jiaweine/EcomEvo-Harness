@@ -47,6 +47,52 @@ def main() -> None:
             assert assistant["payload"]["domain"] == "aftersales"
             assert assistant["payload"]["runtime"]["event_chain_valid"] is True
             assert detail["actions"]
+
+            # Structured feedback is a quality signal only. Submitting/reviewing it
+            # must not modify the original answer, evidence, or action state.
+            action_snapshot = [(row["id"], row["status"]) for row in detail["actions"]]
+            feedback = client.post(
+                f"/api/conversations/{conv['id']}/feedback",
+                json={
+                    "assistant_message_id": assistant["id"],
+                    "category": "missing_support",
+                    "impact": "decision_relevant",
+                    "target_type": "answer",
+                    "explanation": "请把物流签收结论对应到更直接的承运商证据。",
+                    "proposed_correction": "补充承运商原始轨迹后再确认。",
+                },
+            )
+            assert feedback.status_code == 200
+            feedback_id = feedback.json()["id"]
+            assert feedback.json()["status"] == "open"
+            unchanged = client.get(f"/api/conversations/{conv['id']}").json()
+            assert [(row["id"], row["status"]) for row in unchanged["actions"]] == action_snapshot
+            unchanged_assistant = [row for row in unchanged["messages"] if row["id"] == assistant["id"]][0]
+            assert unchanged_assistant["content"] == assistant["content"]
+            assert unchanged_assistant["payload"] == assistant["payload"]
+
+            reviewed = client.post(
+                f"/api/runtime/feedback/{feedback_id}/review",
+                json={"decision": "accepted_for_eval", "note": "仅进入离线评估候选。"},
+            )
+            assert reviewed.status_code == 200
+            assert reviewed.json()["status"] == "accepted_for_eval"
+            sample = client.get(f"/api/runtime/feedback/{feedback_id}/evaluation-sample").json()
+            assert sample["authority"] == {
+                "changes_production_authority": False,
+                "changes_policy": False,
+                "changes_routing": False,
+                "auto_promotes_to_gold_set": False,
+            }
+            assert client.get("/api/runtime/feedback/ui").status_code == 200
+            for path in (
+                "/assets/feedback-admin.js",
+                "/assets/feedback-admin.css",
+                "/assets/feedback-surface.js",
+                "/assets/feedback-surface.css",
+            ):
+                assert client.get(path).status_code == 200
+
             action = detail["actions"][0]
             if action["requires_confirmation"]:
                 completed = client.post(
@@ -60,6 +106,8 @@ def main() -> None:
                 "domain": assistant["payload"]["domain"],
                 "session_id": assistant["payload"]["session_id"],
                 "actions": len(detail["actions"]),
+                "feedback_id": feedback_id,
+                "feedback_status": reviewed.json()["status"],
                 "event_chain_valid": True,
             })
 
