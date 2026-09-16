@@ -8,23 +8,25 @@ from .hybrid_retrieval import ContextualHybridRetriever
 
 
 _IDENTIFIER_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]{1,10}[-_:]?[A-Za-z0-9_-]{3,}(?![A-Za-z0-9])")
+_RECOVERY_CHANNELS = {"residual_index", "stream_tail"}
 
 
 class StreamingTailRecallGuard:
-    """Close recall gaps left by bounded hybrid candidate chunking.
+    """Close and normalize recall gaps left by bounded hybrid candidate chunking.
 
     Hybrid retrieval intentionally caps contextual chunks for latency and memory. That
     cap is smaller than the persisted search index, so a relevant fact can live outside
     the neural/BM25 candidate window without the attachment itself being search-truncated.
 
-    Recovery therefore has two bounded stages for assets not already represented:
-    1. residual_index: scan the persisted search_text (bounded to the media SEARCH_LIMIT)
-       and extract the strongest lexical/identifier-centered snippet;
+    Recovery has two bounded stages for assets not already represented:
+    1. residual_index: scan persisted search_text (bounded to the media SEARCH_LIMIT);
     2. stream_tail: only when that persisted index is itself truncated, scan the source
        text file with the legacy streaming reader.
 
-    Both stages are read-only recall guards. They never alter Verifier/Governance/Action
-    authority and they run only after the normal hybrid/rerank path missed an asset.
+    The compatibility layer is also the canonical recovery-policy/telemetry boundary.
+    Earlier hybrid implementations may already emit a stream_tail candidate; those rows
+    are normalized here, subjected to the same exact-ID precision rule, and reflected in
+    stable top-level recovery telemetry.
     """
 
     @staticmethod
@@ -43,8 +45,8 @@ class StreamingTailRecallGuard:
         if not identifiers:
             return True
         matched_upper = {str(value).upper() for value in matched}
-        # When the operator supplied a concrete order/SKU/merchant identifier, a
-        # generic domain token is not enough to resurrect a long attachment.
+        # If the operator supplied a concrete order/SKU/merchant identifier, generic
+        # domain words are not sufficient to resurrect a long attachment.
         return bool(identifiers & matched_upper)
 
     @classmethod
@@ -53,8 +55,7 @@ class StreamingTailRecallGuard:
         matched_upper = {str(value).upper() for value in matched}
         exact_identifier = bool(identifiers & matched_upper)
         # Keep recovery scores in the same small magnitude as RRF. Exact business IDs
-        # deserve enough weight to compete with ordinary passages, while residual hits
-        # remain below a strong multi-channel hybrid match.
+        # can compete with ordinary passages but stay below a strong multi-channel hit.
         base = 0.010 if not streamed else 0.009
         return round(base + min(0.018, 0.003 * len(matched)) + (0.018 if exact_identifier else 0.0), 6)
 
@@ -73,15 +74,13 @@ class StreamingTailRecallGuard:
         if not cls._qualifies(query, matched):
             return [], ""
 
-        # Center the snippet on the strongest available anchor. Exact order/SKU/merchant
-        # identifiers win; otherwise prefer the longest matched term rather than the first
-        # generic domain token so the evidence excerpt is maximally discriminative.
+        # Center the excerpt on the strongest anchor. Exact business identifiers win;
+        # otherwise prefer the longest matched term over a generic first token.
         anchors: list[tuple[int, int, str]] = []
         identifiers = cls._query_identifiers(query)
         for word in matched:
             value = str(word)
-            pos = lowered.find(value.lower())
-            if pos < 0:
+            if lowered.find(value.lower()) < 0:
                 continue
             identifier_priority = 1 if value.upper() in identifiers else 0
             anchors.append((identifier_priority, len(value), value))
@@ -120,18 +119,57 @@ class StreamingTailRecallGuard:
         )
 
     @classmethod
+    def _normalize_existing_recovery_hits(
+        cls,
+        hits: list[dict[str, Any]],
+        query: str,
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        """Apply one precision policy to recovery rows regardless of who emitted them."""
+        normalized: list[dict[str, Any]] = []
+        used_channels: set[str] = set()
+        for row in hits:
+            channels = {str(value) for value in (row.get("channels") or [])}
+            recovery = channels & _RECOVERY_CHANNELS
+            if recovery and not cls._qualifies(query, list(row.get("matched") or [])):
+                # An older hybrid path may have recovered a long attachment from generic
+                # terms. Drop it when the query contains an exact ID that is absent.
+                continue
+            used_channels.update(recovery)
+            normalized.append(row)
+        return normalized, used_channels
+
+    @classmethod
+    def _with_telemetry(
+        cls,
+        result: dict[str, Any],
+        hits: list[dict[str, Any]],
+        used_channels: set[str],
+    ) -> dict[str, Any]:
+        output = dict(result)
+        output["hits"] = hits[: ContextualHybridRetriever.MAX_HITS]
+        channels = list(output.get("channels") or [])
+        for channel in ("residual_index", "stream_tail"):
+            if channel in used_channels and channel not in channels:
+                channels.append(channel)
+        output["channels"] = channels
+        # Stable booleans avoid forcing callers/tests/observability code to infer
+        # recovery from per-hit channel arrays or handle missing schema keys.
+        output["residual_recall"] = "residual_index" in used_channels
+        output["stream_tail_recall"] = "stream_tail" in used_channels
+        return output
+
+    @classmethod
     async def augment(cls, result: dict[str, Any], ctx: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
         query = " ".join(args.get("keywords") or []) or str(ctx.get("text") or "")
-        # Never use the display-capped result[query_terms] for recall. The complete
-        # query-term set may contain a decisive identifier after the first 12 terms.
+        # Never use display-capped result[query_terms] for recall: the decisive business
+        # identifier may appear after the first 12 display terms.
         words = runtime_tools._query_terms(query)
+        raw_hits = [dict(row) for row in (result.get("hits") or []) if isinstance(row, dict)]
+        hits, used_channels = cls._normalize_existing_recovery_hits(raw_hits, query)
         if not words:
-            return result
+            return cls._with_telemetry(result, hits, used_channels)
 
-        hits = [dict(row) for row in (result.get("hits") or []) if isinstance(row, dict)]
         present = {str(row.get("asset_id") or "") for row in hits}
-        used_channels: set[str] = set()
-
         for asset in ctx.get("assets") or []:
             aid = str(asset.get("id") or "")
             if not aid or aid in present:
@@ -151,22 +189,10 @@ class StreamingTailRecallGuard:
             present.add(aid)
             used_channels.add(channel)
 
-        if not used_channels:
-            return result
-
         hits.sort(key=lambda row: (-float(row.get("score") or 0.0), str(row.get("asset_id") or "")))
         for rank, row in enumerate(hits, 1):
             row["rank"] = rank
-        result = dict(result)
-        result["hits"] = hits[: ContextualHybridRetriever.MAX_HITS]
-        channels = list(result.get("channels") or [])
-        for channel in ("residual_index", "stream_tail"):
-            if channel in used_channels and channel not in channels:
-                channels.append(channel)
-        result["channels"] = channels
-        result["residual_recall"] = "residual_index" in used_channels
-        result["stream_tail_recall"] = "stream_tail" in used_channels
-        return result
+        return cls._with_telemetry(result, hits, used_channels)
 
 
 def install_streaming_tail_recall_guard() -> None:
