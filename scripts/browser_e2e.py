@@ -238,8 +238,25 @@ def run() -> None:
             )
             expect(page.locator("#taskReadyChip")).not_to_contain_text("处理中", timeout=45_000)
 
+            # Admin Test Center loads the packaged Gold Set without running production mutations.
+            eval_page = context.new_page()
+            eval_errors: list[str] = []
+            eval_page.on("pageerror", lambda exc: eval_errors.append(f"pageerror: {exc}"))
+            eval_page.on(
+                "console",
+                lambda msg: eval_errors.append(f"console: {msg.text}")
+                if msg.type == "error"
+                else None,
+            )
+            eval_page.goto(f"{BASE_URL}/api/runtime/evaluations/ui", wait_until="networkidle")
+            expect(eval_page.locator("h1")).to_contain_text("发布前验证决策行为")
+            expect(eval_page.locator("#caseCount")).to_have_text("9", timeout=10_000)
+            expect(eval_page.locator("#runBtn")).to_be_visible()
+            capture(eval_page, "evaluation-center.png")
+
             assert not browser_errors, browser_errors
             assert not page2_errors, page2_errors
+            assert not eval_errors, eval_errors
         except Exception:
             page.screenshot(path=str(ARTIFACT_DIR / "failure.png"), full_page=True)
             raise
