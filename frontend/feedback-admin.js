@@ -19,7 +19,7 @@
   const IMPACT = {
     answer_only: '仅影响表述',
     decision_relevant: '可能影响判断',
-    action_blocking: '执行前必须核对',
+    action_blocking: '涉及高影响操作',
   };
   const state = { items: [], selectedId: '', sample: null };
   const $ = id => document.getElementById(id);
@@ -69,7 +69,7 @@
     const conflicts = rows.filter(row => row.category === 'evidence_conflict').length;
     $('feedbackMetrics').innerHTML = [
       ['待复核', open],
-      ['执行前必须核对', blocking],
+      ['涉及高影响操作', blocking],
       ['评估候选', evalReady],
       ['证据冲突', conflicts],
     ].map(([label, value]) => `<div class="feedback-admin-metric"><small>${esc(label)}</small><b>${Number(value)}</b></div>`).join('');
