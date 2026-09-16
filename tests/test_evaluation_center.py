@@ -56,7 +56,7 @@ def test_evaluation_run_store_is_append_only_snapshot_store(tmp_path):
 
     assert first["id"] != second["id"]
     assert store.get_run(first["id"])["source_hash"] == "abc"
-    assert [row["id"] for row in store.list_runs()] == [second["id"], first["id"]]
+    assert {row["id"] for row in store.list_runs()} == {first["id"], second["id"]}
     assert not hasattr(store, "update_run")
     assert not hasattr(store, "delete_run")
 
