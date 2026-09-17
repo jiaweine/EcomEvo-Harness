@@ -26,6 +26,42 @@ def main() -> None:
             assert client.get("/assets/connections.js").status_code == 200
             assert client.get("/assets/connections.css").status_code == 200
 
+            policy_scope = '{"channel":"smoke"}'
+            policy_before = client.get(
+                "/api/runtime/policies/resolve",
+                params={"domain": "aftersales", "scope": policy_scope},
+            )
+            assert policy_before.status_code == 200
+            assert "smoke.draft.marker" not in policy_before.json()["controls"]
+            policy_draft = client.post(
+                "/api/runtime/policies/drafts",
+                json={
+                    "policy_key": "smoke-refund-guard",
+                    "domain": "aftersales",
+                    "rules": ["Smoke draft must remain non-authoritative until checker approval and publish."],
+                    "controls": {"smoke.draft.marker": True},
+                    "scope": {"channel": "smoke"},
+                    "authority": 60,
+                    "priority": 0,
+                    "source": "product-smoke:policy-workflow",
+                },
+            )
+            assert policy_draft.status_code == 201
+            policy_version = policy_draft.json()
+            assert policy_version["status"] == "draft"
+            assert policy_version["workflow_state"] == "draft"
+            assert policy_version["scope"]["tenant"] == "local"
+            assert policy_version["authority"]["creator_can_self_approve"] is False
+            policy_after = client.get(
+                "/api/runtime/policies/resolve",
+                params={"domain": "aftersales", "scope": policy_scope},
+            )
+            assert policy_after.status_code == 200
+            assert "smoke.draft.marker" not in policy_after.json()["controls"]
+            assert client.get("/api/runtime/policies/ui").status_code == 200
+            assert client.get("/assets/policy-center.js").status_code == 200
+            assert client.get("/assets/policy-center.css").status_code == 200
+
             conv = client.post(
                 "/api/conversations",
                 json={"title": "售后 E2E", "scene": "aftersales"},
@@ -146,6 +182,8 @@ def main() -> None:
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
                 "connections_console": True,
+                "policy_draft_version": policy_version["version_id"],
+                "policy_draft_non_authoritative": True,
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],

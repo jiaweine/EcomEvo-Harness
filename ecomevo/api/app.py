@@ -17,6 +17,7 @@ from .feedback_routes import install_feedback_routes
 from .inbox_routes import install_inbox_routes
 from .observability_routes import install_observability_routes
 from .policy_api import build_policy_router
+from .policy_workflow_routes import install_policy_workflow_routes
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .upload_security import validate_raster as _validate_raster
 
@@ -36,6 +37,14 @@ if not isinstance(_application.job_worker, PolicyAwareDurableConversationWorker)
 if not getattr(_application.app.state, "policy_router_installed", False):
     _application.app.include_router(build_policy_router(_application.engine))
     _application.app.state.policy_router_installed = True
+
+if not getattr(_application.app.state, "policy_workflow_routes_installed", False):
+    _application.policy_workflow = install_policy_workflow_routes(
+        _application.app,
+        engine=_application.engine,
+        frontend=_application.FRONTEND,
+    )
+    _application.app.state.policy_workflow_routes_installed = True
 
 if not getattr(_application.app.state, "evaluation_router_installed", False):
     _application.evaluation_center = EvaluationCenter(_application.DATA_DIR / "evaluation.db")
