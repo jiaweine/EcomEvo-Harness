@@ -20,6 +20,17 @@ def main() -> None:
         from ecomevo.api.app import app
 
         with TestClient(app) as client:
+            # Admin connection observability must load without requiring a live MCP server.
+            connections = client.get("/api/runtime/connections")
+            assert connections.status_code == 200
+            assert connections.json()["scope"] == "deployment"
+            assert connections.json()["safety"]["business_tool_execution"] is False
+            console = client.get("/api/runtime/connections/ui")
+            assert console.status_code == 200
+            assert "企业数据连接" in console.text
+            assert client.get("/assets/connections.js").status_code == 200
+            assert client.get("/assets/connections.css").status_code == 200
+
             conv = client.post(
                 "/api/conversations",
                 json={"title": "售后 E2E", "scene": "aftersales"},
@@ -61,6 +72,7 @@ def main() -> None:
                 "session_id": assistant["payload"]["session_id"],
                 "actions": len(detail["actions"]),
                 "event_chain_valid": True,
+                "connections_console": True,
             })
 
 

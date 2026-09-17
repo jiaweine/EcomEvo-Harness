@@ -11,6 +11,7 @@ from PIL import Image
 from ecomevo.evaluation import EvaluationCenter
 from ecomevo.identity import IdentityMiddleware
 from . import application as _application
+from .connection_routes import install_connection_routes
 from .evaluation_api import build_evaluation_router
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
@@ -47,6 +48,10 @@ if not getattr(_application.app.state, "evaluation_router_installed", False):
         build_evaluation_router(_application.evaluation_center, _application.FRONTEND)
     )
     _application.app.state.evaluation_router_installed = True
+
+if not getattr(_application.app.state, "connection_routes_installed", False):
+    install_connection_routes(_application.app, _application.mcp, _application.FRONTEND)
+    _application.app.state.connection_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
