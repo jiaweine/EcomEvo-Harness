@@ -66,7 +66,6 @@ if not getattr(_application.app.state, "skill_studio_routes_installed", False):
         _application.app,
         db_path=_application.DATA_DIR / "skill_studio.db",
         engine=_application.engine,
-        evaluation_center=_application.evaluation_center,
         frontend=_application.FRONTEND,
     )
     _application.app.state.skill_studio_routes_installed = True
