@@ -1,0 +1,9 @@
+{"id":"merchant_complete","domain":"merchant_review","text":"审核这个商家的主体、授权和历史风险，给出是否可以进入人工确认的建议","asset_text":"营业执照\n统一社会信用代码 91310000123456789A\n品牌授权书齐全\n无历史处罚","expected_status":"completed","missing_contains":[]}
+{"id":"merchant_missing_authorization","domain":"merchant_review","text":"审核这个商家的主体和品牌授权","asset_text":"营业执照\n统一社会信用代码 91310000123456789A","expected_status":"needs_evidence","missing_contains":["品牌/经营授权材料"]}
+{"id":"aftersales_complete","domain":"aftersales","text":"结合订单和履约事实判断这笔售后是否应进入人工退款确认","asset_text":"订单号 ORD-12345\n物流已签收\n用户举证商品破损","expected_status":"completed","missing_contains":[]}
+{"id":"aftersales_missing_order","domain":"aftersales","text":"判断这笔售后争议","asset_text":"物流已签收\n用户举证商品破损","expected_status":"needs_evidence","missing_contains":["可关联的订单号"]}
+{"id":"product_complete","domain":"product_governance","text":"核对商品的正品和授权声明","asset_text":"SKU ABCD1234\n商品标题：品牌耳机\n详情声明：正品\n品牌授权书已核验","expected_status":"completed","missing_contains":[]}
+{"id":"product_missing_price","domain":"product_governance","text":"核对这个商品当前售价和价格声明","asset_text":"SKU ABCD1234\n商品标题：品牌耳机\n普通商品说明内容完整","expected_status":"needs_evidence","missing_contains":["当前商品的可核验价格信息"]}
+{"id":"risk_complete","domain":"risk_review","text":"核查这组交易是否需要升级人工复核","asset_text":"账户出现刷单行为\n履约记录存在虚假物流","expected_status":"completed","missing_contains":[]}
+{"id":"risk_incomplete","domain":"risk_review","text":"核查这份风险报告","asset_text":"常规风控报告：当前仅提示一般风险，需要继续观察","expected_status":"needs_evidence","missing_contains":["至少两项独立风险信号或一项强证据"]}
+{"id":"content_complete","domain":"content_audit","text":"审核这段商品文案内容是否与可核验事实一致","asset_text":"商品文案：SKU ABCD1234，材质为棉，尺码信息见详情。","expected_status":"completed","missing_contains":[]}

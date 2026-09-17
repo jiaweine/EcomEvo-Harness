@@ -8,8 +8,10 @@ from __future__ import annotations
 import sys
 from PIL import Image
 
+from ecomevo.evaluation import EvaluationCenter
 from ecomevo.identity import IdentityMiddleware
 from . import application as _application
+from .evaluation_api import build_evaluation_router
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .upload_security import validate_raster as _validate_raster
@@ -38,6 +40,13 @@ if not isinstance(_application.job_worker, PolicyAwareDurableConversationWorker)
 if not getattr(_application.app.state, "policy_router_installed", False):
     _application.app.include_router(build_policy_router(_application.engine))
     _application.app.state.policy_router_installed = True
+
+if not getattr(_application.app.state, "evaluation_router_installed", False):
+    _application.evaluation_center = EvaluationCenter(_application.DATA_DIR / "evaluation.db")
+    _application.app.include_router(
+        build_evaluation_router(_application.evaluation_center, _application.FRONTEND)
+    )
+    _application.app.state.evaluation_router_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
