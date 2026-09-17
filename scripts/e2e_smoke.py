@@ -26,6 +26,47 @@ def main() -> None:
             assert client.get("/assets/connections.js").status_code == 200
             assert client.get("/assets/connections.css").status_code == 200
 
+            studio_before = client.get("/api/runtime/skills/catalog")
+            assert studio_before.status_code == 200
+            studio_catalog_before = studio_before.json()
+            runtime_skills_before = studio_catalog_before["runtime_skills"]
+            studio_payload = {
+                "domain": "aftersales",
+                "name": "售后证据补全 E2E",
+                "purpose": "判责前确认订单、履约和用户证据是否齐备",
+                "guidance": "先核对订单与履约事实，再检查用户证据；存在关键缺口时停止并请求补证，不得直接执行退款。",
+                "preferred_tools": ["order.inspect", "evidence.search"],
+                "trigger_terms": ["退款", "未收到货"],
+                "input_contract": {"requires": ["order_context"]},
+                "output_contract": {"fields": ["evidence_gaps"]},
+                "safety_notes": "不改变 Verifier、Approval 或 BusinessAction authority。",
+            }
+            studio_created = client.post("/api/runtime/skills/studio/families", json=studio_payload)
+            assert studio_created.status_code == 201
+            studio_v1 = studio_created.json()
+            assert studio_v1["state"] == "draft"
+            assert studio_v1["authority"]["can_promote_runtime"] is False
+            studio_v2 = client.post(
+                f"/api/runtime/skills/studio/families/{studio_v1['family_id']}/versions",
+                json={**studio_payload, "guidance": "依次核对订单、履约、物流和用户举证；任一关键事实缺失时停止并补证，不得执行退款。"},
+            )
+            assert studio_v2.status_code == 201
+            assert studio_v2.json()["version"] == 2
+            submitted = client.post(
+                f"/api/runtime/skills/studio/{studio_v2.json()['version_id']}/submit",
+                json={"note": "进入离线候选评估流程"},
+            )
+            assert submitted.status_code == 200
+            assert submitted.json()["state"] == "review"
+            studio_after = client.get("/api/runtime/skills/catalog").json()
+            assert studio_after["runtime_skills"] == runtime_skills_before
+            assert studio_after["authority"]["candidate_evaluation_mutates_production"] is False
+            assert studio_after["authority"]["evaluation_pass_auto_promotes"] is False
+            assert studio_after["authority"]["can_promote_runtime"] is False
+            assert client.get("/api/runtime/skills/ui").status_code == 200
+            assert client.get("/assets/skill-studio.js").status_code == 200
+            assert client.get("/assets/skill-studio.css").status_code == 200
+
             conv = client.post(
                 "/api/conversations",
                 json={"title": "售后 E2E", "scene": "aftersales"},
@@ -146,6 +187,8 @@ def main() -> None:
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
                 "connections_console": True,
+                "skill_studio_version": studio_v2.json()["version_id"],
+                "skill_studio_runtime_unchanged": True,
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],
