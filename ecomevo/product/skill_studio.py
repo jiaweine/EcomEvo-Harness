@@ -47,7 +47,7 @@ def authority_contract() -> dict[str, bool]:
 class SkillStudioStore:
     """Immutable human-authored procedure versions plus append-only review events.
 
-    This store is deliberately separate from ``runtime_skills``. Runtime skills remain
+    Studio state is stored separately from ``runtime_skills``. Runtime skills remain
     governed by AdaptiveSkillLibrary shadow/outcome promotion. A Studio version may be
     evaluated and reviewed, but this class has no path that can make it active in runtime.
     """
@@ -144,8 +144,7 @@ class SkillStudioStore:
         if len(safety_notes) > 3000:
             raise ValueError("safety notes too long")
         preferred = _clean_list(preferred_tools, 8)
-        known_tools = self._tool_keys()
-        unknown = [tool for tool in preferred if tool not in known_tools]
+        unknown = [tool for tool in preferred if tool not in self._tool_keys()]
         if unknown:
             raise ValueError(f"unknown preferred tools: {', '.join(unknown)}")
         triggers = _clean_list(trigger_terms, 16)
@@ -195,28 +194,23 @@ class SkillStudioStore:
             "created_at": float(item["created_at"]),
         }
 
-    def _events(self, version_id: str, connection: sqlite3.Connection | None = None) -> list[dict[str, Any]]:
-        owned = connection is None
-        conn = connection or self._conn()
-        try:
-            rows = conn.execute(
+    def _events(self, version_id: str) -> list[dict[str, Any]]:
+        with self._conn() as connection:
+            rows = connection.execute(
                 "SELECT id,event_type,actor_id,payload_json,created_at FROM studio_skill_events "
                 "WHERE version_id=? ORDER BY id ASC",
                 (str(version_id),),
             ).fetchall()
-            return [
-                {
-                    "id": int(row["id"]),
-                    "event_type": str(row["event_type"]),
-                    "actor_id": str(row["actor_id"]),
-                    "payload": json.loads(str(row["payload_json"])),
-                    "created_at": float(row["created_at"]),
-                }
-                for row in rows
-            ]
-        finally:
-            if owned:
-                conn.close()
+        return [
+            {
+                "id": int(row["id"]),
+                "event_type": str(row["event_type"]),
+                "actor_id": str(row["actor_id"]),
+                "payload": json.loads(str(row["payload_json"])),
+                "created_at": float(row["created_at"]),
+            }
+            for row in rows
+        ]
 
     @staticmethod
     def _state(events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -244,64 +238,78 @@ class SkillStudioStore:
             "authority": authority_contract(),
         }
 
+    def _insert_version(
+        self,
+        connection: sqlite3.Connection,
+        family_id: str,
+        version: int,
+        *,
+        actor_id: str,
+        payload: dict[str, Any],
+    ) -> str:
+        clean = self._validate_payload(**payload)
+        canonical = {"family_id": family_id, "version": int(version), **clean}
+        digest = _content_hash(canonical)
+        version_id = f"{family_id}@v{version}"
+        now = time.time()
+        connection.execute(
+            "INSERT INTO studio_skill_versions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                version_id,
+                family_id,
+                int(version),
+                clean["domain"],
+                clean["name"],
+                clean["purpose"],
+                clean["guidance"],
+                _stable_json(clean["preferred_tools"]),
+                _stable_json(clean["trigger_terms"]),
+                _stable_json(clean["input_contract"]),
+                _stable_json(clean["output_contract"]),
+                clean["safety_notes"],
+                clean["source_skill_id"],
+                digest,
+                str(actor_id),
+                now,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO studio_skill_events(version_id,event_type,actor_id,payload_json,created_at) VALUES(?,?,?,?,?)",
+            (version_id, "created", str(actor_id), "{}", now),
+        )
+        return version_id
+
     def create_family(self, *, actor_id: str, **payload: Any) -> dict[str, Any]:
         family_id = f"procedure-{uuid.uuid4().hex[:12]}"
-        return self._create_version(family_id, 1, actor_id=actor_id, **payload)
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            version_id = self._insert_version(
+                connection,
+                family_id,
+                1,
+                actor_id=actor_id,
+                payload=payload,
+            )
+        return self.get_version(version_id)  # type: ignore[return-value]
 
     def create_version(self, family_id: str, *, actor_id: str, **payload: Any) -> dict[str, Any]:
         family_id = str(family_id).strip()
         if not family_id:
             raise ValueError("family_id is required")
-        with self._conn() as connection:
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT MAX(version) AS max_version FROM studio_skill_versions WHERE family_id=?",
                 (family_id,),
             ).fetchone()
-        if row is None or row["max_version"] is None:
-            raise KeyError(family_id)
-        return self._create_version(
-            family_id,
-            int(row["max_version"]) + 1,
-            actor_id=actor_id,
-            **payload,
-        )
-
-    def _create_version(self, family_id: str, version: int, *, actor_id: str, **payload: Any) -> dict[str, Any]:
-        clean = self._validate_payload(**payload)
-        canonical = {
-            "family_id": family_id,
-            "version": int(version),
-            **clean,
-        }
-        digest = _content_hash(canonical)
-        version_id = f"{family_id}@v{version}"
-        now = time.time()
-        with self._lock, self._conn() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            connection.execute(
-                "INSERT INTO studio_skill_versions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    version_id,
-                    family_id,
-                    int(version),
-                    clean["domain"],
-                    clean["name"],
-                    clean["purpose"],
-                    clean["guidance"],
-                    _stable_json(clean["preferred_tools"]),
-                    _stable_json(clean["trigger_terms"]),
-                    _stable_json(clean["input_contract"]),
-                    _stable_json(clean["output_contract"]),
-                    clean["safety_notes"],
-                    clean["source_skill_id"],
-                    digest,
-                    str(actor_id),
-                    now,
-                ),
-            )
-            connection.execute(
-                "INSERT INTO studio_skill_events(version_id,event_type,actor_id,payload_json,created_at) VALUES(?,?,?,?,?)",
-                (version_id, "created", str(actor_id), "{}", now),
+            if row is None or row["max_version"] is None:
+                raise KeyError(family_id)
+            version_id = self._insert_version(
+                connection,
+                family_id,
+                int(row["max_version"]) + 1,
+                actor_id=actor_id,
+                payload=payload,
             )
         return self.get_version(version_id)  # type: ignore[return-value]
 
@@ -416,21 +424,39 @@ class SkillStudioStore:
             for row in rows
         ]
 
+    def runtime_policies(self) -> list[dict[str, Any]]:
+        """Read already-existing evolution policies without invoking policy bootstrap."""
+        path = str(getattr(self.runtime_skills, "path", "") or "")
+        if not path or not Path(path).is_file():
+            return []
+        try:
+            connection = sqlite3.connect(path, timeout=5.0)
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                "SELECT domain,promotion_threshold,retirement_threshold,exploration,updates,updated_at "
+                "FROM evolution_policy ORDER BY domain"
+            ).fetchall()
+            connection.close()
+        except (sqlite3.Error, OSError):
+            return []
+        return [
+            {
+                "domain": str(row["domain"]),
+                "promotion_threshold": float(row["promotion_threshold"]),
+                "retirement_threshold": float(row["retirement_threshold"]),
+                "exploration": float(row["exploration"]),
+                "updates": int(row["updates"]),
+                "updated_at": float(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
     def catalog(self) -> dict[str, Any]:
-        policies: list[dict[str, Any]] = []
-        policy = getattr(self.runtime_skills, "policy", None)
-        if callable(policy):
-            domains = sorted({row["domain"] for row in self.runtime_catalog(200)} | (DOMAINS - {"general"}))
-            for domain in domains:
-                try:
-                    policies.append(dict(policy(domain)))
-                except Exception:
-                    continue
         return {
             "scope": "deployment",
             "runtime_skills": self.runtime_catalog(200),
             "studio_families": self.latest_families(100),
-            "evolution_policies": policies,
+            "evolution_policies": self.runtime_policies(),
             "registered_tools": sorted(self._tool_keys()),
             "authority": authority_contract(),
         }
