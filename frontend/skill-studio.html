@@ -12,7 +12,7 @@
       <div>
         <small>Build · Procedure / Skill Studio</small>
         <h1>流程与技能工作室</h1>
-        <p>编写不可变技能版本、绑定工具与输入输出契约，并关联 Test Center 评估。评估通过不等于生产启用。</p>
+        <p>编写不可变技能版本、绑定工具与输入输出契约，并在隔离 runtime 中执行候选评估。评估通过不等于生产启用。</p>
       </div>
       <nav class="studio-head-actions" aria-label="管理控制面">
         <a href="/api/runtime/evaluations/ui">Test Center</a>
@@ -23,9 +23,9 @@
     </header>
 
     <section class="studio-guardrails" aria-label="权限边界">
-      <div><b>版本不可变</b><span>修改会创建新版本，历史版本与评估链接保留。</span></div>
+      <div><b>版本不可变</b><span>修改会创建新版本，历史版本与候选评估快照保留。</span></div>
       <div><b>不能直接上线</b><span>Studio 不提供 publish/promote；Runtime Skill 仍由 shadow/outcome gate 晋升。</span></div>
-      <div><b>不是证据或权限</b><span>技能 guidance 不能替代 Evidence、Policy、Verifier 或 Approval。</span></div>
+      <div><b>隔离评估</b><span>候选只在临时 runtime DB 激活；评估结束即销毁，不触碰生产技能、路由或审批。</span></div>
     </section>
 
     <section class="studio-summary" id="studioSummary" aria-label="技能概览"></section>
@@ -73,7 +73,7 @@
           <div><small>Runtime skills · read only</small><h2>运行时技能</h2></div>
           <span>只读</span>
         </div>
-        <p class="panel-copy">这里展示 AdaptiveSkillLibrary 当前 shadow / active / retired 状态。Studio 不会修改这些状态。</p>
+        <p class="panel-copy">这里展示 AdaptiveSkillLibrary 当前 shadow / active / retired 状态。Studio 不会修改这些状态，也不把 guidance 当成 Evidence。</p>
         <div id="runtimeSkills" class="runtime-list"></div>
       </section>
 
@@ -94,7 +94,7 @@
       <footer>
         <button type="button" id="newVersionButton" class="ghost">基于此版本创建新版本</button>
         <button type="button" id="submitReviewButton">提交评审</button>
-        <div class="eval-link"><input id="evaluationRunId" placeholder="eval-..." /><button type="button" id="linkEvaluationButton">关联评估</button></div>
+        <button type="button" id="evaluateCandidateButton" class="primary">运行隔离候选评估</button>
         <button type="button" id="archiveButton" class="danger-quiet">归档</button>
       </footer>
     </form>
