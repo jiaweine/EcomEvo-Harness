@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import sqlite3
 import time
 from typing import Any
 
@@ -21,9 +20,10 @@ class OperatorActivityLedger:
     or action authority.
     """
 
-    def __init__(self, store):
+    def __init__(self, store, *, ensure_schema: bool = True):
         self.store = store
-        self._init_schema()
+        if ensure_schema:
+            self._init_schema()
 
     def _init_schema(self) -> None:
         with self.store._conn() as db:
@@ -42,6 +42,14 @@ class OperatorActivityLedger:
                     ON operator_active_minutes(tenant_id,minute_start);
                 """
             )
+
+    def instrumented(self) -> bool:
+        """Read-only schema probe used by observability surfaces."""
+        with self.store._conn() as db:
+            row = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='operator_active_minutes'"
+            ).fetchone()
+        return bool(row)
 
     @staticmethod
     def _surface(value: str) -> str:
@@ -100,10 +108,6 @@ class OperatorActivityLedger:
             "changes_authority": False,
         }
 
-    @staticmethod
-    def _count_bits(value: int) -> int:
-        return int(value).bit_count()
-
     def summarize(
         self,
         *,
@@ -115,6 +119,20 @@ class OperatorActivityLedger:
         end = float(until)
         if not math.isfinite(start) or not math.isfinite(end) or end < start:
             raise ValueError("invalid operator activity window")
+        if not self.instrumented():
+            return {
+                "instrumented": False,
+                "active_seconds": 0,
+                "operator_hours": 0.0,
+                "bucket_count": 0,
+                "bucket_seconds": BUCKET_SECONDS,
+                "active_users": 0,
+                "surfaces": [],
+                "daily_seconds": {},
+                "definition": "operator active-time telemetry table is not installed",
+                "client_duration_accepted": False,
+                "changes_authority": False,
+            }
         start_minute = int(max(0.0, start) // 60) * 60
         end_minute = int(max(0.0, end) // 60) * 60
         with self.store._conn() as db:
