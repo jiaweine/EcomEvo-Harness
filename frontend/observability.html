@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EcomEvo · 质量与运行观测</title>
+  <link rel="stylesheet" href="/assets/observability.css" />
+</head>
+<body>
+  <main class="obs-shell">
+    <header class="obs-head">
+      <div>
+        <small>Observe · Quality & Runtime</small>
+        <h1>质量与运行观测</h1>
+        <p>只基于持久化事实统计质量、吞吐与确定性权限负载；不把模型分数包装成真实置信度。</p>
+      </div>
+      <div class="obs-head-actions">
+        <a href="/" class="obs-back">返回工作台</a>
+      </div>
+    </header>
+
+    <section class="obs-method">
+      <div><b>指标口径</b><span>Verified decision = runtime completed 且无证据缺口；存在 claim grounding 时，还要求 evidence_sufficiency=sufficient。</span></div>
+      <div><b>不会估算缺失数据</b><span>Operator Hours、token usage、provider cost 未持久化时显示“未采集”，不会用推测数字填充。</span></div>
+    </section>
+
+    <section class="obs-toolbar" aria-label="时间范围">
+      <div class="obs-window" role="group" aria-label="选择统计窗口">
+        <button type="button" data-window="24h">24 小时</button>
+        <button type="button" data-window="7d" class="active">7 天</button>
+        <button type="button" data-window="30d">30 天</button>
+      </div>
+      <div class="obs-freshness"><span id="obsTenant">—</span><i></i><span id="obsGenerated">正在加载</span></div>
+    </section>
+
+    <section class="obs-hero" id="obsHero" aria-label="核心指标"></section>
+
+    <div class="obs-layout">
+      <section class="obs-panel obs-quality">
+        <div class="obs-panel-head"><div><small>Quality</small><h2>验证质量</h2></div><span>不是模型置信度</span></div>
+        <div id="obsQuality" class="obs-stat-grid"></div>
+      </section>
+
+      <section class="obs-panel obs-reliability">
+        <div class="obs-panel-head"><div><small>Reliability</small><h2>运行可靠性</h2></div><span>含排队耗时</span></div>
+        <div id="obsReliability" class="obs-stat-grid"></div>
+      </section>
+
+      <section class="obs-panel obs-authority">
+        <div class="obs-panel-head"><div><small>Authority workload</small><h2>权限与人工负载</h2></div><span>只读观测</span></div>
+        <div id="obsAuthority" class="obs-stat-grid"></div>
+      </section>
+
+      <section class="obs-panel obs-availability">
+        <div class="obs-panel-head"><div><small>Telemetry</small><h2>遥测可用性</h2></div><span>不补假数据</span></div>
+        <div id="obsAvailability" class="obs-availability-list"></div>
+      </section>
+
+      <section class="obs-panel obs-series-panel">
+        <div class="obs-panel-head"><div><small>Trend</small><h2>每日趋势</h2></div><span id="obsSeriesHint">—</span></div>
+        <div id="obsSeries" class="obs-series"></div>
+      </section>
+
+      <section class="obs-panel obs-distribution-panel">
+        <div class="obs-panel-head"><div><small>Mix</small><h2>场景与状态分布</h2></div></div>
+        <div class="obs-distribution-grid">
+          <div><h3>任务场景</h3><div id="obsScenes" class="obs-bars"></div></div>
+          <div><h3>Job 状态</h3><div id="obsJobStatuses" class="obs-bars"></div></div>
+          <div><h3>Action 状态</h3><div id="obsActionStatuses" class="obs-bars"></div></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div class="obs-toast" id="obsToast" role="status" aria-live="polite"></div>
+  <script src="/assets/observability.js"></script>
+</body>
+</html>

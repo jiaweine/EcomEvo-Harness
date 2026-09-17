@@ -15,10 +15,10 @@ from .connection_routes import install_connection_routes
 from .evaluation_api import build_evaluation_router
 from .feedback_routes import install_feedback_routes
 from .inbox_routes import install_inbox_routes
+from .observability_routes import install_observability_routes
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .upload_security import validate_raster as _validate_raster
-
 
 _application.Image = Image
 _application._validate_raster = _validate_raster
@@ -55,6 +55,10 @@ if not getattr(_application.app.state, "inbox_routes_installed", False):
 if not getattr(_application.app.state, "feedback_routes_installed", False):
     install_feedback_routes(_application.app, _application.store, _application.FRONTEND)
     _application.app.state.feedback_routes_installed = True
+
+if not getattr(_application.app.state, "observability_routes_installed", False):
+    install_observability_routes(_application.app, _application.store, _application.FRONTEND)
+    _application.app.state.observability_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
