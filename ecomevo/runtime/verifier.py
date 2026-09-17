@@ -17,6 +17,13 @@ class DecisionVerifier:
 
         if "policy.lookup" not in names:
             missing.append("适用规则")
+        else:
+            policy_data = by_name["policy.lookup"].data or {}
+            policy_status = str(policy_data.get("status") or "").strip().lower()
+            if policy_status == "missing":
+                missing.append("当前时间与业务范围内的有效政策")
+            elif policy_status == "conflicted":
+                missing.append("适用政策存在未解决冲突")
 
         domain = goal.domain.value
         required_tool = {

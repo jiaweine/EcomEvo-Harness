@@ -29,6 +29,16 @@ class GovernanceBoundary:
             if not result.ok:
                 continue
             tags = ["mcp"] + [str(x) for x in (result.data.get("_evidence_tags") or [])] if result.data.get("remote_tool") else []
+            if result.tool == "policy.lookup":
+                for policy in (result.data.get("policies") or [])[:8]:
+                    version_id = str(policy.get("version_id") or "").strip()
+                    if version_id:
+                        tags.append(f"policy_version:{version_id}")
+                policy_status = str(result.data.get("status") or "").strip().lower()
+                if policy_status == "conflicted":
+                    tags.append("policy_conflict")
+                elif policy_status == "missing":
+                    tags.append("policy_missing")
             title, detail = GovernanceBoundary.tool_evidence_copy(result.tool, result.data)
             out.append(EvidenceRecord(evidence_id=f"tool:{result.call_id}", source=result.tool, kind="tool_result",
                                       title=title, detail=detail, confidence=.86 if tags else .78, tags=tags))
@@ -47,8 +57,28 @@ class GovernanceBoundary:
                 pieces.append(f"{name}：{matched}" if matched else name)
             return "附件证据检索", "；".join(pieces) if pieces else "未找到与当前问题直接匹配的附件片段。"
         if tool == "policy.lookup":
+            status = str(data.get("status") or "resolved").strip().lower()
+            as_of = str(data.get("as_of") or "").strip()
+            policies = data.get("policies") or []
+            versions = [str(row.get("version_id") or "") for row in policies if row.get("version_id")][:4]
+            version_text = "、".join(versions)
+            if status == "conflicted":
+                controls = [str(row.get("control") or "") for row in (data.get("conflicts") or []) if row.get("control")][:3]
+                detail = "存在未解决政策冲突"
+                if controls: detail += "：" + "、".join(controls)
+                if version_text: detail += f"；涉及版本：{version_text}"
+                if as_of: detail += f"；判断时间：{as_of}"
+                return "适用规则冲突", detail
+            if status == "missing":
+                detail = "当前时间与业务范围内未找到可生效的政策版本。"
+                if as_of: detail += f" 判断时间：{as_of}"
+                return "适用规则缺失", detail
             rules = [str(x) for x in (data.get("rules") or [])[:3]]
-            return "适用规则核对", "；".join(rules) if rules else "已完成当前业务场景的规则核对。"
+            pieces = []
+            if version_text: pieces.append("版本：" + version_text)
+            if as_of: pieces.append("判断时间：" + as_of)
+            if rules: pieces.append("规则：" + "；".join(rules))
+            return "适用规则核对", "；".join(pieces) if pieces else "已完成当前业务场景的规则核对。"
         if tool == "catalog.inspect":
             ids = "、".join(str(x) for x in (data.get("asset_product_ids") or [])[:5]); flags = "、".join(str(x) for x in (data.get("asset_claim_flags") or [])[:5]); detail = []
             if ids: detail.append("商品标识：" + ids)
