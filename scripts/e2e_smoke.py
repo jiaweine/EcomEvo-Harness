@@ -54,13 +54,15 @@ def main() -> None:
             assert studio_v2.json()["version"] == 2
             submitted = client.post(
                 f"/api/runtime/skills/studio/{studio_v2.json()['version_id']}/submit",
-                json={"note": "进入离线评估流程"},
+                json={"note": "进入离线候选评估流程"},
             )
             assert submitted.status_code == 200
             assert submitted.json()["state"] == "review"
             studio_after = client.get("/api/runtime/skills/catalog").json()
             assert studio_after["runtime_skills"] == runtime_skills_before
-            assert studio_after["authority"]["evaluation_link_auto_promotes"] is False
+            assert studio_after["authority"]["candidate_evaluation_mutates_production"] is False
+            assert studio_after["authority"]["evaluation_pass_auto_promotes"] is False
+            assert studio_after["authority"]["can_promote_runtime"] is False
             assert client.get("/api/runtime/skills/ui").status_code == 200
             assert client.get("/assets/skill-studio.js").status_code == 200
             assert client.get("/assets/skill-studio.css").status_code == 200
