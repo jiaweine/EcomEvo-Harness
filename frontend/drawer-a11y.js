@@ -35,6 +35,24 @@
     }
   }
 
+  function installInboxEntry() {
+    if (document.getElementById('taskInboxLink')) return;
+    const actions = document.querySelector('.top-actions');
+    if (!actions) return;
+    const link = document.createElement('a');
+    link.id = 'taskInboxLink';
+    link.className = 'top-action';
+    link.href = '/api/inbox/ui';
+    link.setAttribute('aria-label', '打开任务队列');
+    const icon = document.createElement('span');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = '▦';
+    const label = document.createElement('em');
+    label.textContent = '任务队列';
+    link.append(icon, label);
+    actions.insertBefore(link, actions.firstChild);
+  }
+
   function syncViewport() {
     const viewport = window.visualViewport;
     const height = Math.max(320, Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 0));
@@ -173,6 +191,7 @@
   window.addEventListener('orientationchange', syncViewport, { passive: true });
 
   document.addEventListener('DOMContentLoaded', () => {
+    installInboxEntry();
     const observer = new MutationObserver(sync);
     for (const id of drawerIds) {
       const drawer = document.getElementById(id);
