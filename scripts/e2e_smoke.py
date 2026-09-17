@@ -55,12 +55,33 @@ def main() -> None:
                 ).json()
                 assert completed["status"] == "simulated"
                 assert completed["payload"]["execution_outcome"] == "simulated"
+
+            observability_response = client.get("/api/runtime/observability?window=24h")
+            assert observability_response.status_code == 200
+            observability = observability_response.json()
+            assert observability["tenant_scope"] == "local"
+            assert observability["window"]["key"] == "24h"
+            assert observability["reliability"]["jobs"] >= 1
+            assert observability["reliability"]["succeeded"] >= 1
+            assert observability["reliability"]["end_to_end_latency_seconds"]["samples"] >= 1
+            assert observability["throughput"]["successful_runs"] >= 1
+            assert observability["distribution"]["job_scenes"].get("aftersales", 0) >= 1
+            assert observability["methodology"]["read_only"] is True
+            assert observability["methodology"]["changes_authority"] is False
+            assert observability["north_star"]["operator_hours"]["available"] is False
+            assert observability["north_star"]["verified_decisions_per_operator_hour"]["available"] is False
+            assert observability["telemetry_availability"]["token_usage"]["available"] is False
+            assert observability["telemetry_availability"]["provider_cost"]["available"] is False
+
             print({
                 "conversation_id": conv["id"],
                 "domain": assistant["payload"]["domain"],
                 "session_id": assistant["payload"]["session_id"],
                 "actions": len(detail["actions"]),
                 "event_chain_valid": True,
+                "observability_jobs": observability["reliability"]["jobs"],
+                "observability_successful_runs": observability["throughput"]["successful_runs"],
+                "observability_read_only": observability["methodology"]["read_only"],
             })
 
 
