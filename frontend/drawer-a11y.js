@@ -4,8 +4,6 @@
   const drawerIds = ['leftbar', 'rightbar'];
   const returnFocus = new Map();
   const leftDrawerMedia = matchMedia('(max-width:820px)');
-  // workbench-v5 promotes the right rail to persistent context at 1380px.
-  // Keep modal semantics/focus trapping for every width below that threshold.
   const rightDrawerMedia = matchMedia('(max-width:1379px)');
   let activeDrawer = null;
 
@@ -51,6 +49,22 @@
     label.textContent = '任务队列';
     link.append(icon, label);
     actions.insertBefore(link, actions.firstChild);
+  }
+
+  function loadFeedbackSurface() {
+    if (!document.querySelector('link[data-ecomevo-feedback-surface]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = '/assets/feedback-surface.css';
+      link.dataset.ecomevoFeedbackSurface = '1';
+      document.head.appendChild(link);
+    }
+    if (!document.querySelector('script[data-ecomevo-feedback-surface]')) {
+      const script = document.createElement('script');
+      script.src = '/assets/feedback-surface.js';
+      script.dataset.ecomevoFeedbackSurface = '1';
+      document.body.appendChild(script);
+    }
   }
 
   function syncViewport() {
@@ -125,9 +139,6 @@
     const left = document.getElementById('leftbar');
     const right = document.getElementById('rightbar');
     if (left && !leftDrawerMedia.matches) {
-      // MutationObserver below watches drawer class changes. Only mutate the class
-      // when state actually changes, otherwise a desktop sync can recursively
-      // schedule itself forever before DOMContentLoaded finishes.
       if (left.classList.contains('open')) left.classList.remove('open');
       const navToggle = document.getElementById('navToggle');
       if (navToggle?.getAttribute('aria-expanded') !== 'false') navToggle?.setAttribute('aria-expanded', 'false');
@@ -192,6 +203,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     installInboxEntry();
+    loadFeedbackSurface();
     const observer = new MutationObserver(sync);
     for (const id of drawerIds) {
       const drawer = document.getElementById(id);

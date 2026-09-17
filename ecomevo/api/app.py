@@ -13,22 +13,16 @@ from ecomevo.identity import IdentityMiddleware
 from . import application as _application
 from .connection_routes import install_connection_routes
 from .evaluation_api import build_evaluation_router
+from .feedback_routes import install_feedback_routes
 from .inbox_routes import install_inbox_routes
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .upload_security import validate_raster as _validate_raster
 
 
-# Preserve established monkeypatch/test hooks without duplicating event persistence.
-# application.emit remains the single durable event path; process-local queues are
-# wake signals only and WebSocket delivery drains authoritative SQLite task_events.
 _application.Image = Image
 _application._validate_raster = _validate_raster
 
-# The lifespan worker may execute long after the originating HTTP request and may be
-# reclaimed by another process. Replace the pre-start worker with a tenant-aware wrapper
-# that derives policy scope from the durable conversation row rather than request-local
-# identity state. Core lease/execution behavior remains inherited unchanged.
 if not isinstance(_application.job_worker, PolicyAwareDurableConversationWorker):
     _application.job_worker = PolicyAwareDurableConversationWorker(
         _application.store,
@@ -57,6 +51,10 @@ if not getattr(_application.app.state, "connection_routes_installed", False):
 if not getattr(_application.app.state, "inbox_routes_installed", False):
     install_inbox_routes(_application.app, _application.store, _application.FRONTEND)
     _application.app.state.inbox_routes_installed = True
+
+if not getattr(_application.app.state, "feedback_routes_installed", False):
+    install_feedback_routes(_application.app, _application.store, _application.FRONTEND)
+    _application.app.state.feedback_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
