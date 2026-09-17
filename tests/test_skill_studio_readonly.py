@@ -4,7 +4,6 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from ecomevo.evaluation import EvaluationCenter
 from ecomevo.product.skill_studio import SkillStudioStore
 from ecomevo.runtime.skills import AdaptiveSkillLibrary
 from ecomevo.runtime.tools import ToolRegistry
@@ -28,12 +27,7 @@ def _draft(name: str):
 def _studio(tmp_path: Path):
     runtime_path = tmp_path / "runtime.db"
     skills = AdaptiveSkillLibrary(runtime_path)
-    studio = SkillStudioStore(
-        tmp_path / "studio.db",
-        skills,
-        ToolRegistry(),
-        EvaluationCenter(tmp_path / "evaluation.db"),
-    )
+    studio = SkillStudioStore(tmp_path / "studio.db", skills, ToolRegistry())
     return studio, runtime_path
 
 
