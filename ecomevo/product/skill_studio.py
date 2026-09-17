@@ -279,7 +279,7 @@ class SkillStudioStore:
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
-                "INSERT INTO studio_skill_versions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO studio_skill_versions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     version_id,
                     family_id,
