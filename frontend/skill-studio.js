@@ -22,7 +22,7 @@
     box.textContent = String(message || "");
     box.classList.add("show");
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => box.classList.remove("show"), 2200);
+    toast.timer = setTimeout(() => box.classList.remove("show"), 2400);
   }
 
   async function request(url, options = {}) {
@@ -50,8 +50,8 @@
     return {
       draft: "草稿",
       review: "评审中",
-      evaluated_pass: "评估通过 · 未上线",
-      evaluated_fail: "评估未通过",
+      evaluated_pass: "候选评估通过 · 未上线",
+      evaluated_fail: "候选评估未通过",
       archived: "已归档",
       active: "Active",
       shadow: "Shadow",
@@ -69,17 +69,21 @@
 
   function fillSelectors(catalog) {
     const domain = $("domain");
+    const currentDomain = domain.value;
     domain.replaceChildren();
     DOMAINS.forEach(([value, label]) => {
       const option = node("option", "", label);
       option.value = value;
       domain.append(option);
     });
+    if (currentDomain) domain.value = currentDomain;
     const tools = $("preferredTools");
+    const previous = new Set(Array.from(tools.selectedOptions).map((item) => item.value));
     tools.replaceChildren();
     (catalog.registered_tools || []).forEach((key) => {
       const option = node("option", "", key);
       option.value = key;
+      option.selected = previous.has(key);
       tools.append(option);
     });
   }
@@ -93,7 +97,7 @@
       ["Runtime active", runtime.filter((x) => x.status === "active").length],
       ["Shadow candidates", runtime.filter((x) => x.status === "shadow").length],
       ["Studio families", families.length],
-      ["Evaluated pass · 未上线", families.filter((x) => x.state === "evaluated_pass").length],
+      ["Candidate eval pass · 未上线", families.filter((x) => x.state === "evaluated_pass").length],
     ];
     cards.forEach(([label, value]) => {
       const card = node("div", "summary-card");
@@ -114,8 +118,7 @@
       const card = node("article", "skill-card");
       card.tabIndex = 0;
       const top = node("div", "card-top");
-      const title = node("h3", "", item.name);
-      top.append(title, pill(item.state));
+      top.append(node("h3", "", item.name), pill(item.state));
       const meta = node("div", "card-meta");
       meta.append(
         node("span", "pill", `${item.family_id} · v${item.version}`),
@@ -161,7 +164,7 @@
     box.replaceChildren();
     const rows = catalog.evolution_policies || [];
     if (!rows.length) {
-      box.append(node("div", "empty", "暂无 runtime evolution policy。"));
+      box.append(node("div", "empty", "暂无已初始化的 runtime evolution policy；打开本页不会创建默认策略。"));
       return;
     }
     rows.forEach((item) => {
@@ -246,8 +249,7 @@
   function detailBlock(label, value, full = false, pre = false) {
     const block = node("div", `detail-block${full ? " full" : ""}`);
     block.append(node("small", "", label));
-    const content = node(pre ? "pre" : "p", "", value === "" ? "—" : value);
-    block.append(content);
+    block.append(node(pre ? "pre" : "p", "", value === "" ? "—" : value));
     return block;
   }
 
@@ -271,7 +273,7 @@
     );
     detail.append(grid);
     if (item.evaluation) {
-      detail.append(detailBlock("已关联评估快照", JSON.stringify(item.evaluation, null, 2), true, true));
+      detail.append(detailBlock("隔离候选评估快照", JSON.stringify(item.evaluation, null, 2), true, true));
     }
     const timeline = node("div", "timeline");
     (item.events || []).forEach((event) => {
@@ -279,7 +281,7 @@
     });
     detail.append(timeline);
     $("submitReviewButton").disabled = item.state !== "draft";
-    $("linkEvaluationButton").disabled = !["review", "evaluated_pass", "evaluated_fail"].includes(item.state);
+    $("evaluateCandidateButton").disabled = !["review", "evaluated_pass", "evaluated_fail"].includes(item.state);
     $("archiveButton").disabled = item.state === "archived";
     $("versionDialog").showModal();
   }
@@ -304,27 +306,38 @@
   $("submitReviewButton").addEventListener("click", async () => {
     if (!state.selected) return;
     try {
-      await request(`/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/submit`, { method: "POST", body: JSON.stringify({ note: "" }) });
+      await request(`/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/submit`, {
+        method: "POST", body: JSON.stringify({ note: "" }),
+      });
       toast("已提交评审；仍未进入 Runtime");
       await refresh();
       await openVersion(state.selected.version_id);
     } catch (error) { toast(error.message); }
   });
-  $("linkEvaluationButton").addEventListener("click", async () => {
+  $("evaluateCandidateButton").addEventListener("click", async () => {
     if (!state.selected) return;
-    const runId = $("evaluationRunId").value.trim();
-    if (!runId) return toast("请输入 Evaluation run ID");
+    const button = $("evaluateCandidateButton");
+    button.disabled = true;
+    button.textContent = "隔离评估中…";
     try {
-      await request(`/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/evaluation-links`, { method: "POST", body: JSON.stringify({ run_id: runId }) });
-      toast("评估快照已关联；不会自动上线");
+      const evaluated = await request(`/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/evaluate`, {
+        method: "POST", body: "{}",
+      });
+      toast(evaluated.state === "evaluated_pass" ? "候选评估通过；仍未上线" : "候选评估未通过，请查看快照");
       await refresh();
       await openVersion(state.selected.version_id);
     } catch (error) { toast(error.message); }
+    finally {
+      button.textContent = "运行隔离候选评估";
+      if (state.selected) button.disabled = !["review", "evaluated_pass", "evaluated_fail"].includes(state.selected.state);
+    }
   });
   $("archiveButton").addEventListener("click", async () => {
     if (!state.selected) return;
     try {
-      await request(`/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/archive`, { method: "POST", body: JSON.stringify({ note: "" }) });
+      await request(`/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/archive`, {
+        method: "POST", body: JSON.stringify({ note: "" }),
+      });
       toast("版本已归档");
       $("versionDialog").close();
       await refresh();
