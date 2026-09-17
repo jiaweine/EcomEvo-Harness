@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ecomevo.identity import current_principal
 from ecomevo.product.operator_activity import OperatorActivityLedger
 
 
 class OperatorHeartbeat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     surface: str = Field(default="workbench", min_length=1, max_length=64)
 
     @field_validator("surface")
