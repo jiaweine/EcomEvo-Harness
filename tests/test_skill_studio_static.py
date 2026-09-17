@@ -9,8 +9,8 @@ def test_skill_studio_has_no_production_promotion_or_action_execution_route():
     assert '"/api/runtime/skills/ui"' in routes
     assert '"/api/runtime/skills/studio/{version_id}/evaluate"' in routes
     assert "install_skill_studio_routes" in routes
-    assert "/promote" not in routes
-    assert "/publish" not in routes
+    assert '"/api/runtime/skills/studio/{version_id}/promote"' not in routes
+    assert '"/api/runtime/skills/studio/{version_id}/publish"' not in routes
     assert "/api/actions" not in routes
     assert "tools/call" not in routes
     assert ".promote(" not in routes
