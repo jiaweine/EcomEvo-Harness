@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any, Literal
 
@@ -8,7 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from ecomevo.identity import current_principal
-from ecomevo.product.skill_studio import DOMAINS, SkillStudioStore, authority_contract
+from ecomevo.product.skill_studio import SkillStudioStore, authority_contract
 
 
 Domain = Literal[
@@ -38,10 +39,6 @@ class SubmitRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
 
 
-class EvaluationLinkRequest(BaseModel):
-    run_id: str = Field(min_length=1, max_length=120)
-
-
 class ArchiveRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
 
@@ -51,12 +48,12 @@ def install_skill_studio_routes(
     *,
     db_path: str | Path,
     engine,
-    evaluation_center,
     frontend: str | Path,
 ) -> SkillStudioStore:
     """Install admin-only build/review surfaces without runtime promotion authority."""
-    store = SkillStudioStore(db_path, engine.skills, engine.tools, evaluation_center)
+    store = SkillStudioStore(db_path, engine.skills, engine.tools)
     frontend_dir = Path(frontend)
+    evaluation_lock = asyncio.Lock()
 
     def payload(req: SkillVersionDraft) -> dict[str, Any]:
         return {
@@ -82,10 +79,14 @@ def install_skill_studio_routes(
 
     @app.get("/api/runtime/skills/studio")
     def skill_versions(limit: int = Query(default=100, ge=1, le=200)):
-        return {
-            "items": store.list_versions(limit),
-            "authority": authority_contract(),
-        }
+        return {"items": store.list_versions(limit), "authority": authority_contract()}
+
+    @app.get("/api/runtime/skills/studio/evaluations/{evaluation_id}")
+    def skill_evaluation(evaluation_id: str):
+        item = store.get_evaluation(evaluation_id)
+        if item is None:
+            raise HTTPException(404, "候选评估不存在")
+        return item
 
     @app.get("/api/runtime/skills/studio/{version_id}")
     def skill_version(version_id: str):
@@ -122,11 +123,14 @@ def install_skill_studio_routes(
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
 
-    @app.post("/api/runtime/skills/studio/{version_id}/evaluation-links")
-    def skill_link_evaluation(version_id: str, req: EvaluationLinkRequest):
+    @app.post("/api/runtime/skills/studio/{version_id}/evaluate")
+    async def skill_evaluate(version_id: str):
+        if evaluation_lock.locked():
+            raise HTTPException(409, "已有 Studio 候选正在评估")
         principal = current_principal()
         try:
-            return store.link_evaluation(version_id, req.run_id, actor_id=principal.user_id)
+            async with evaluation_lock:
+                return await store.evaluate(version_id, actor_id=principal.user_id)
         except KeyError as exc:
             raise HTTPException(404, "技能版本不存在") from exc
         except ValueError as exc:
