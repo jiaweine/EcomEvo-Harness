@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EcomEvo · Policy Center</title>
+  <link rel="stylesheet" href="/assets/policy-center.css" />
+</head>
+<body>
+  <main class="policy-shell">
+    <header class="policy-head">
+      <div>
+        <small>Govern · Policy Center</small>
+        <h1>政策中心</h1>
+        <p>把政策变更做成不可变版本、双人复核与可重放审计；运行时仍由确定性 Policy Resolver 决定最终控制项。</p>
+      </div>
+      <a href="/" class="policy-back">返回工作台</a>
+    </header>
+
+    <section class="guardrail-grid" aria-label="政策写入安全边界">
+      <article><b>Maker ≠ Checker</b><span>创建人不能审批自己的版本；审批人负责最终发布。</span></article>
+      <article><b>Preview ≠ Publish</b><span>冲突预览只运行在临时 SQLite snapshot，不修改生产政策。</span></article>
+      <article><b>Tenant scoped</b><span>写入范围由服务端强制绑定当前工作区；builtin 始终只读。</span></article>
+      <article><b>Audit atomic</b><span>发布/退役与审计事件在同一数据库事务中提交。</span></article>
+    </section>
+
+    <div class="policy-layout">
+      <section class="panel create-panel">
+        <div class="panel-head">
+          <div><small>Author</small><h2>创建不可变 Draft</h2></div>
+          <span>不会立即生效</span>
+        </div>
+        <form id="draftForm" class="draft-form">
+          <label>Policy key<input id="policyKey" name="policy_key" maxlength="80" required placeholder="refund-evidence-v2" /></label>
+          <label>业务域<select id="policyDomain" name="domain">
+            <option value="product_governance">商品治理</option>
+            <option value="merchant_review">商家审核</option>
+            <option value="aftersales">售后判责</option>
+            <option value="risk_review">风险核查</option>
+            <option value="content_audit">内容审核</option>
+            <option value="general">通用</option>
+          </select></label>
+          <label class="full">规则（每行一条）<textarea id="policyRules" rows="5" required placeholder="证据不足时必须进入人工复核"></textarea></label>
+          <label class="full">结构化 Controls（JSON）<textarea id="policyControls" rows="5" spellcheck="false" placeholder='{"insufficient_evidence.action":"review"}'>{}</textarea></label>
+          <label class="full">附加 Scope（JSON，tenant 由服务端注入）<textarea id="policyScope" rows="3" spellcheck="false">{}</textarea></label>
+          <label>Authority<input id="policyAuthority" type="number" min="0" max="90" value="60" /></label>
+          <label>Priority<input id="policyPriority" type="number" min="-1000" max="1000" value="0" /></label>
+          <label class="full">来源 / 依据<input id="policySource" maxlength="500" required placeholder="internal-policy:refund-standard-2026-09" /></label>
+          <div class="form-note full">提交后内容不可修改；需要调整时，用同一 Policy key 创建下一版本。</div>
+          <button class="primary full" type="submit">创建 Draft</button>
+        </form>
+      </section>
+
+      <section class="panel resolve-panel">
+        <div class="panel-head">
+          <div><small>Runtime truth</small><h2>当前生效解析</h2></div>
+          <span>只读</span>
+        </div>
+        <div class="resolve-tools">
+          <select id="resolveDomain">
+            <option value="product_governance">商品治理</option>
+            <option value="merchant_review">商家审核</option>
+            <option value="aftersales">售后判责</option>
+            <option value="risk_review">风险核查</option>
+            <option value="content_audit">内容审核</option>
+            <option value="general">通用</option>
+          </select>
+          <button id="resolveBtn" type="button">刷新解析</button>
+        </div>
+        <div id="resolutionCard" class="resolution-card muted">选择业务域后查看当前 runtime resolution。</div>
+      </section>
+
+      <section class="panel versions-panel">
+        <div class="panel-head">
+          <div><small>Review queue</small><h2>工作区政策版本</h2></div>
+          <button id="refreshBtn" type="button">刷新</button>
+        </div>
+        <div id="versionList" class="version-list"></div>
+      </section>
+
+      <section class="panel detail-panel">
+        <div class="panel-head">
+          <div><small>Version detail</small><h2>版本与审计</h2></div>
+          <span id="detailState">未选择</span>
+        </div>
+        <div id="detailEmpty" class="empty-state">选择一个版本，查看 immutable content、冲突预览和审计事件。</div>
+        <div id="detailContent" hidden>
+          <dl id="versionMeta" class="meta-grid"></dl>
+          <div class="detail-block"><h3>Rules</h3><div id="detailRules" class="rule-list"></div></div>
+          <div class="detail-block"><h3>Controls</h3><pre id="detailControls"></pre></div>
+          <div class="detail-block"><h3>Scope</h3><pre id="detailScope"></pre></div>
+          <div class="action-row" id="draftActions">
+            <button id="previewPublishBtn" type="button">预览发布</button>
+            <button id="approveBtn" type="button">作为 Checker 审批</button>
+            <button id="rejectBtn" type="button">拒绝</button>
+            <button id="publishBtn" class="danger" type="button">发布已审批版本</button>
+          </div>
+          <div class="action-row" id="activeActions">
+            <button id="previewRetireBtn" type="button">预览退役</button>
+            <button id="requestRetireBtn" type="button">申请退役</button>
+            <button id="retireBtn" class="danger" type="button">另一管理员执行退役</button>
+          </div>
+          <div class="detail-block"><h3>最近预览</h3><div id="previewCard" class="preview-card muted">尚未运行预览。</div></div>
+          <div class="detail-block"><h3>Audit trail</h3><div id="auditList" class="audit-list"></div></div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/policy-center.js"></script>
+</body>
+</html>
