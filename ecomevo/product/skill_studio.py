@@ -429,6 +429,12 @@ class SkillStudioStore:
             for phase in phases
             for failure in phase["failures"]
         ]
+        failed_case_ids = {
+            str(row["id"])
+            for phase in phases
+            for row in phase["cases"]
+            if row.get("failures")
+        }
         drift_count = sum(1 for row in comparisons if not row["stable"])
         return {
             "ok": not failures and drift_count == 0,
@@ -445,7 +451,7 @@ class SkillStudioStore:
             },
             "case_count": len(cases),
             "phase_count": len(phases),
-            "failed_case_count": len({failure.split(":", 1)[0] for failure in failures}),
+            "failed_case_count": len(failed_case_ids),
             "drift_case_count": drift_count,
             "phases": phases,
             "comparisons": comparisons,
