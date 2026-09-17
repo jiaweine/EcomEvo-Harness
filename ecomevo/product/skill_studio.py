@@ -3,11 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import tempfile
 import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Iterable
+
+from ecomevo.evaluation import asset_for, load_cases, validate
+from ecomevo.runtime import EcomEvoEngine
 
 
 DOMAINS = {
@@ -18,7 +22,7 @@ DOMAINS = {
     "content_audit",
     "general",
 }
-EVENTS = {"created", "submitted", "evaluation_linked", "archived"}
+EVENTS = {"created", "submitted", "candidate_evaluated", "archived"}
 
 
 def _clean_list(values: Iterable[str], limit: int) -> list[str]:
@@ -39,25 +43,26 @@ def authority_contract() -> dict[str, bool]:
         "studio_changes_routing": False,
         "studio_changes_policy": False,
         "studio_grants_action_authority": False,
-        "evaluation_link_auto_promotes": False,
+        "candidate_evaluation_mutates_production": False,
+        "evaluation_pass_auto_promotes": False,
         "can_promote_runtime": False,
     }
 
 
 class SkillStudioStore:
-    """Immutable human-authored procedure versions plus append-only review events.
+    """Immutable procedure versions with isolated candidate evaluation.
 
-    Studio state is stored separately from ``runtime_skills``. Runtime skills remain
-    governed by AdaptiveSkillLibrary shadow/outcome promotion. A Studio version may be
-    evaluated and reviewed, but this class has no path that can make it active in runtime.
+    Studio state is separate from ``runtime_skills``. Candidate evaluation creates a
+    temporary EcomEvo runtime, activates the immutable candidate only inside that temporary
+    database, runs same-domain Gold Set cases twice (fresh + persisted replay), and discards
+    the runtime afterwards. No Studio API can activate a production RuntimeSkill.
     """
 
-    def __init__(self, db_path: str | Path, runtime_skills: Any, tools: Any, evaluation_center: Any):
+    def __init__(self, db_path: str | Path, runtime_skills: Any, tools: Any):
         self.path = str(db_path)
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self.runtime_skills = runtime_skills
         self.tools = tools
-        self.evaluation_center = evaluation_center
         self._lock = threading.RLock()
         self._init()
 
@@ -105,6 +110,16 @@ class SkillStudioStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_studio_skill_events_version
                     ON studio_skill_events(version_id, id ASC);
+                CREATE TABLE IF NOT EXISTS studio_skill_evaluations(
+                    id TEXT PRIMARY KEY,
+                    version_id TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    result_json TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_studio_skill_eval_version
+                    ON studio_skill_evaluations(version_id, created_at DESC);
                 """
             )
 
@@ -221,12 +236,13 @@ class SkillStudioStore:
             kind = event["event_type"]
             if kind == "submitted":
                 state = "review"
-            elif kind == "evaluation_linked":
+            elif kind == "candidate_evaluated":
                 evaluation = dict(event["payload"])
                 state = "evaluated_pass" if evaluation.get("ok") else "evaluated_fail"
             elif kind == "archived":
                 archived = True
-                state = "archived"
+        if archived:
+            state = "archived"
         return {"state": state, "evaluation": evaluation, "archived": archived}
 
     def _with_state(self, version: dict[str, Any]) -> dict[str, Any]:
@@ -284,11 +300,7 @@ class SkillStudioStore:
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             version_id = self._insert_version(
-                connection,
-                family_id,
-                1,
-                actor_id=actor_id,
-                payload=payload,
+                connection, family_id, 1, actor_id=actor_id, payload=payload
             )
         return self.get_version(version_id)  # type: ignore[return-value]
 
@@ -353,27 +365,162 @@ class SkillStudioStore:
         self._append_event(version_id, "submitted", actor_id, {"note": str(note)[:2000]})
         return self.get_version(version_id)  # type: ignore[return-value]
 
-    def link_evaluation(self, version_id: str, run_id: str, *, actor_id: str) -> dict[str, Any]:
+    @staticmethod
+    def _case_snapshot(case: dict[str, Any], summary: Any, failures: list[str]) -> dict[str, Any]:
+        return {
+            "id": str(case["id"]),
+            "status": str(summary.status),
+            "missing_evidence": list(summary.missing_evidence),
+            "action_count": len(summary.proposed_actions),
+            "event_chain_valid": bool(summary.event_chain_valid),
+            "failures": list(failures),
+        }
+
+    async def _run_candidate_evaluation(self, version: dict[str, Any]) -> dict[str, Any]:
+        cases = [case for case in load_cases() if str(case["domain"]) == version["domain"]]
+        if not cases:
+            raise ValueError("no Gold Set cases cover this skill domain")
+        phases: list[dict[str, Any]] = []
+        ephemeral_skill_id = ""
+        with tempfile.TemporaryDirectory(prefix="ecomevo-studio-eval-") as tmp:
+            runtime_db = Path(tmp) / "runtime.db"
+            for phase_name in ("fresh", "persisted_replay"):
+                engine = EcomEvoEngine(runtime_db)
+                if phase_name == "fresh":
+                    candidate = engine.skills.upsert_candidate(
+                        domain=version["domain"],
+                        name=version["name"],
+                        guidance=version["guidance"],
+                        preferred_tools=list(version["preferred_tools"]),
+                        trigger_terms=list(version["trigger_terms"]),
+                        shadow_score=1.0,
+                        source_patch_id=f"studio:{version['version_id']}:{version['content_hash']}",
+                        promote=True,
+                    )
+                    ephemeral_skill_id = candidate.skill_id
+                case_rows: list[dict[str, Any]] = []
+                phase_failures: list[str] = []
+                for case in cases:
+                    assets = [asset_for(case)] if case.get("asset_text") else []
+                    summary = await engine.run(
+                        str(case["text"]),
+                        assets,
+                        domain_hint=str(case["domain"]),
+                    )
+                    failures = validate(case, summary)
+                    case_rows.append(self._case_snapshot(case, summary, failures))
+                    phase_failures.extend(f"{case['id']}: {failure}" for failure in failures)
+                phases.append({"phase": phase_name, "cases": case_rows, "failures": phase_failures})
+
+        first = {row["id"]: row for row in phases[0]["cases"]}
+        second = {row["id"]: row for row in phases[1]["cases"]}
+        comparisons: list[dict[str, Any]] = []
+        for case_id in sorted(first):
+            a = first[case_id]
+            b = second[case_id]
+            stable = (
+                a["status"] == b["status"]
+                and a["missing_evidence"] == b["missing_evidence"]
+                and a["action_count"] == b["action_count"]
+            )
+            comparisons.append({"id": case_id, "stable": stable})
+        failures = [
+            f"{phase['phase']}: {failure}"
+            for phase in phases
+            for failure in phase["failures"]
+        ]
+        drift_count = sum(1 for row in comparisons if not row["stable"])
+        return {
+            "ok": not failures and drift_count == 0,
+            "candidate": {
+                "version_id": version["version_id"],
+                "content_hash": version["content_hash"],
+                "domain": version["domain"],
+                "ephemeral_runtime_skill_id": ephemeral_skill_id,
+            },
+            "isolation": {
+                "temporary_runtime": True,
+                "production_runtime_mutated": False,
+                "production_skill_promoted": False,
+            },
+            "case_count": len(cases),
+            "phase_count": len(phases),
+            "failed_case_count": len({failure.split(":", 1)[0] for failure in failures}),
+            "drift_case_count": drift_count,
+            "phases": phases,
+            "comparisons": comparisons,
+            "failures": failures,
+        }
+
+    async def evaluate(self, version_id: str, *, actor_id: str) -> dict[str, Any]:
         current = self.get_version(version_id)
         if current is None:
             raise KeyError(version_id)
         if current["state"] not in {"review", "evaluated_pass", "evaluated_fail"}:
-            raise ValueError("submit the version before linking evaluation")
-        run = self.evaluation_center.store.get_run(str(run_id))
-        if run is None:
-            raise ValueError("evaluation run does not exist")
-        summary = dict(run.get("summary") or {})
-        snapshot = {
-            "run_id": str(run["id"]),
-            "ok": bool(run.get("ok")),
-            "source_hash": str(run.get("source_hash") or ""),
-            "case_count": int(run.get("case_count") or summary.get("case_count") or 0),
-            "failed_case_count": int(summary.get("failed_case_count") or 0),
-            "drift_case_count": int(summary.get("drift_case_count") or 0),
-            "run_created_at": float(run.get("created_at") or 0),
+            raise ValueError("submit the version before evaluation")
+        result = await self._run_candidate_evaluation(current)
+        evaluation_id = f"studio-eval-{uuid.uuid4().hex[:16]}"
+        created_at = time.time()
+        event_payload = {
+            "evaluation_id": evaluation_id,
+            "ok": bool(result["ok"]),
+            "content_hash": current["content_hash"],
+            "case_count": int(result["case_count"]),
+            "failed_case_count": int(result["failed_case_count"]),
+            "drift_case_count": int(result["drift_case_count"]),
+            "isolated_runtime": True,
         }
-        self._append_event(version_id, "evaluation_linked", actor_id, snapshot)
+        with self._lock, self._conn() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            exists = connection.execute(
+                "SELECT content_hash FROM studio_skill_versions WHERE version_id=?",
+                (str(version_id),),
+            ).fetchone()
+            if not exists:
+                raise KeyError(version_id)
+            if str(exists["content_hash"]) != current["content_hash"]:
+                raise RuntimeError("immutable skill content changed during evaluation")
+            connection.execute(
+                "INSERT INTO studio_skill_evaluations(id,version_id,content_hash,result_json,created_by,created_at) VALUES(?,?,?,?,?,?)",
+                (
+                    evaluation_id,
+                    str(version_id),
+                    current["content_hash"],
+                    _stable_json(result),
+                    str(actor_id),
+                    created_at,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO studio_skill_events(version_id,event_type,actor_id,payload_json,created_at) VALUES(?,?,?,?,?)",
+                (
+                    str(version_id),
+                    "candidate_evaluated",
+                    str(actor_id),
+                    _stable_json(event_payload),
+                    created_at,
+                ),
+            )
         return self.get_version(version_id)  # type: ignore[return-value]
+
+    def get_evaluation(self, evaluation_id: str) -> dict[str, Any] | None:
+        with self._conn() as connection:
+            row = connection.execute(
+                "SELECT id,version_id,content_hash,result_json,created_by,created_at "
+                "FROM studio_skill_evaluations WHERE id=?",
+                (str(evaluation_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": str(row["id"]),
+            "version_id": str(row["version_id"]),
+            "content_hash": str(row["content_hash"]),
+            "result": json.loads(str(row["result_json"])),
+            "created_by": str(row["created_by"]),
+            "created_at": float(row["created_at"]),
+            "authority": authority_contract(),
+        }
 
     def archive(self, version_id: str, *, actor_id: str, note: str = "") -> dict[str, Any]:
         current = self.get_version(version_id)
@@ -430,13 +577,12 @@ class SkillStudioStore:
         if not path or not Path(path).is_file():
             return []
         try:
-            connection = sqlite3.connect(path, timeout=5.0)
-            connection.row_factory = sqlite3.Row
-            rows = connection.execute(
-                "SELECT domain,promotion_threshold,retirement_threshold,exploration,updates,updated_at "
-                "FROM evolution_policy ORDER BY domain"
-            ).fetchall()
-            connection.close()
+            with sqlite3.connect(path, timeout=5.0) as connection:
+                connection.row_factory = sqlite3.Row
+                rows = connection.execute(
+                    "SELECT domain,promotion_threshold,retirement_threshold,exploration,updates,updated_at "
+                    "FROM evolution_policy ORDER BY domain"
+                ).fetchall()
         except (sqlite3.Error, OSError):
             return []
         return [
