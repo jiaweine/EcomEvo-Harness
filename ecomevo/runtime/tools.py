@@ -3,6 +3,7 @@ import asyncio, json, re, time, uuid
 from pathlib import Path
 from typing import Any
 from ecomevo.models import ToolCall, ToolResult
+from .policy_control import PolicyStore
 from .sandbox import ActionSandbox
 
 
@@ -39,20 +40,16 @@ EVIDENCE_TERMS=[
 STOP_TERMS={'这个','那个','怎么','如何','能不能','可以吗','帮我','看看','一下','继续','处理','是否','进行','当前','刚才','资料'}
 
 
-
 def _term_asserted(text:str,term:str)->bool:
     """Return True only when a term is asserted as a fact rather than negated/form-field text."""
     text=str(text or '')
     for match in re.finditer(re.escape(term),text,flags=re.I):
         prefix=text[max(0,match.start()-16):match.start()]
         suffix=text[match.end():match.end()+18]
-        # Prefix negation: 无历史处罚、未发现伪造、并非刷单。
         if re.search(r'(?:无|未|没有|并无|不存在|否认|不涉及|未发现|未见|无任何|没有任何|不是|并非|不属于)[^，。；;\n]{0,7}$',prefix):
             continue
-        # Form/report suffix negation: 刷单：否、处罚记录：无、套现风险=未发现。
         if re.match(r'^\s*(?:(?:行为|记录|情况|风险|迹象|证据|问题|相关)\s*)?[:：=]?\s*(?:无|否|没有|未发现|未见|不存在|正常)(?=$|[，。；;\n、 ])',suffix):
             continue
-        # Unanswered questionnaire fields such as “是否存在刷单？” are questions, not evidence.
         if re.search(r'(?:是否|有无)(?:存在|涉及)?[^，。；;\n]{0,4}$',prefix) and (not suffix.strip() or re.match(r'^\s*[？?]',suffix)):
             continue
         return True
@@ -63,14 +60,11 @@ def _query_terms(query:str,limit:int=40)->list[str]:
     def add(value):
         value=str(value).strip().lower()
         if len(value)>=2 and value not in STOP_TERMS and value not in terms:terms.append(value)
-    # Domain terms are more useful than arbitrary character n-grams and should win the cap.
     for term in EVIDENCE_TERMS:
         if term.lower() in text:add(term)
     for token in re.findall(r'[A-Za-z0-9][A-Za-z0-9_-]{1,}',text):add(token)
     for chunk in re.findall(r'[\u4e00-\u9fff]{2,}',text):
         if len(chunk)<=12:add(chunk)
-        # Lightweight Chinese fallback without an external tokenizer. Trigrams first
-        # reduce accidental matches while still finding entity/task fragments.
         for n in (4,3,2):
             for i in range(max(0,len(chunk)-n+1)):
                 gram=chunk[i:i+n]
@@ -91,12 +85,7 @@ class MediaSummarizeTool(BaseTool):
         return {'assets':rows,'count':len(rows),'interpretable_count':sum(1 for x in rows if x['interpretable']),'semantic_count':sum(1 for x in rows if x['semantic'])}
 
 def _stream_text_hit(asset:dict[str,Any],words:list[str],chunk_chars:int=262144)->tuple[list[str],str]:
-    """Search the full raw text file when the bounded DB search index was truncated.
-
-    This keeps large logs out of SQLite while still allowing evidence near the tail of an
-    allowed upload to be discovered. Only plain-text assets use this path; structured
-    documents keep their parser-derived bounded index.
-    """
+    """Search the full raw text file when the bounded DB search index was truncated."""
     meta=asset.get('meta') or {}
     if meta.get('kind')!='text' or not meta.get('search_truncated'):
         return [],''
@@ -145,14 +134,25 @@ class EvidenceSearchTool(BaseTool):
 
 class PolicyLookupTool(BaseTool):
     key='policy.lookup'; cost=.6
-    POLICY={
+    LEGACY_POLICY={
       'product_governance':['商品标题、主图、详情与实物/资质应保持一致','涉及功效、材质、品牌授权等高风险声明时必须有可核验证据','证据不足时优先进入复核，不直接执行下架'],
       'merchant_review':['主体资质、经营范围、授权链路、历史处罚与账户关联需要一致核对','高风险关联或材料矛盾时应转人工复核','通过/拒绝属于有业务副作用的动作，必须留痕'],
       'aftersales':['判责应同时核对订单履约、商品描述、沟通记录与用户举证','退款金额不得超过订单可退金额','争议证据不足时应补证或升级，不应直接定责'],
       'risk_review':['风险结论至少需要两个独立信号或一条强证据','模型/规则命中只能作为线索，最终处置需结合业务事实'],
       'content_audit':['图文、视频、文案需做一致性与合规检查','无法直接理解的媒体应转视觉/音视频模型或人工复核']}
+    def __init__(self,policies:PolicyStore|None=None):self.policies=policies
     async def execute(self,ctx,args):
-        domain=ctx['goal'].domain.value; return {'domain':domain,'rules':self.POLICY.get(domain,self.POLICY['risk_review'])}
+        domain=ctx['goal'].domain.value
+        if self.policies is None:
+            return {'domain':domain,'status':'resolved','rules':self.LEGACY_POLICY.get(domain,self.LEGACY_POLICY['risk_review']),'controls':{},'policies':[],'conflicts':[],'overridden':[],'resolution_mode':'legacy_builtin'}
+        scope={str(k):str(v) for k,v in dict(ctx.get('policy_scope') or args.get('scope') or {}).items() if str(k).strip() and str(v).strip()}
+        as_of=args.get('as_of') or ctx.get('decision_at') or ctx.get('_policy_decision_at')
+        if not as_of:
+            as_of=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+            ctx['_policy_decision_at']=as_of
+        result=self.policies.resolve(domain,scope=scope,as_of=as_of)
+        result['resolution_mode']='versioned_policy_store'
+        return result
 
 class CatalogInspectTool(BaseTool):
     key='catalog.inspect'; cost=1.1
@@ -240,8 +240,9 @@ class MCPReadTool(BaseTool):
 
 
 class ToolRegistry:
-    def __init__(self,mcp=None):
-        tools=[MediaSummarizeTool(),EvidenceSearchTool(),PolicyLookupTool(),CatalogInspectTool(),MerchantInspectTool(),OrderInspectTool(),RiskScanTool()]
+    def __init__(self,mcp=None,policies:PolicyStore|None=None):
+        self.policies=policies
+        tools=[MediaSummarizeTool(),EvidenceSearchTool(),PolicyLookupTool(policies),CatalogInspectTool(),MerchantInspectTool(),OrderInspectTool(),RiskScanTool()]
         self.tools={t.key:t for t in tools};self._local_keys=set(self.tools);self.remote_specs=[];self.mcp=None
         self.set_mcp(mcp)
 

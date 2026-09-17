@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f3ee" />
+  <meta name="description" content="EcomEvo 任务队列：分拣、认领和跟进需要处理的业务任务。" />
+  <title>EcomEvo · 任务队列</title>
+  <link rel="stylesheet" href="/assets/inbox.css" />
+</head>
+<body>
+  <div class="inbox-shell">
+    <header class="inbox-topbar">
+      <a class="brand" href="/" aria-label="返回 EcomEvo 工作台">
+        <span class="brand-mark" aria-hidden="true">E</span>
+        <span><b>EcomEvo</b><small>任务队列</small></span>
+      </a>
+      <div class="top-actions">
+        <span class="sync-state" id="syncState" aria-live="polite">正在同步</span>
+        <button class="secondary" id="refreshBtn" type="button">刷新</button>
+        <a class="primary-link" href="/">返回工作台</a>
+      </div>
+    </header>
+
+    <main class="inbox-main">
+      <section class="hero" aria-labelledby="inboxTitle">
+        <div>
+          <p class="eyebrow">OPERATE · TASK INBOX</p>
+          <h1 id="inboxTitle">先处理真正需要人的任务</h1>
+          <p>队列状态来自真实运行记录、证据缺口和待确认操作。认领只表示协作归属，不会获得审批权限，也不会改变模型路由或业务动作权限。</p>
+        </div>
+        <div class="authority-note" aria-label="权限边界">
+          <b>权限边界保持不变</b>
+          <span>认领 ≠ 审批</span>
+          <span>优先级 ≠ Runtime 路由</span>
+          <span>不确定执行结果必须先核对</span>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="队列摘要">
+        <article><small>当前任务</small><strong id="metricTotal">0</strong><span>当前筛选范围</span></article>
+        <article><small>待补证据</small><strong id="metricEvidence">0</strong><span>缺少直接支持</span></article>
+        <article><small>待人工确认</small><strong id="metricApproval">0</strong><span>存在待确认操作</span></article>
+        <article><small>结果待核对</small><strong id="metricVerify">0</strong><span>禁止盲目重试</span></article>
+      </section>
+
+      <section class="toolbar" aria-label="队列筛选">
+        <div class="segmented" role="group" aria-label="任务归属">
+          <button type="button" class="active" data-view="all">全部</button>
+          <button type="button" data-view="mine">我的</button>
+          <button type="button" data-view="unassigned">未认领</button>
+        </div>
+        <label class="field">
+          <span>业务场景</span>
+          <select id="sceneFilter">
+            <option value="">全部场景</option>
+            <option value="product_governance">商品治理</option>
+            <option value="merchant_review">商家审核</option>
+            <option value="aftersales">售后判责</option>
+            <option value="risk_review">风险核查</option>
+            <option value="content_audit">内容审核</option>
+          </select>
+        </label>
+        <label class="search-field">
+          <span class="sr-only">搜索任务</span>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="搜索标题、问题或负责人" />
+        </label>
+      </section>
+
+      <section class="workspace-grid">
+        <div class="queue-panel" aria-labelledby="queueHeading">
+          <div class="panel-head">
+            <div><small>QUEUE</small><h2 id="queueHeading">任务列表</h2></div>
+            <span id="queueCount">0 条</span>
+          </div>
+          <div class="queue-list" id="queueList" aria-live="polite"></div>
+        </div>
+
+        <aside class="detail-panel" id="detailPanel" aria-labelledby="detailHeading">
+          <div class="detail-empty" id="detailEmpty">
+            <span aria-hidden="true">↗</span>
+            <b>选择一个任务查看协作状态</b>
+            <p>这里仅管理认领和优先级。证据、结论与待确认操作仍在原工作台处理。</p>
+          </div>
+          <div id="detailContent" hidden>
+            <div class="panel-head detail-head">
+              <div><small>SELECTED TASK</small><h2 id="detailHeading">任务详情</h2></div>
+              <span class="state-pill" id="detailState"></span>
+            </div>
+            <div class="detail-body">
+              <div class="detail-title-row">
+                <div><span id="detailScene"></span><h3 id="detailTitle"></h3></div>
+                <span class="priority-badge" id="detailPriority"></span>
+              </div>
+              <p class="detail-reason" id="detailReason"></p>
+              <dl class="detail-facts">
+                <div><dt>负责人</dt><dd id="detailOwner">—</dd></div>
+                <div><dt>最后业务活动</dt><dd id="detailUpdated">—</dd></div>
+                <div><dt>消息 / 资料</dt><dd id="detailCounts">—</dd></div>
+              </dl>
+              <div class="latest-question">
+                <small>最近问题</small>
+                <p id="detailQuestion">暂无用户消息</p>
+              </div>
+              <label class="priority-control">
+                <span>协作优先级</span>
+                <select id="prioritySelect">
+                  <option value="urgent">紧急</option>
+                  <option value="high">高</option>
+                  <option value="normal">普通</option>
+                  <option value="low">低</option>
+                </select>
+                <small>只影响队列排序，不改变运行时决策。</small>
+              </label>
+              <div class="detail-actions">
+                <button class="secondary" id="claimBtn" type="button">认领任务</button>
+                <a class="primary-link" id="openTaskLink" href="/">打开工作台</a>
+              </div>
+              <div class="safety-card">
+                <b>队列不会执行真实业务动作</b>
+                <p>审批、退款、下架、冻结等操作仍由原有 Approval / Governance / Sandbox 边界控制。</p>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/inbox.js" defer></script>
+</body>
+</html>

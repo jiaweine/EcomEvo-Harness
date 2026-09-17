@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f1ec" />
+  <title>EcomEvo · Test Center</title>
+  <link rel="stylesheet" href="/assets/evaluation.css" />
+</head>
+<body>
+  <div class="eval-shell">
+    <header class="eval-topbar">
+      <a class="brand" href="/" aria-label="返回业务工作台"><span>E</span><div><b>EcomEvo</b><small>Test Center</small></div></a>
+      <div class="top-meta"><span class="admin-pill">Admin control plane</span><a href="/">返回业务工作台</a></div>
+    </header>
+
+    <main class="eval-main">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Evaluate · Release evidence</p>
+          <h1>在发布前验证决策行为，而不是验证“模型看起来聪明”。</h1>
+          <p class="hero-copy">Gold Set 会在隔离的临时 Runtime 中执行 fresh 与 persisted replay 两轮，检查证据完整性、停止状态、工具预算、事件链与副作用权限边界。评估不会改写生产 routing、skill、evolution 或审批状态。</p>
+        </div>
+        <div class="hero-actions">
+          <button class="primary" id="runBtn" type="button">运行 Gold Set</button>
+          <p id="runHint">运行结果会保存为不可变快照。</p>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="评估概览">
+        <article><small>场景</small><strong id="caseCount">—</strong><span>deterministic cases</span></article>
+        <article><small>业务域</small><strong id="domainCount">—</strong><span>commerce domains</span></article>
+        <article><small>最近结果</small><strong id="latestStatus">—</strong><span id="latestStatusDetail">尚未运行</span></article>
+        <article><small>Replay 漂移</small><strong id="latestDrift">—</strong><span>状态 / 缺证 / 动作数</span></article>
+      </section>
+
+      <div class="eval-grid">
+        <section class="panel cases-panel">
+          <header class="panel-head">
+            <div><p class="eyebrow">Gold Set</p><h2>业务场景目录</h2></div>
+            <span id="sourceHash" class="hash-chip">加载中</span>
+          </header>
+          <div id="caseList" class="case-list" aria-live="polite"></div>
+        </section>
+
+        <aside class="panel runs-panel">
+          <header class="panel-head">
+            <div><p class="eyebrow">Run history</p><h2>评估快照</h2></div>
+            <button class="ghost" id="refreshBtn" type="button">刷新</button>
+          </header>
+          <div id="runList" class="run-list"></div>
+        </aside>
+      </div>
+
+      <section class="panel detail-panel" id="detailPanel">
+        <header class="panel-head detail-head">
+          <div><p class="eyebrow">Fresh ↔ Persisted replay</p><h2 id="detailTitle">选择一个评估快照</h2></div>
+          <div id="detailBadges" class="detail-badges"></div>
+        </header>
+        <div id="emptyDetail" class="empty-detail">
+          <b>还没有可比较的评估结果</b>
+          <p>运行 Gold Set，或从右侧历史快照中选择一条记录。</p>
+        </div>
+        <div id="detailContent" hidden>
+          <div class="run-summary" id="runSummary"></div>
+          <div class="comparison-wrap">
+            <table>
+              <thead><tr><th>场景</th><th>Fresh</th><th>Persisted replay</th><th>证据缺口</th><th>稳定性</th></tr></thead>
+              <tbody id="comparisonBody"></tbody>
+            </table>
+          </div>
+          <section class="failure-box" id="failureBox" hidden>
+            <h3>Gate failures</h3>
+            <div id="failureList"></div>
+          </section>
+        </div>
+      </section>
+
+      <footer class="eval-footer">
+        <span>Deterministic authority remains upstream of this UI.</span>
+        <span>Test Center 只观察 release behavior，不执行 production promotion。</span>
+      </footer>
+    </main>
+  </div>
+  <script src="/assets/evaluation.js" defer></script>
+</body>
+</html>

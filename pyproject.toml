@@ -50,6 +50,7 @@ exclude = ["tests*", "outputs*", "docs*", "scripts*"]
 
 [tool.setuptools.package-data]
 frontend = ["*.html", "*.css", "*.js"]
+"ecomevo.evals" = ["*.jsonl"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
