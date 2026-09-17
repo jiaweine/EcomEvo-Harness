@@ -7,10 +7,10 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_policy_workflow_routes_keep_immutable_maker_checker_surface():
     source = (ROOT / "ecomevo/api/policy_workflow_routes.py").read_text(encoding="utf-8")
     assert '"/api/runtime/policies/drafts"' in source
-    assert '"/approve"' in source
-    assert '"/publish"' in source
-    assert '"/retirement-requests"' in source
-    assert '"/retire"' in source
+    assert '"/api/runtime/policies/{policy_id}/versions/{version}/approve"' in source
+    assert '"/api/runtime/policies/{policy_id}/versions/{version}/publish"' in source
+    assert '"/api/runtime/policies/{policy_id}/versions/{version}/retirement-requests"' in source
+    assert '"/api/runtime/policies/{policy_id}/versions/{version}/retire"' in source
     assert "@app.patch(" not in source
     assert "@app.delete(" not in source
     assert "creator cannot self-approve" not in source  # enforced in workflow core, not client text
