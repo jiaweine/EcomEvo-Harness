@@ -105,4 +105,5 @@ class OperatorAwareQualityObservability(QualityObservability):
         result["operator_activity"] = activity
         result["methodology"]["operator_active_hours"] = activity["definition"]
         result["methodology"]["operator_active_hours_client_duration_accepted"] = False
+        result["methodology"]["operator_active_hours_limitation"] = activity["limitation"]
         return result
