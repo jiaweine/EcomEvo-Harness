@@ -2,6 +2,7 @@
   'use strict';
   const API = '/api/runtime/knowledge';
   const $ = id => document.getElementById(id);
+  const esc = value => String(value ?? '').replace(/[&<>\"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[ch]));
   const state = {catalog: null, selected: null, mode: 'source'};
   const domainLabel = {
     product_governance:'商品治理', merchant_review:'商家审核', aftersales:'售后判责',
@@ -48,8 +49,8 @@
     const rows = state.catalog?.source_hierarchy || [];
     $('kgHierarchy').innerHTML = rows.map(row => `
       <article class="kg-tier ${row.authorable_here ? '' : 'locked'}">
-        <b>${row.tier} · ${row.label}</b><em>${row.authorable_here ? '可治理' : '锁定来源'}</em>
-        <p>${row.note}</p>
+        <b>${esc(row.tier)} · ${esc(row.label)}</b><em>${row.authorable_here ? '可治理' : '锁定来源'}</em>
+        <p>${esc(row.note)}</p>
       </article>`).join('');
   }
 
@@ -57,8 +58,8 @@
     const items = state.catalog?.items || [];
     $('sourceList').innerHTML = items.length ? items.map(item => `
       <button type="button" class="kg-source ${state.selected?.source_id === item.source_id ? 'active' : ''}" data-source="${item.source_id}">
-        <div class="kg-source-top"><b>${item.name}</b><em>${item.source_tier}</em></div>
-        <p>${domainLabel[item.domain] || item.domain} · ${item.current_published_version_id ? '有 Published 版本' : '未发布'}</p>
+        <div class="kg-source-top"><b>${esc(item.name)}</b><em>${esc(item.source_tier)}</em></div>
+        <p>${esc(domainLabel[item.domain] || item.domain)} · ${item.current_published_version_id ? '有 Published 版本' : '未发布'}</p>
       </button>`).join('') : '<div class="kg-empty"><b>还没有知识源</b><p>创建第一个 S2 或 S4 来源。</p></div>';
     document.querySelectorAll('[data-source]').forEach(button => {
       button.onclick = () => selectSource(button.dataset.source);
@@ -104,13 +105,13 @@
     const versions = state.selected?.versions || [];
     $('versionList').innerHTML = versions.map(version => `
       <article class="kg-version">
-        <div class="kg-version-head"><h3>v${version.version} · ${version.title}</h3><span>${stateLabel[version.state] || version.state}</span></div>
+        <div class="kg-version-head"><h3>v${Number(version.version || 0)} · ${esc(version.title)}</h3><span>${esc(stateLabel[version.state] || version.state)}</span></div>
         <div class="kg-version-meta">
-          <span>${freshLabel[version.freshness] || version.freshness}</span>
+          <span>${esc(freshLabel[version.freshness] || version.freshness)}</span>
           <span>复审：${timeText(version.review_due_at)}</span>
-          <span>hash ${version.content_hash.slice(0,12)}…</span>
+          <span>hash ${esc(String(version.content_hash || '').slice(0,12))}…</span>
         </div>
-        <p>${version.content_text || ''}</p>
+        <p>${esc(version.content_text || '')}</p>
         <div class="kg-version-actions">${versionActions(version)}</div>
         <div class="kg-projection" id="projection-${version.version_id.replace(/[^A-Za-z0-9_-]/g,'_')}" hidden></div>
       </article>`).join('');
@@ -199,7 +200,7 @@
     try {
       const result = await api(`${API}/search?q=${encodeURIComponent(q)}`);
       $('searchResults').innerHTML = (result.items || []).length ? result.items.map(item => `
-        <article class="kg-hit"><b>${item.source_tier} · ${item.name}</b><small>${item.title} · ${freshLabel[item.freshness] || item.freshness}</small><p>${item.excerpt}</p></article>`).join('') : '<div class="kg-empty"><b>没有命中</b><p>只有 Published 且当前有效的目录版本参与预览。</p></div>';
+        <article class="kg-hit"><b>${esc(item.source_tier)} · ${esc(item.name)}</b><small>${esc(item.title)} · ${esc(freshLabel[item.freshness] || item.freshness)}</small><p>${esc(item.excerpt)}</p></article>`).join('') : '<div class="kg-empty"><b>没有命中</b><p>只有 Published 且当前有效的目录版本参与预览。</p></div>';
     } catch (error) { toast(error.message); }
   }
 
