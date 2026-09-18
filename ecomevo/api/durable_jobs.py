@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ecomevo.models import BusinessAction
-from ecomevo.providers.telemetry import (\n    begin_provider_usage_capture,\n    current_provider_usage_events,\n    reset_provider_usage_capture,\n    summarize_provider_usage,\n)\n
+from ecomevo.providers.telemetry import (
+    begin_provider_usage_capture,
+    current_provider_usage_events,
+    reset_provider_usage_capture,
+    summarize_provider_usage,
+)
+
 EmitFn = Callable[
     [str, str, dict[str, Any], str | None, str | None],
     Awaitable[dict[str, Any] | None],
