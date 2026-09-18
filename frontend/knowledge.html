@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>EcomEvo · Knowledge & Source Governance</title>
+  <link rel="stylesheet" href="/assets/knowledge.css" />
+</head>
+<body>
+  <main class="kg-shell">
+    <header class="kg-head">
+      <div>
+        <small>Build · Knowledge & Source Governance</small>
+        <h1>知识源治理</h1>
+        <p>管理受控知识与外部参考的不可变版本、评审、有效期和来源责任；目录发布不会把内容自动注入 Runtime Evidence。</p>
+      </div>
+      <a href="/" class="kg-back">返回工作台</a>
+    </header>
+
+    <section class="kg-guard">
+      <div><b>Published ≠ Runtime Evidence</b><span>发布只表示治理目录中的当前版本。不会改变 Verifier、Policy、Routing、BusinessAction 或审批权限。</span></div>
+      <div><b>S1 / S3 锁定</b><span>S1 只能来自受控业务系统/Data Connections；S3 只能来自具体任务提交证据。此处只能创建 S2 / S4。</span></div>
+    </section>
+
+    <section class="kg-hierarchy" id="kgHierarchy" aria-label="来源等级"></section>
+
+    <div class="kg-layout">
+      <aside class="kg-panel kg-sidebar">
+        <div class="kg-panel-head">
+          <div><small>Catalog</small><h2>知识源</h2></div>
+          <button type="button" class="primary compact" id="newSourceBtn">新建</button>
+        </div>
+        <div id="sourceList" class="kg-source-list"></div>
+      </aside>
+
+      <section class="kg-panel kg-main">
+        <div id="emptyState" class="kg-empty">
+          <b>选择一个知识源，或创建新的受控来源</b>
+          <p>每次修改都会创建新版本；已发布版本不会被原地覆盖。</p>
+        </div>
+
+        <div id="sourceDetail" hidden>
+          <header class="kg-detail-head">
+            <div>
+              <div class="kg-kicker"><span id="detailTier">—</span><i></i><span id="detailDomain">—</span></div>
+              <h2 id="detailName">—</h2>
+              <p id="detailMeta">—</p>
+            </div>
+            <button type="button" class="secondary" id="newVersionBtn">创建新版本</button>
+          </header>
+          <div class="kg-source-copy" id="detailDescription"></div>
+          <div class="kg-version-list" id="versionList"></div>
+        </div>
+      </section>
+
+      <aside class="kg-panel kg-search-panel">
+        <div class="kg-panel-head">
+          <div><small>Preview</small><h2>发布目录检索</h2></div>
+          <span>只读预览</span>
+        </div>
+        <form id="searchForm" class="kg-search">
+          <input id="searchInput" maxlength="1000" placeholder="检索已发布且当前有效的知识" />
+          <button type="submit">检索</button>
+        </form>
+        <p class="kg-search-note">此检索仅验证治理目录可发现性，不会把命中内容加入会话证据。</p>
+        <div id="searchResults" class="kg-search-results"></div>
+      </aside>
+    </div>
+  </main>
+
+  <div class="kg-modal-backdrop" id="editorModal" hidden>
+    <section class="kg-modal" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+      <header><div><small id="editorKicker">Source</small><h2 id="editorTitle">新建知识源</h2></div><button type="button" id="editorClose" aria-label="关闭">×</button></header>
+      <form id="editorForm">
+        <div id="sourceFields">
+          <div class="kg-form-grid">
+            <label><span>名称</span><input id="sourceName" maxlength="180" required /></label>
+            <label><span>来源等级</span><select id="sourceTier"><option value="S2">S2 · Controlled knowledge</option><option value="S4">S4 · External reference</option></select></label>
+            <label><span>业务域</span><select id="sourceDomain">
+              <option value="product_governance">商品治理</option><option value="merchant_review">商家审核</option>
+              <option value="aftersales">售后判责</option><option value="risk_review">风险核查</option>
+              <option value="content_audit">内容审核</option><option value="general">通用</option>
+            </select></label>
+            <label><span>负责人 / Owner</span><input id="sourceOwner" maxlength="180" required /></label>
+            <label><span>适用地区</span><input id="sourceJurisdiction" maxlength="180" placeholder="如 CN / SG / Global" /></label>
+            <label><span>标签</span><input id="sourceTags" maxlength="1000" placeholder="退款, 物流, 售后" /></label>
+          </div>
+          <label><span>来源说明</span><textarea id="sourceDescription" maxlength="3000" rows="3"></textarea></label>
+        </div>
+
+        <div class="kg-form-grid">
+          <label><span>版本标题</span><input id="versionTitle" maxlength="240" required /></label>
+          <label><span>Provenance / 来源依据</span><input id="versionProvenance" maxlength="2000" required placeholder="内部 SOP / 官方公告 / URL + 获取日期" /></label>
+          <label><span>有效开始</span><input id="effectiveFrom" type="datetime-local" /></label>
+          <label><span>有效结束</span><input id="effectiveUntil" type="datetime-local" /></label>
+          <label><span>复审日期</span><input id="reviewDue" type="datetime-local" /></label>
+        </div>
+        <label><span>知识内容</span><textarea id="contentText" minlength="20" maxlength="200000" rows="13" required></textarea></label>
+
+        <div class="kg-modal-guard">保存只会创建 immutable draft version；不会修改 Runtime Evidence、Policy、Routing 或 Action Authority。</div>
+        <footer><button type="button" class="secondary" id="editorCancel">取消</button><button type="submit" class="primary" id="editorSubmit">创建</button></footer>
+      </form>
+    </section>
+  </div>
+
+  <div class="kg-toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/knowledge.js"></script>
+</body>
+</html>
