@@ -21,7 +21,7 @@
 
     <section class="obs-method">
       <div><b>指标口径</b><span>Verified decision = runtime completed 且无证据缺口；存在 claim grounding 时，还要求 evidence_sufficiency=sufficient。</span></div>
-      <div><b>不会估算缺失数据</b><span>Operator Hours、token usage、provider cost 未持久化时显示“未采集”，不会用推测数字填充。</span></div>
+      <div><b>Operator Hours 口径</b><span>只统计服务端收到的前台活跃 15 秒桶，跨标签页去重；它是运营遥测，不是考勤或薪资证据。Token usage / provider cost 未采集时仍不会用推测数字填充。</span></div>
     </section>
 
     <section class="obs-toolbar" aria-label="时间范围">
