@@ -16,6 +16,7 @@ def main() -> None:
 
         from fastapi.testclient import TestClient
         from ecomevo.api.app import app
+        from ecomevo.api import application as app_module
 
         with TestClient(app) as client:
             connections = client.get("/api/runtime/connections")
@@ -25,6 +26,56 @@ def main() -> None:
             assert client.get("/api/runtime/connections/ui").status_code == 200
             assert client.get("/assets/connections.js").status_code == 200
             assert client.get("/assets/connections.css").status_code == 200
+
+            runtime_skills_before_knowledge = app_module.engine.skills.snapshot(limit=200)
+            knowledge_payload = {
+                "name": "售后签收争议治理知识",
+                "source_tier": "S2",
+                "domain": "aftersales",
+                "description": "受控售后证据要求，仅进入治理目录。",
+                "owner": "E2E 治理",
+                "jurisdiction": "CN",
+                "tags": ["物流", "签收", "售后"],
+                "version": {
+                    "title": "签收争议证据要求 v1",
+                    "content_text": "物流显示签收但用户否认收货时，应核对承运商原始轨迹、签收凭证和用户举证；关键事实不足时先补证据。",
+                    "effective_from": None,
+                    "effective_until": None,
+                    "review_due_at": None,
+                    "provenance": "E2E 内部治理 SOP",
+                },
+            }
+            knowledge_created = client.post("/api/runtime/knowledge/sources", json=knowledge_payload)
+            assert knowledge_created.status_code == 201
+            knowledge_source = knowledge_created.json()
+            knowledge_version = knowledge_source["versions"][0]
+            assert knowledge_version["state"] == "draft"
+            assert knowledge_version["authority"]["eligible_for_runtime_evidence"] is False
+            assert client.post(
+                f"/api/runtime/knowledge/versions/{knowledge_version['version_id']}/review",
+                json={"note": "E2E governance review"},
+            ).json()["state"] == "reviewed"
+            published_knowledge = client.post(
+                f"/api/runtime/knowledge/versions/{knowledge_version['version_id']}/publish",
+                json={"note": "E2E catalog publish"},
+            )
+            assert published_knowledge.status_code == 200
+            assert published_knowledge.json()["state"] == "published"
+            knowledge_search = client.get("/api/runtime/knowledge/search", params={"q": "承运商"})
+            assert knowledge_search.status_code == 200
+            assert knowledge_search.json()["items"][0]["version_id"] == knowledge_version["version_id"]
+            projection = client.get(
+                f"/api/runtime/knowledge/versions/{knowledge_version['version_id']}/retrieval-projection"
+            ).json()
+            assert projection["runtime_projection_status"] == "blocked_pending_explicit_source_integration_gate"
+            assert projection["authority"]["changes_runtime_evidence"] is False
+            assert projection["authority"]["changes_production_authority"] is False
+            assert projection["authority"]["s1_assignment_allowed"] is False
+            assert projection["authority"]["open_web_unlocks_high_impact_actions"] is False
+            assert app_module.engine.skills.snapshot(limit=200) == runtime_skills_before_knowledge
+            assert client.get("/api/runtime/knowledge/ui").status_code == 200
+            assert client.get("/assets/knowledge.js").status_code == 200
+            assert client.get("/assets/knowledge.css").status_code == 200
 
             conv = client.post(
                 "/api/conversations",
@@ -146,6 +197,9 @@ def main() -> None:
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
                 "connections_console": True,
+                "knowledge_source_id": knowledge_source["source_id"],
+                "knowledge_runtime_eligible": projection["authority"]["eligible_for_runtime_evidence"],
+                "knowledge_runtime_skills_unchanged": True,
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],
