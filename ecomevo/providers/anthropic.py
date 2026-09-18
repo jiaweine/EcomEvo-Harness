@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from .base import BaseProvider, ProviderError, ProviderInfo
+from .telemetry import normalize_anthropic_usage, record_provider_usage
 
 
 class AnthropicProvider(BaseProvider):
