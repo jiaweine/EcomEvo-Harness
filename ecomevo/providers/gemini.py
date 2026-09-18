@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from .base import BaseProvider, ProviderError, ProviderInfo
+from .telemetry import normalize_gemini_usage, record_provider_usage
 
 
 class GeminiProvider(BaseProvider):
@@ -170,9 +171,7 @@ class GeminiProvider(BaseProvider):
                 )
                 if r.status_code >= 400:
                     raise ProviderError(f"Gemini 请求失败 {r.status_code}: {r.text[:300]}")
-                data = r.json()
-                try:
-                    return "\n".join(
+                data = r.json()\n                record_provider_usage(\n                    provider=self.info.key,\n                    model=self.model,\n                    source="gemini.generate_content.usageMetadata",\n                    usage=normalize_gemini_usage(data.get("usageMetadata")),\n                )\n                try:\n                    return "\n".join(
                         x.get("text", "")
                         for x in data["candidates"][0]["content"]["parts"]
                         if "text" in x
