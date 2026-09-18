@@ -58,6 +58,13 @@ class OpenAICompatProvider(BaseProvider):
         if r.status_code >= 400:
             raise ProviderError(f"{self.info.name} 请求失败 {r.status_code}: {r.text[:300]}")
         data = r.json()
-        record_provider_usage(\n            provider=self.info.key,\n            model=self.model,\n            source="openai_compatible.chat_completions",\n            usage=normalize_openai_usage(data.get("usage")),\n        )\n        try:\n            return data["choices"][0]["message"]["content"] or ""
+        record_provider_usage(
+            provider=self.info.key,
+            model=self.model,
+            source="openai_compatible.chat_completions",
+            usage=normalize_openai_usage(data.get("usage")),
+        )
+        try:
+            return data["choices"][0]["message"]["content"] or ""
         except Exception as exc:
             raise ProviderError(f"{self.info.name} 返回格式异常") from exc
