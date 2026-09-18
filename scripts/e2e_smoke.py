@@ -118,6 +118,29 @@ def main() -> None:
                 assert completed["status"] == "simulated"
                 assert completed["payload"]["execution_outcome"] == "simulated"
 
+            before_activity = client.get(f"/api/conversations/{conv['id']}").json()
+            before_activity_actions = [
+                (row["id"], row["status"], row["payload"])
+                for row in before_activity["actions"]
+            ]
+            heartbeat = client.post(
+                "/api/operator-activity/heartbeat",
+                json={"surface": "workbench"},
+            )
+            assert heartbeat.status_code == 200
+            assert heartbeat.json() == {
+                "recorded": True,
+                "bucket_seconds": 15,
+                "client_duration_accepted": False,
+                "changes_authority": False,
+            }
+            after_activity = client.get(f"/api/conversations/{conv['id']}").json()
+            assert [
+                (row["id"], row["status"], row["payload"])
+                for row in after_activity["actions"]
+            ] == before_activity_actions
+            assert client.get("/assets/operator-activity.js").status_code == 200
+
             observability_response = client.get("/api/runtime/observability?window=24h")
             assert observability_response.status_code == 200
             observability = observability_response.json()
@@ -130,8 +153,14 @@ def main() -> None:
             assert observability["distribution"]["job_scenes"].get("aftersales", 0) >= 1
             assert observability["methodology"]["read_only"] is True
             assert observability["methodology"]["changes_authority"] is False
-            assert observability["north_star"]["operator_hours"]["available"] is False
-            assert observability["north_star"]["verified_decisions_per_operator_hour"]["available"] is False
+            assert observability["north_star"]["operator_hours"]["available"] is True
+            assert observability["north_star"]["operator_hours"]["active_seconds"] >= 15
+            assert observability["north_star"]["operator_hours"]["bucket_seconds"] == 15
+            assert observability["north_star"]["verified_decisions_per_operator_hour"]["available"] is True
+            assert observability["telemetry_availability"]["operator_active_hours"]["available"] is True
+            assert observability["telemetry_availability"]["operator_active_hours"]["client_duration_accepted"] is False
+            assert observability["operator_activity"]["changes_authority"] is False
+            assert observability["methodology"]["operator_active_hours_client_duration_accepted"] is False
             assert observability["telemetry_availability"]["token_usage"]["available"] is False
             assert observability["telemetry_availability"]["provider_cost"]["available"] is False
             assert client.get("/api/runtime/observability/ui").status_code == 200
@@ -149,6 +178,8 @@ def main() -> None:
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],
+                "operator_active_seconds": observability["north_star"]["operator_hours"]["active_seconds"],
+                "vdph_available": observability["north_star"]["verified_decisions_per_operator_hour"]["available"],
                 "event_chain_valid": True,
             })
 
