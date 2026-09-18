@@ -80,6 +80,124 @@ class QualityObservability:
             "grounding_sufficient": grounding_sufficiency == "sufficient",
         }
 
+    @classmethod
+    def _provider_telemetry(cls, assistants: list[dict[str, Any]]) -> dict[str, Any]:
+        instrumented_results = 0
+        external_calls = 0
+        usage_reported_calls = 0
+        priced_calls = 0
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
+        provider_counts: Counter[str] = Counter()
+        model_counts: Counter[str] = Counter()
+        known_cost_by_currency: dict[str, float] = defaultdict(float)
+
+        for row in assistants:
+            payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+            usage = payload.get("provider_usage")
+            if not isinstance(usage, dict) or int(usage.get("schema_version") or 0) != 1:
+                continue
+            instrumented_results += 1
+            external_calls += max(0, int(usage.get("external_calls") or 0))
+            usage_reported_calls += max(0, int(usage.get("usage_reported_calls") or 0))
+            input_tokens += max(0, int(usage.get("input_tokens") or 0))
+            output_tokens += max(0, int(usage.get("output_tokens") or 0))
+            total_tokens += max(0, int(usage.get("total_tokens") or 0))
+
+            events = usage.get("events")
+            if isinstance(events, list):
+                for event in events:
+                    if not isinstance(event, dict):
+                        continue
+                    provider = str(event.get("provider") or "unknown")
+                    model = str(event.get("model") or "unknown")
+                    provider_counts[provider] += 1
+                    model_counts[f"{provider}:{model}"] += 1
+
+            cost = usage.get("cost")
+            if isinstance(cost, dict):
+                priced_calls += max(0, int(cost.get("priced_calls") or 0))
+                currency = str(cost.get("currency") or "").strip().upper()
+                try:
+                    known_amount = max(0.0, float(cost.get("known_amount") or 0.0))
+                except (TypeError, ValueError):
+                    known_amount = 0.0
+                if currency and known_amount:
+                    known_cost_by_currency[currency] += known_amount
+
+        assistant_results = len(assistants)
+        result_coverage = cls._ratio(instrumented_results, assistant_results)
+        usage_coverage = cls._ratio(usage_reported_calls, external_calls)
+        price_coverage = cls._ratio(priced_calls, external_calls)
+        token_complete = (
+            assistant_results > 0
+            and instrumented_results == assistant_results
+            and external_calls > 0
+            and usage_reported_calls == external_calls
+        )
+        cost_complete = (
+            token_complete
+            and priced_calls == external_calls
+            and len(known_cost_by_currency) == 1
+        )
+
+        if external_calls <= 0:
+            token_reason = "no external provider calls with telemetry in this window"
+        elif instrumented_results < assistant_results:
+            token_reason = "historical results without provider usage telemetry are in this window"
+        elif usage_reported_calls < external_calls:
+            token_reason = "some successful provider responses did not report token usage"
+        else:
+            token_reason = None
+
+        if external_calls <= 0:
+            cost_reason = "no external provider calls with telemetry in this window"
+        elif instrumented_results < assistant_results:
+            cost_reason = "historical results without provider usage telemetry are in this window"
+        elif usage_reported_calls < external_calls:
+            cost_reason = "some successful provider responses did not report token usage"
+        elif priced_calls < external_calls:
+            cost_reason = "some provider/model calls have no complete exact price rule"
+        elif len(known_cost_by_currency) > 1:
+            cost_reason = "multiple currencies are present; no cross-currency total is produced"
+        else:
+            cost_reason = None
+
+        cost_amount = None
+        cost_currency = None
+        if cost_complete:
+            cost_currency, amount = next(iter(known_cost_by_currency.items()))
+            cost_amount = round(float(amount), 10)
+
+        return {
+            "assistant_results": assistant_results,
+            "instrumented_results": instrumented_results,
+            "result_coverage_rate": result_coverage,
+            "external_calls": external_calls,
+            "usage_reported_calls": usage_reported_calls,
+            "usage_coverage_rate": usage_coverage,
+            "tokens_complete": token_complete,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "providers": dict(sorted(provider_counts.items())),
+            "models": dict(sorted(model_counts.items())),
+            "cost": {
+                "available": cost_complete,
+                "amount": cost_amount,
+                "currency": cost_currency,
+                "known_cost_by_currency": {
+                    key: round(value, 10)
+                    for key, value in sorted(known_cost_by_currency.items())
+                },
+                "priced_calls": priced_calls,
+                "coverage_rate": price_coverage,
+                "reason": cost_reason,
+            },
+            "token_reason": token_reason,
+        }
+
     def _rows(self, tenant_id: str, since: float) -> dict[str, list[dict[str, Any]]]:
         with self.store._conn() as db:
             jobs = [
@@ -201,6 +319,8 @@ class QualityObservability:
             evidence_gap += int(flags["evidence_gap"])
             grounding_rows += int(flags["has_grounding"])
 
+        provider_telemetry = self._provider_telemetry(assistants)
+
         action_status = Counter(str(row.get("status") or "unknown") for row in actions)
         confirmation_required = sum(bool(row.get("requires_confirmation")) for row in actions)
         uncertain_incidents = sum(str(row.get("status") or "") == "uncertain" for row in actions)
@@ -291,14 +411,25 @@ class QualityObservability:
                 {"date": date, **metrics}
                 for date, metrics in sorted(series.items())
             ],
+            "model_telemetry": provider_telemetry,
             "telemetry_availability": {
                 "token_usage": {
-                    "available": False,
-                    "reason": "provider token usage is not durably recorded",
+                    "available": provider_telemetry["usage_reported_calls"] > 0,
+                    "complete": provider_telemetry["tokens_complete"],
+                    "external_calls": provider_telemetry["external_calls"],
+                    "usage_reported_calls": provider_telemetry["usage_reported_calls"],
+                    "usage_coverage_rate": provider_telemetry["usage_coverage_rate"],
+                    "result_coverage_rate": provider_telemetry["result_coverage_rate"],
+                    "reason": provider_telemetry["token_reason"],
+                    "definition": "provider-reported token usage only; text length is never converted into estimated tokens",
                 },
                 "provider_cost": {
-                    "available": False,
-                    "reason": "provider billing/cost ledger is not instrumented",
+                    "available": provider_telemetry["cost"]["available"],
+                    "priced_calls": provider_telemetry["cost"]["priced_calls"],
+                    "coverage_rate": provider_telemetry["cost"]["coverage_rate"],
+                    "known_cost_by_currency": provider_telemetry["cost"]["known_cost_by_currency"],
+                    "reason": provider_telemetry["cost"]["reason"],
+                    "definition": "cost is computed only from provider-reported usage and exact versioned provider:model price rules",
                 },
                 "operator_active_hours": {
                     "available": False,
@@ -308,6 +439,8 @@ class QualityObservability:
             "methodology": {
                 "verified_decision": "runtime status completed with no missing evidence; when claim grounding exists, evidence_sufficiency must also be sufficient",
                 "evidence_gap": "runtime needs_evidence/missing evidence or grounding insufficient/conflicted",
+                "provider_token_usage": "provider-reported usage fields only; no token estimation from text length",
+                "provider_cost": "only exact versioned provider:model price rules are applied; partial known cost is never labeled total cost",
                 "read_only": True,
                 "changes_authority": False,
             },
