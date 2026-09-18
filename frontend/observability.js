@@ -87,6 +87,41 @@
     ].join('');
   }
 
+  function fmtInteger(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.trunc(number)).toLocaleString('en-US') : '—';
+  }
+
+  function fmtCost(amount, currency) {
+    const number = Number(amount);
+    if (!Number.isFinite(number) || !currency) return '—';
+    const digits = Math.abs(number) < 0.01 ? 6 : 4;
+    return `${String(currency).toUpperCase()} ${number.toFixed(digits)}`;
+  }
+
+  function knownCostSubset(cost) {
+    const rows = Object.entries(cost?.known_cost_by_currency || {});
+    if (!rows.length) return '';
+    return rows.map(([currency, amount]) => fmtCost(amount, currency)).join(' + ');
+  }
+
+  function renderModelTelemetry(data) {
+    const m = data.model_telemetry || {};
+    const cost = m.cost || {};
+    const subset = knownCostSubset(cost);
+    const costNote = cost.available
+      ? `${cost.priced_calls ?? 0}/${m.external_calls ?? 0} calls exact-priced`
+      : [cost.reason || '成本不可完整计算', subset ? `Known subset: ${subset}（非总成本）` : ''].filter(Boolean).join(' · ');
+    const providerMix = Object.entries(m.providers || {}).map(([key, value]) => `${key} ${value}`).join(' · ');
+    $('obsModelTelemetry').innerHTML = [
+      stat('External calls', m.external_calls ?? 0, providerMix || '当前窗口没有已记录的外部模型调用'),
+      stat('Result telemetry coverage', fmtRate(m.result_coverage_rate), `${m.instrumented_results ?? 0}/${m.assistant_results ?? 0} assistant results`),
+      stat('Usage coverage', fmtRate(m.usage_coverage_rate), `${m.usage_reported_calls ?? 0}/${m.external_calls ?? 0} provider calls reported usage`),
+      stat('Input tokens', fmtInteger(m.input_tokens), '仅 provider-reported'),
+      stat('Output tokens', fmtInteger(m.output_tokens), '仅 provider-reported'),
+      stat('Provider cost', cost.available ? fmtCost(cost.amount, cost.currency) : '—', costNote),
+    ].join('');
+  }
   function renderAuthority(data) {
     const a = data.authority_workload || {};
     $('obsAuthority').innerHTML = [
@@ -104,8 +139,12 @@
       operator_active_hours: 'Operator active hours', token_usage: 'Token usage', provider_cost: 'Provider cost',
     };
     const availability = data.telemetry_availability || {};
-    $('obsAvailability').innerHTML = Object.entries(availability).map(([key, item]) => `
-      <div class="obs-availability-row"><div><b>${esc(labels[key] || key)}</b><p>${esc(item?.reason || '')}</p></div><span>${item?.available ? '已采集' : '未采集'}</span></div>`).join('');
+    $('obsAvailability').innerHTML = Object.entries(availability).map(([key, item]) => {
+      const partial = item?.available && item?.complete === false;
+      const status = partial ? '部分采集' : (item?.available ? '已采集' : '未采集');
+      return `
+        <div class="obs-availability-row"><div><b>${esc(labels[key] || key)}</b><p>${esc(item?.reason || item?.definition || '')}</p></div><span>${esc(status)}</span></div>`;
+    }).join('');
   }
 
   function renderSeries(data) {
@@ -142,6 +181,7 @@
     renderHero(data);
     renderQuality(data);
     renderReliability(data);
+    renderModelTelemetry(data);
     renderAuthority(data);
     renderAvailability(data);
     renderSeries(data);
