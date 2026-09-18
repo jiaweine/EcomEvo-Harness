@@ -44,6 +44,22 @@ class QualityObservability:
         return round(numerator / denominator, 4)
 
     @staticmethod
+    def _nonnegative_count(value: Any) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError, OverflowError):
+            return 0
+        return max(0, number)
+
+    @staticmethod
+    def _finite_nonnegative_float(value: Any) -> float:
+        try:
+            number = float(value or 0.0)
+        except (TypeError, ValueError, OverflowError):
+            return 0.0
+        return number if math.isfinite(number) and number >= 0 else 0.0
+
+    @staticmethod
     def _percentile(values: list[float], percentile: float) -> float | None:
         if not values:
             return None
@@ -96,14 +112,14 @@ class QualityObservability:
         for row in assistants:
             payload = row.get("payload") if isinstance(row.get("payload"), dict) else {}
             usage = payload.get("provider_usage")
-            if not isinstance(usage, dict) or int(usage.get("schema_version") or 0) != 1:
+            if not isinstance(usage, dict) or cls._nonnegative_count(usage.get("schema_version")) != 1:
                 continue
             instrumented_results += 1
-            external_calls += max(0, int(usage.get("external_calls") or 0))
-            usage_reported_calls += max(0, int(usage.get("usage_reported_calls") or 0))
-            input_tokens += max(0, int(usage.get("input_tokens") or 0))
-            output_tokens += max(0, int(usage.get("output_tokens") or 0))
-            total_tokens += max(0, int(usage.get("total_tokens") or 0))
+            external_calls += cls._nonnegative_count(usage.get("external_calls"))
+            usage_reported_calls += cls._nonnegative_count(usage.get("usage_reported_calls"))
+            input_tokens += cls._nonnegative_count(usage.get("input_tokens"))
+            output_tokens += cls._nonnegative_count(usage.get("output_tokens"))
+            total_tokens += cls._nonnegative_count(usage.get("total_tokens"))
 
             events = usage.get("events")
             if isinstance(events, list):
@@ -117,13 +133,11 @@ class QualityObservability:
 
             cost = usage.get("cost")
             if isinstance(cost, dict):
-                priced_calls += max(0, int(cost.get("priced_calls") or 0))
+                event_priced_calls = cls._nonnegative_count(cost.get("priced_calls"))
+                priced_calls += event_priced_calls
                 currency = str(cost.get("currency") or "").strip().upper()
-                try:
-                    known_amount = max(0.0, float(cost.get("known_amount") or 0.0))
-                except (TypeError, ValueError):
-                    known_amount = 0.0
-                if currency and known_amount:
+                known_amount = cls._finite_nonnegative_float(cost.get("known_amount"))
+                if currency and event_priced_calls > 0:
                     known_cost_by_currency[currency] += known_amount
 
         assistant_results = len(assistants)
