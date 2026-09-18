@@ -31,22 +31,24 @@ class OperatorAwareQualityObservability(QualityObservability):
         )
 
         verified = int(result["north_star"]["verified_decisions"])
-        hours = float(activity["operator_hours"])
+        active_seconds = int(activity["active_seconds"])
+        exact_hours = active_seconds / 3600.0
+        display_hours = float(activity["operator_hours"])
         if activity["instrumented"]:
             result["north_star"]["operator_hours"] = {
                 "available": True,
-                "value": hours,
-                "active_seconds": int(activity["active_seconds"]),
+                "value": display_hours,
+                "active_seconds": active_seconds,
                 "active_users": int(activity["active_users"]),
                 "bucket_seconds": int(activity["bucket_seconds"]),
                 "definition": activity["definition"],
             }
-            if hours > 0:
+            if active_seconds > 0:
                 result["north_star"]["verified_decisions_per_operator_hour"] = {
                     "available": True,
-                    "value": round(verified / hours, 4),
+                    "value": round(verified / exact_hours, 4),
                     "verified_decisions": verified,
-                    "operator_hours": hours,
+                    "operator_hours": display_hours,
                     "definition": "verified decisions divided by server-observed operator active hours in the same window",
                 }
             else:
