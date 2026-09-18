@@ -42,4 +42,10 @@ class AnthropicProvider(BaseProvider):
         if r.status_code >= 400:
             raise ProviderError(f"Claude 请求失败 {r.status_code}: {r.text[:300]}")
         data = r.json()
+        record_provider_usage(
+            provider=self.info.key,
+            model=self.model,
+            source="anthropic.messages.usage",
+            usage=normalize_anthropic_usage(data.get("usage")),
+        )
         return "\n".join(x.get("text", "") for x in data.get("content", []) if x.get("type") == "text")
