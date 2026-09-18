@@ -18,7 +18,7 @@ def _version(title="退款规则 v1", content=None):
         "content_text": content or "售后退款必须核对订单、履约记录和适用规则；资料不足时应先补证据再做最终判断。",
         "effective_from": None,
         "effective_until": None,
-        "review_due_at": time.time() + 86400,
+        "review_due_at": 1_900_000_000.0,
         "provenance": "内部售后 SOP / governance test",
     }
 
@@ -89,13 +89,26 @@ def test_knowledge_versions_are_immutable_and_lifecycle_is_append_only(tmp_path)
     assert v2["version"] == 2
     assert v2["content_hash"] != v1["content_hash"]
     store.transition(v2["version_id"], "reviewed", tenant_id="tenant-a", actor_id="admin-a")
-    v2 = store.transition(v2["version_id"], "published", tenant_id="tenant-a", actor_id="admin-a")
-    assert v2["state"] == "published"
-    assert store.get_version("tenant-a", v1["version_id"])["state"] == "superseded"
 
+    v3 = store.create_version(
+        source["source_id"],
+        tenant_id="tenant-a",
+        actor_id="admin-a",
+        **_version(
+            title="退款规则 v3",
+            content="退款规则第三版：履约事实、签收证明和用户举证必须交叉核对；冲突时只给出补证要求，不自动处置。" * 2,
+        ),
+    )
+    assert v3["version"] == 3
     with pytest.raises(ValueError, match="only the latest"):
-        # A superseded immutable version cannot be silently republished as rollback.
-        store.transition(v1["version_id"], "published", tenant_id="tenant-a", actor_id="admin-a")
+        # A reviewed version that is no longer latest cannot become the current catalog version.
+        store.transition(v2["version_id"], "published", tenant_id="tenant-a", actor_id="admin-a")
+
+    store.transition(v3["version_id"], "reviewed", tenant_id="tenant-a", actor_id="admin-a")
+    v3 = store.transition(v3["version_id"], "published", tenant_id="tenant-a", actor_id="admin-a")
+    assert v3["state"] == "published"
+    assert store.get_version("tenant-a", v1["version_id"])["state"] == "superseded"
+    assert store.get_version("tenant-a", v2["version_id"])["state"] == "reviewed"
 
 
 def test_source_tier_boundary_rejects_s1_and_s3(tmp_path):
