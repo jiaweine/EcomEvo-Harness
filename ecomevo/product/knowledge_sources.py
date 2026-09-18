@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
 import threading
@@ -231,6 +232,8 @@ class KnowledgeSourceStore:
         start = float(effective_from) if effective_from is not None else None
         end = float(effective_until) if effective_until is not None else None
         review = float(review_due_at) if review_due_at is not None else None
+        if any(value is not None and not math.isfinite(value) for value in (start, end, review)):
+            raise ValueError("knowledge lifecycle timestamps must be finite")
         if start is not None and end is not None and end <= start:
             raise ValueError("effective_until must be later than effective_from")
         return {
@@ -581,6 +584,12 @@ class KnowledgeSourceStore:
                 raise ValueError("only reviewed or published versions can be retired")
 
             if event_type == "published":
+                latest = db.execute(
+                    "SELECT MAX(version) AS max_version FROM knowledge_versions WHERE tenant_id=? AND source_id=?",
+                    (tenant_id, version["source_id"]),
+                ).fetchone()
+                if latest is None or int(latest["max_version"] or 0) != int(version["version"]):
+                    raise ValueError("only the latest knowledge version can be published; create a new version to roll forward")
                 published_rows = db.execute(
                     """
                     SELECT v.version_id
