@@ -66,6 +66,12 @@ def main() -> None:
             assistant = [row for row in detail["messages"] if row["role"] == "assistant"][-1]
             assert assistant["payload"]["domain"] == "aftersales"
             assert assistant["payload"]["runtime"]["event_chain_valid"] is True
+            provider_usage = assistant["payload"]["provider_usage"]
+            assert provider_usage["schema_version"] == 1
+            assert provider_usage["external_calls"] == 0
+            assert provider_usage["usage_reported_calls"] == 0
+            assert provider_usage["events"] == []
+            assert provider_usage["cost"]["available"] is False
             assert detail["actions"]
 
             action_snapshot = [(row["id"], row["status"]) for row in detail["actions"]]
@@ -132,7 +138,12 @@ def main() -> None:
             assert observability["methodology"]["changes_authority"] is False
             assert observability["north_star"]["operator_hours"]["available"] is False
             assert observability["north_star"]["verified_decisions_per_operator_hour"]["available"] is False
+            assert observability["model_telemetry"]["assistant_results"] >= 1
+            assert observability["model_telemetry"]["instrumented_results"] >= 1
+            assert observability["model_telemetry"]["result_coverage_rate"] == 1.0
+            assert observability["model_telemetry"]["external_calls"] == 0
             assert observability["telemetry_availability"]["token_usage"]["available"] is False
+            assert observability["telemetry_availability"]["token_usage"]["result_coverage_rate"] == 1.0
             assert observability["telemetry_availability"]["provider_cost"]["available"] is False
             assert client.get("/api/runtime/observability/ui").status_code == 200
             assert client.get("/assets/observability.js").status_code == 200
@@ -149,6 +160,8 @@ def main() -> None:
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],
+                "provider_usage_instrumented": provider_usage["schema_version"] == 1,
+                "provider_external_calls": provider_usage["external_calls"],
                 "event_chain_valid": True,
             })
 
