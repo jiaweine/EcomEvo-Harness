@@ -33,6 +33,14 @@
     }
   }
 
+  function installOperatorActivityTelemetry() {
+    if (document.querySelector('script[data-ecomevo-operator-activity]')) return;
+    const script = document.createElement('script');
+    script.src = '/assets/operator-activity.js';
+    script.dataset.ecomevoOperatorActivity = '1';
+    document.head.appendChild(script);
+  }
+
   function installInboxEntry() {
     if (document.getElementById('taskInboxLink')) return;
     const actions = document.querySelector('.top-actions');
@@ -195,6 +203,7 @@
 
   installMobileStylesheet();
   installTrustSurface();
+  installOperatorActivityTelemetry();
   syncViewport();
   window.visualViewport?.addEventListener?.('resize', syncViewport, { passive: true });
   window.visualViewport?.addEventListener?.('scroll', syncViewport, { passive: true });
