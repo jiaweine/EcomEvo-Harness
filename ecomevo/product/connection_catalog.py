@@ -33,7 +33,9 @@ def _enum(value: Any, allowed: set[str], default: str = "unknown") -> str:
 
 
 def _safe_text(value: Any, limit: int) -> str:
-    text = str(value or "").strip()
+    if not isinstance(value, str):
+        return ""
+    text = value.strip()
     if not text or any(ord(ch) < 32 for ch in text):
         return ""
     return text[:limit]
