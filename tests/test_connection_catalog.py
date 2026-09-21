@@ -318,7 +318,9 @@ def test_probe_history_tracks_failure_rate_latency_and_schema_drift(tmp_path):
     assert reliability['failure_rate'] == 0.25
     assert reliability['latency_ms']['p95'] is not None
     assert reliability['latest_state'] == 'unhealthy'
-    assert reliability['latest_schema_change'] == 'unknown'
+    assert reliability['latest_schema_change'] == 'changed'
+    assert reliability['latest_schema_fingerprint'] == third['schema']['fingerprint']
+    assert reliability['latest_schema_observed_at'] is not None
     assert reliability['last_schema_change_at'] is not None
     assert history['observations'][1]['schema_change'] == 'changed'
     assert len(history['observations'][1]['schema_fingerprint']) == 64
