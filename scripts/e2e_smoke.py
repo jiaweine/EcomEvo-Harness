@@ -166,6 +166,13 @@ def main() -> None:
             assert assistant["payload"]["runtime"]["event_chain_valid"] is True
             assert detail["actions"]
 
+            provider_usage = assistant["payload"]["provider_usage"]
+            assert provider_usage["schema_version"] == 1
+            assert provider_usage["external_calls"] == 0
+            assert provider_usage["usage_reported_calls"] == 0
+            assert provider_usage["events"] == []
+            assert provider_usage["cost"]["available"] is False
+
             action_snapshot = [(row["id"], row["status"]) for row in detail["actions"]]
             feedback = client.post(
                 f"/api/conversations/{conv['id']}/feedback",
@@ -285,7 +292,12 @@ def main() -> None:
             assert observability["methodology"]["changes_authority"] is False
             assert observability["north_star"]["operator_hours"]["available"] is False
             assert observability["north_star"]["verified_decisions_per_operator_hour"]["available"] is False
+            assert observability["model_telemetry"]["assistant_results"] >= 1
+            assert observability["model_telemetry"]["instrumented_results"] >= 1
+            assert observability["model_telemetry"]["result_coverage_rate"] == 1.0
+            assert observability["model_telemetry"]["external_calls"] == 0
             assert observability["telemetry_availability"]["token_usage"]["available"] is False
+            assert observability["telemetry_availability"]["token_usage"]["result_coverage_rate"] == 1.0
             assert observability["telemetry_availability"]["provider_cost"]["available"] is False
             assert client.get("/api/runtime/observability/ui").status_code == 200
             assert client.get("/assets/observability.js").status_code == 200
@@ -346,6 +358,8 @@ def main() -> None:
                 "knowledge_source_id": knowledge_source["source_id"],
                 "knowledge_runtime_eligible": projection["authority"]["eligible_for_runtime_evidence"],
                 "knowledge_runtime_skills_unchanged": True,
+                "provider_usage_instrumented": provider_usage["schema_version"] == 1,
+                "provider_external_calls": provider_usage["external_calls"],
                 "observability_read_only": observability["methodology"]["read_only"],
                 "release_readiness_status": readiness["status"],
                 "release_readiness_snapshot": readiness_snapshot_id,

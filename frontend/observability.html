@@ -21,7 +21,8 @@
 
     <section class="obs-method">
       <div><b>指标口径</b><span>Verified decision = runtime completed 且无证据缺口；存在 claim grounding 时，还要求 evidence_sufficiency=sufficient。</span></div>
-      <div><b>不会估算缺失数据</b><span>Operator Hours、token usage、provider cost 未持久化时显示“未采集”，不会用推测数字填充。</span></div>
+      <div><b>模型用量口径</b><span>Token 只采用 provider 响应中的 reported usage，不按文本长度估算；成本只有 exact provider:model 命中明确版本与币种的 Price Book 时才作为完整总额。</span></div>
+      <div><b>Operator Hours</b><span>当前分支仍未持久化操作员活跃工时；未采集时保持 unavailable，不用任务时长、登录时长或其他代理值估算。</span></div>
     </section>
 
     <section class="obs-toolbar" aria-label="时间范围">
@@ -46,6 +47,10 @@
         <div id="obsReliability" class="obs-stat-grid"></div>
       </section>
 
+      <section class="obs-panel obs-model-panel">
+        <div class="obs-panel-head"><div><small>Provider telemetry</small><h2>模型用量与成本</h2></div><span>Provider-reported · 不估算 Token</span></div>
+        <div id="obsModelTelemetry" class="obs-stat-grid"></div>
+      </section>
       <section class="obs-panel obs-authority">
         <div class="obs-panel-head"><div><small>Authority workload</small><h2>权限与人工负载</h2></div><span>只读观测</span></div>
         <div id="obsAuthority" class="obs-stat-grid"></div>
