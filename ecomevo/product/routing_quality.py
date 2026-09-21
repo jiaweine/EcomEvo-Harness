@@ -79,7 +79,7 @@ class RoutingQualityControlTower:
                     FROM messages m
                     JOIN conversations c ON c.id=m.conversation_id
                     WHERE c.tenant_id=? AND m.role='assistant' AND m.created_at>=?
-                    ORDER BY m.created_at ASC,m.id ASC
+                    ORDER BY m.created_at DESC,m.id DESC
                     LIMIT ?
                     """,
                     (tenant_id, since, self.MAX_ROWS + 1),
@@ -94,7 +94,7 @@ class RoutingQualityControlTower:
                     JOIN conversations c ON c.id=e.conversation_id
                     WHERE c.tenant_id=? AND e.created_at>=?
                       AND e.type IN ('autonomy.decided','tools.completed','autonomy.stagnated')
-                    ORDER BY e.created_at ASC,e.id ASC
+                    ORDER BY e.created_at DESC,e.id DESC
                     LIMIT ?
                     """,
                     (tenant_id, since, self.MAX_ROWS + 1),
@@ -105,6 +105,8 @@ class RoutingQualityControlTower:
         event_truncated = len(events) > self.MAX_ROWS
         assistants = assistants[: self.MAX_ROWS]
         events = events[: self.MAX_ROWS]
+        assistants.reverse()
+        events.reverse()
         for row in assistants:
             row["payload"] = self._json(row.get("payload"))
         for row in events:
@@ -339,7 +341,7 @@ class RoutingQualityControlTower:
                 "tool_cost_per_completed_run": (
                     round(tool_cost_total / completed_runs, 4) if completed_runs else None
                 ),
-                "definition": "runtime-reported read-tool cost only; provider cost is reported separately in Observability",
+                "definition": "all observed runtime read-tool cost in the window divided by completed runs; failed/incomplete-run spend remains in the numerator; provider cost is separate in Observability",
             },
             "authority": {
                 "read_only": True,
