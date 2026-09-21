@@ -22,6 +22,7 @@ from .observability_routes import install_observability_routes
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .release_readiness_routes import install_release_readiness_routes
+from .skill_studio_routes import install_skill_studio_routes
 from .upload_security import validate_raster as _validate_raster
 
 _application.Image = Image
@@ -100,6 +101,15 @@ if not getattr(_application.app.state, "release_readiness_routes_installed", Fal
         frontend=_application.FRONTEND,
     )
     _application.app.state.release_readiness_routes_installed = True
+
+if not getattr(_application.app.state, "skill_studio_routes_installed", False):
+    _application.skill_studio = install_skill_studio_routes(
+        _application.app,
+        db_path=_application.DATA_DIR / "skill_studio.db",
+        engine=_application.engine,
+        frontend=_application.FRONTEND,
+    )
+    _application.app.state.skill_studio_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
