@@ -14,15 +14,15 @@
         <a class="back" href="/">← 返回工作台</a>
         <p class="eyebrow">ADMIN · DATA CONNECTIONS</p>
         <h1>企业数据连接</h1>
-        <p class="lead">查看 EcomEvo 当前部署已配置的 MCP 连接、显式工具边界与只读健康状态。这里不会执行任何业务工具。</p>
+        <p class="lead">查看 EcomEvo 当前部署已配置的 MCP 连接、治理契约、显式工具边界与只读可靠性历史。这里不会执行任何业务工具，也不会修改连接配置。</p>
       </div>
       <button id="refreshBtn" class="secondary" type="button">刷新配置</button>
     </header>
 
     <section class="guardrail" aria-label="连接安全边界">
-      <div><b>部署级配置</b><span>当前连接来自服务端环境配置，不代表已建立租户级 connector store。</span></div>
-      <div><b>只读探测</b><span>健康检查只调用 MCP <code>tools/list</code>，不会触发 <code>tools/call</code>。</span></div>
-      <div><b>权限不提升</b><span>authority / freshness 只作为连接元数据，不覆盖 Governance、Approval 或 BusinessAction 权限。</span></div>
+      <div><b>部署级声明</b><span>连接与治理元数据来自服务端配置；控制台不能修改 endpoint、secret 或运行时授权。</span></div>
+      <div><b>只读探测</b><span>健康、延迟与 schema fingerprint 只来自 MCP <code>tools/list</code>，不会触发 <code>tools/call</code>。</span></div>
+      <div><b>治理 ≠ 授权</b><span>scope、credential owner、evidence tags、idempotency 与 reliability 都是审计元数据，不覆盖 Governance、Approval 或 BusinessAction 权限。</span></div>
     </section>
 
     <section class="metrics" aria-label="连接概览">
@@ -35,7 +35,7 @@
     <section class="section-head">
       <div>
         <h2>Connections</h2>
-        <p>未声明 capability 的工具始终保持 Unknown，不依据名称猜测安全级别。</p>
+        <p>未声明 capability 的工具始终保持 Unknown；声明范围与实际绑定冲突时显示 warning，不依据名称猜测安全级别。</p>
       </div>
       <span id="scopeChip" class="chip">scope: deployment</span>
     </section>
@@ -47,7 +47,7 @@
     <div id="connectionGrid" class="grid" aria-live="polite"></div>
 
     <footer>
-      <p>Data Connections v1 是只读运维控制面。连接变更、secret 管理和租户级授权不在本版本中。</p>
+      <p>Data Connections v2 记录只读治理与可靠性证据。连接变更、secret 管理、凭据轮换和租户级授权仍不在本控制面中。</p>
     </footer>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
