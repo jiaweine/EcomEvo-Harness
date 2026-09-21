@@ -7,12 +7,26 @@
     wrong_rule: '规则引用有误',
     stale_source: '来源已过期',
     evidence_conflict: '证据存在冲突',
+    incorrect_evidence: '证据本身有误',
+    rule_not_applicable: '规则不适用',
+    over_inference: '结论过度推断',
+    inappropriate_action: '动作不合适',
+    stale_attachment: '附件已过期',
+    unreliable_attachment: '附件不可靠',
     other: '其他问题',
   };
   const IMPACT_LABELS = {
     answer_only: '仅影响表述',
     decision_relevant: '可能影响判断',
     action_blocking: '涉及高影响操作',
+  };
+  const CATEGORY_TARGET_TYPES = {
+    incorrect_evidence: ['evidence'],
+    rule_not_applicable: ['claim', 'evidence'],
+    over_inference: ['answer', 'claim'],
+    inappropriate_action: ['action'],
+    stale_attachment: ['asset'],
+    unreliable_attachment: ['asset'],
   };
   const state = { canSubmit: false, messageId: '', targets: [] };
 
@@ -68,6 +82,10 @@
     category.innerHTML = Object.entries(CATEGORY_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
     const impact = root.querySelector('#feedbackImpact');
     impact.innerHTML = Object.entries(IMPACT_LABELS).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+    root.querySelector('#feedbackCategory').addEventListener('change', () => {
+      renderTargetOptions(root);
+      setStatus('');
+    });
     root.querySelector('.feedback-dispute-close').onclick = closeDialog;
     root.querySelector('.feedback-dispute-cancel').onclick = closeDialog;
     root.addEventListener('click', event => { if (event.target === root) closeDialog(); });
@@ -90,6 +108,31 @@
     node.classList.toggle('error', Boolean(error));
   }
 
+  function renderTargetOptions(root) {
+    const select = root.querySelector('#feedbackTarget');
+    const category = root.querySelector('#feedbackCategory').value;
+    const allowed = CATEGORY_TARGET_TYPES[category] || null;
+    const candidates = state.targets
+      .map((target, index) => ({ target, index }))
+      .filter(({ target }) => !allowed || allowed.includes(target.type));
+    select.replaceChildren();
+    if (!candidates.length) {
+      const option = document.createElement('option');
+      option.value = '-1';
+      option.textContent = category === 'inappropriate_action'
+        ? '当前任务没有可纠错的业务动作'
+        : '当前任务没有可纠错的附件';
+      select.appendChild(option);
+      return;
+    }
+    for (const { target, index } of candidates) {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = target.label;
+      select.appendChild(option);
+    }
+  }
+
   async function openDialog(messageId) {
     const cid = conversationId();
     if (!cid || !messageId) return;
@@ -100,7 +143,7 @@
     root.querySelector('#feedbackCorrection').value = '';
     root.querySelector('#feedbackImpact').value = 'decision_relevant';
     root.querySelector('#feedbackCategory').value = 'missing_support';
-    root.querySelector('#feedbackTarget').innerHTML = '<option value="0">整个回答</option>';
+    renderTargetOptions(root);
     setStatus('正在读取可核对的声明和证据…');
     root.hidden = false;
     root.querySelector('.feedback-dispute-close').focus();
@@ -116,14 +159,17 @@
       for (const evidence of data.evidence || []) {
         state.targets.push({ type: 'evidence', ref: String(evidence.ref || ''), label: `证据 · ${String(evidence.title || evidence.ref || '').slice(0, 120)}` });
       }
-      const select = root.querySelector('#feedbackTarget');
-      select.innerHTML = state.targets.map((target, index) => {
-        const option = document.createElement('option');
-        option.value = String(index);
-        option.textContent = target.label;
-        return option.outerHTML;
-      }).join('');
-      setStatus(data.claims?.length || data.evidence?.length ? '可以精确选择具体声明或证据。' : '当前回复没有细粒度 grounding，可对整个回答提交异议。');
+      for (const action of data.actions || []) {
+        const actionLabel = String(action.title || action.kind || action.ref || '').slice(0, 100);
+        const status = String(action.status || '').slice(0, 32);
+        state.targets.push({ type: 'action', ref: String(action.ref || ''), label: `动作 · ${actionLabel}${status ? ` · ${status}` : ''}` });
+      }
+      for (const asset of data.assets || []) {
+        state.targets.push({ type: 'asset', ref: String(asset.ref || ''), label: `附件 · ${String(asset.name || asset.ref || '').slice(0, 120)}` });
+      }
+      renderTargetOptions(root);
+      const preciseCount = (data.claims?.length || 0) + (data.evidence?.length || 0) + (data.actions?.length || 0) + (data.assets?.length || 0);
+      setStatus(preciseCount ? '可以精确选择声明、证据、业务动作或附件。' : '当前回复没有细粒度目标，可对整个回答提交异议。');
     } catch (error) {
       setStatus(error.message || '无法读取复核目标', true);
     }
@@ -135,8 +181,12 @@
     const root = ensureDialog();
     const submit = root.querySelector('.feedback-dispute-submit');
     const targetIndex = Number(root.querySelector('#feedbackTarget').value || 0);
-    const target = state.targets[targetIndex] || state.targets[0] || { type: 'answer', ref: '' };
+    const target = targetIndex >= 0 ? state.targets[targetIndex] : null;
     const explanation = root.querySelector('#feedbackExplanation').value.trim();
+    if (!target) {
+      setStatus('当前任务没有与该问题类型匹配的具体对象。', true);
+      return;
+    }
     if (!cid || !state.messageId || explanation.length < 3) {
       setStatus('请至少说明 3 个字符的问题描述。', true);
       return;
