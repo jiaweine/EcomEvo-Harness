@@ -29,4 +29,6 @@ def test_decision_export_surface_preserves_authority_and_safe_rendering():
     assert "UPDATE decision_exports" not in service
     assert "DELETE FROM decision_exports" not in service
     assert '"server_local_paths_included": False' in service
+    assert '"collaboration": self._collaboration' in service
+    assert '"collaboration_events": len(clean["collaboration"]["events"])' in service
     assert '"export_executes_tools": False' in service
