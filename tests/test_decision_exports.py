@@ -83,6 +83,44 @@ def _fixture(tmp_path):
         proposed_correction="补轨迹后再确认。",
         tenant_id="tenant-export-a",
     )
+    assert store.claim_conversation(
+        conv["id"],
+        "operator-a",
+        tenant_id="tenant-export-a",
+    ) is not None
+    store.watch_conversation(
+        conv["id"],
+        "reviewer-a",
+        tenant_id="tenant-export-a",
+    )
+    store.add_collaboration_comment(
+        conv["id"],
+        "operator-a",
+        "@reviewer-a 请复核证据与动作。",
+        tenant_id="tenant-export-a",
+    )
+    store.request_task_review(
+        conv["id"],
+        "operator-a",
+        "reviewer-a",
+        note="请独立复核。",
+        tenant_id="tenant-export-a",
+    )
+    handoff = store.request_task_handoff(
+        conv["id"],
+        "operator-a",
+        "operator-b",
+        note="请接手后续核对。",
+        tenant_id="tenant-export-a",
+    )
+    request_id = handoff["pending_handoffs"][0]["id"]
+    store.resolve_task_handoff(
+        conv["id"],
+        request_id,
+        "operator-b",
+        "accept",
+        tenant_id="tenant-export-a",
+    )
     return store, center, conv
 
 
@@ -128,6 +166,20 @@ def test_decision_export_is_tenant_scoped_deterministic_and_redacted(tmp_path):
     assert payload["actions"][0]["payload"]["client_secret"] == "[redacted]"
     assert payload["task_events"][0]["payload"]["authorization"] == "[redacted]"
     assert payload["feedback"]["disputes"]
+    assert payload["manifest"]["counts"]["collaboration_watchers"] == 1
+    assert payload["manifest"]["counts"]["collaboration_events"] == 5
+    assert payload["collaboration"]["watchers"][0]["user_id"] == "reviewer-a"
+    collaboration_types = [
+        row["event_type"] for row in payload["collaboration"]["events"]
+    ]
+    assert collaboration_types == [
+        "watch_started",
+        "comment",
+        "review_requested",
+        "handoff_requested",
+        "handoff_accepted",
+    ]
+    assert payload["collaboration"]["events"][1]["mentions"] == ["reviewer-a"]
 
     assert all(value is False for value in payload["authority"].values())
     assert center.verify_snapshot(first["id"], tenant_id="tenant-export-a")["valid"] is True
