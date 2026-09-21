@@ -266,6 +266,25 @@ def test_governance_mismatches_fail_visible_without_changing_runtime(monkeypatch
     assert row['tools'][0]['capability'] == 'governed_action'
 
 
+def test_structured_governance_metadata_is_not_stringified_to_browser(monkeypatch):
+    monkeypatch.setenv('ECOMEVO_MCP_CONNECTION_META', json.dumps({
+        'core': {
+            'data_source': {'secret': 'do-not-render'},
+            'credential_owner': {'token': 'do-not-render'},
+            'evidence_tags': [{'secret': 'do-not-render'}, 'safe_tag'],
+        },
+    }))
+    registry = MCPRegistry()
+    registry.servers = {'core': MCPServer('core', '核心系统', 'https://core.example/mcp')}
+
+    row = MCPConnectionCatalog(registry).get('core')
+    encoded = json.dumps(row, ensure_ascii=False)
+    assert row['governance']['data_source'] == '核心系统'
+    assert row['governance']['credential_owner'] is None
+    assert row['governance']['evidence_tags'] == ['safe_tag']
+    assert 'do-not-render' not in encoded
+
+
 def test_probe_history_tracks_failure_rate_latency_and_schema_drift(tmp_path):
     calls = 0
 
