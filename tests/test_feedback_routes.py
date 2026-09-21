@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from ecomevo.api.app import app, store
+from ecomevo.models import BusinessAction
 
 
 def _identity(monkeypatch, *, tenant="tenant-feedback-a", user="operator-a", role="operator"):
@@ -14,6 +15,7 @@ def _identity(monkeypatch, *, tenant="tenant-feedback-a", user="operator-a", rol
 
 def _assistant_payload():
     return {
+        "session_id": "session-feedback-api",
         "evidence": [
             {
                 "evidence_id": "ev-api-1",
@@ -52,6 +54,32 @@ def test_feedback_routes_enforce_operator_submit_admin_review_and_tenant_isolati
             _assistant_payload(),
         )
 
+        store.save_actions(
+            conv["id"],
+            "session-feedback-api",
+            [
+                BusinessAction(
+                    action_id="action-feedback-api",
+                    kind="refund",
+                    title="退款 299 元",
+                    description="需要人工确认后执行",
+                    risk_level="high",
+                    side_effect=True,
+                    requires_confirmation=True,
+                    payload={"amount": 299, "secret": "not-a-feedback-target-field"},
+                    status="proposed",
+                )
+            ],
+        )
+        asset = store.add_asset(
+            conv["id"],
+            name="proof.txt",
+            mime="text/plain",
+            path=str(store.asset_dir / "proof.txt"),
+            size=5,
+            meta={"sha256": "sha-api-proof", "server_path": "/private/proof.txt"},
+        )
+
         caps = client.get("/api/feedback/capabilities")
         assert caps.status_code == 200
         assert caps.json()["can_submit"] is True
@@ -62,7 +90,14 @@ def test_feedback_routes_enforce_operator_submit_admin_review_and_tenant_isolati
             params={"message_id": assistant["id"]},
         )
         assert targets.status_code == 200
-        claim_ref = targets.json()["claims"][0]["ref"]
+        payload = targets.json()
+        claim_ref = payload["claims"][0]["ref"]
+        assert payload["schema_version"] == 2
+        assert payload["action_session_id"] == "session-feedback-api"
+        assert payload["actions"][0]["ref"] == "action-feedback-api"
+        assert "payload" not in payload["actions"][0]
+        assert payload["assets"][0]["ref"] == asset["id"]
+        assert "path" not in payload["assets"][0]
 
         created = client.post(
             f"/api/conversations/{conv['id']}/feedback",
@@ -79,6 +114,35 @@ def test_feedback_routes_enforce_operator_submit_admin_review_and_tenant_isolati
         assert created.status_code == 200
         feedback_id = created.json()["id"]
         assert created.json()["status"] == "open"
+
+        action_before = store.get_action("action-feedback-api")
+        action_feedback = client.post(
+            f"/api/conversations/{conv['id']}/feedback",
+            json={
+                "assistant_message_id": assistant["id"],
+                "category": "inappropriate_action",
+                "impact": "action_blocking",
+                "target_type": "action",
+                "target_ref": "action-feedback-api",
+                "explanation": "当前证据不足以支持直接退款。",
+                "proposed_correction": "先补充承运商轨迹。",
+            },
+        )
+        assert action_feedback.status_code == 200
+        assert action_feedback.json()["target_snapshot"]["target"]["type"] == "action"
+        assert store.get_action("action-feedback-api") == action_before
+
+        invalid_mapping = client.post(
+            f"/api/conversations/{conv['id']}/feedback",
+            json={
+                "assistant_message_id": assistant["id"],
+                "category": "stale_attachment",
+                "impact": "decision_relevant",
+                "target_type": "answer",
+                "explanation": "附件问题必须指向具体附件。",
+            },
+        )
+        assert invalid_mapping.status_code == 422
 
         _identity(monkeypatch, role="viewer", user="viewer-a")
         assert client.get(f"/api/conversations/{conv['id']}/feedback").status_code == 200
