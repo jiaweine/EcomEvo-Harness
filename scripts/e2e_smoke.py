@@ -240,6 +240,41 @@ def main() -> None:
             assert client.get("/assets/observability.js").status_code == 200
             assert client.get("/assets/observability.css").status_code == 200
 
+            readiness_action_before = [
+                (row["id"], row["status"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            readiness_response = client.get("/api/runtime/readiness/preview?window=24h")
+            assert readiness_response.status_code == 200
+            readiness = readiness_response.json()
+            assert readiness["tenant_scope"] == "local"
+            assert readiness["status"] == "blocked"
+            readiness_checks = {row["id"]: row for row in readiness["checks"]}
+            assert readiness_checks["gold_set_latest"]["status"] == "blocker"
+            assert readiness["authority"] == {
+                "approved_for_release": False,
+                "changes_production_authority": False,
+                "changes_policy": False,
+                "changes_routing": False,
+                "promotes_runtime_skills": False,
+                "approves_business_actions": False,
+                "executes_tools": False,
+                "merges_or_deploys_code": False,
+            }
+
+            readiness_snapshot = client.post("/api/runtime/readiness/snapshots?window=24h")
+            assert readiness_snapshot.status_code == 201
+            readiness_snapshot_id = readiness_snapshot.json()["id"]
+            assert client.get(f"/api/runtime/readiness/snapshots/{readiness_snapshot_id}").status_code == 200
+            readiness_action_after = [
+                (row["id"], row["status"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            assert readiness_action_after == readiness_action_before
+            assert client.get("/api/runtime/readiness/ui").status_code == 200
+            assert client.get("/assets/release-readiness.js").status_code == 200
+            assert client.get("/assets/release-readiness.css").status_code == 200
+
             print({
                 "conversation_id": conv["id"],
                 "domain": assistant["payload"]["domain"],
@@ -258,6 +293,9 @@ def main() -> None:
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],
+                "release_readiness_status": readiness["status"],
+                "release_readiness_snapshot": readiness_snapshot_id,
+                "release_readiness_authority_changed": False,
                 "event_chain_valid": True,
             })
 
