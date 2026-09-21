@@ -299,12 +299,13 @@ class ReleaseReadinessCenter:
             safety.get("business_tool_execution") is False
             and safety.get("secrets_exposed") is False
             and safety.get("authority_override") is False
+            and safety.get("configuration_mutation") is False
         )
         checks.append(self._check(
             "connection_control_plane_safety",
             "pass" if safety_ok else "blocker",
             "Connection catalog remains observational" if safety_ok else "Connection control-plane safety invariant failed",
-            "tools/list only; no business execution, secret exposure, or authority override" if safety_ok else "One or more connection safety invariants are not false.",
+            "tools/list only; no business execution, secret exposure, authority override, or configuration mutation" if safety_ok else "One or more connection safety invariants are not false.",
             source="connections",
         ))
 
