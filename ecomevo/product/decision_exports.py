@@ -299,6 +299,46 @@ class DecisionExportCenter:
                 events.append(item)
         return {"disputes": disputes, "events": events}
 
+    @classmethod
+    def _collaboration(
+        cls,
+        db: sqlite3.Connection,
+        cid: str,
+        tenant_id: str,
+    ) -> dict[str, list[dict[str, Any]]]:
+        watchers: list[dict[str, Any]] = []
+        events: list[dict[str, Any]] = []
+        if cls._table_exists(db, "task_watchers"):
+            rows = db.execute(
+                """
+                SELECT w.conversation_id,w.user_id,w.created_at
+                FROM task_watchers w
+                JOIN conversations c ON c.id=w.conversation_id
+                WHERE w.conversation_id=? AND c.tenant_id=?
+                ORDER BY w.created_at,w.user_id
+                """,
+                (cid, tenant_id),
+            ).fetchall()
+            watchers = [dict(row) for row in rows]
+        if cls._table_exists(db, "task_collaboration_events"):
+            rows = db.execute(
+                """
+                SELECT e.id,e.conversation_id,e.event_type,e.actor_user_id,
+                       e.target_user_id,e.body,e.mentions,e.related_event_id,e.created_at
+                FROM task_collaboration_events e
+                JOIN conversations c ON c.id=e.conversation_id
+                WHERE e.conversation_id=? AND c.tenant_id=?
+                ORDER BY e.id
+                """,
+                (cid, tenant_id),
+            ).fetchall()
+            for row in rows:
+                item = dict(row)
+                mentions = cls._json(item.get("mentions"))
+                item["mentions"] = mentions if isinstance(mentions, list) else []
+                events.append(item)
+        return {"watchers": watchers, "events": events}
+
     def _build_payload(
         self,
         store,
@@ -330,6 +370,7 @@ class DecisionExportCenter:
                 "task_events": self._events(db, cid),
                 "jobs": self._jobs(db, cid),
                 "feedback": self._feedback(db, cid, tenant),
+                "collaboration": self._collaboration(db, cid, tenant),
             }
 
         stats = {"redacted_fields": 0}
@@ -343,6 +384,8 @@ class DecisionExportCenter:
                 "jobs": len(clean["jobs"]),
                 "feedback_disputes": len(clean["feedback"]["disputes"]),
                 "feedback_events": len(clean["feedback"]["events"]),
+                "collaboration_watchers": len(clean["collaboration"]["watchers"]),
+                "collaboration_events": len(clean["collaboration"]["events"]),
             },
             "redacted_field_count": stats["redacted_fields"],
             "asset_binary_included": False,
