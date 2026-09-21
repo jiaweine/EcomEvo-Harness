@@ -7,11 +7,13 @@ from typing import Any
 import httpx
 
 from .base import BaseProvider, ProviderError, ProviderInfo
+from .telemetry import normalize_anthropic_usage, record_provider_usage
 
 
 class AnthropicProvider(BaseProvider):
-    def __init__(self, api_key: str | None, model: str | None):
+    def __init__(self, api_key: str | None, model: str | None, *, transport: httpx.AsyncBaseTransport | None = None):
         self.api_key, self.model = api_key, model
+        self.transport = transport
         self.info = ProviderInfo("anthropic", "Claude", "Anthropic", model, bool(api_key and model), True,
                                  note="适合长文档、图片理解与复杂分析")
 
@@ -36,9 +38,15 @@ class AnthropicProvider(BaseProvider):
         headers = {"x-api-key": self.api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
         payload = {"model": self.model, "max_tokens": max_tokens, "temperature": temperature, "messages": msgs}
         if system.strip(): payload["system"] = system.strip()
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(timeout=90, transport=self.transport) as client:
             r = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
         if r.status_code >= 400:
             raise ProviderError(f"Claude 请求失败 {r.status_code}: {r.text[:300]}")
         data = r.json()
+        record_provider_usage(
+            provider=self.info.key,
+            model=self.model,
+            source="anthropic.messages.usage",
+            usage=normalize_anthropic_usage(data.get("usage")),
+        )
         return "\n".join(x.get("text", "") for x in data.get("content", []) if x.get("type") == "text")
