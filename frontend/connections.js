@@ -27,6 +27,7 @@
       declared_write_scope_omits_read_bindings: '声明写范围但同时存在 read binding',
       credential_owner_not_declared: '已配置凭据但未声明 credential owner',
       governed_action_idempotency_not_declared: '存在 governed action 但未声明幂等语义',
+      governed_action_idempotency_conflict: '同一工具的 action 幂等声明存在冲突',
     },
   };
 
