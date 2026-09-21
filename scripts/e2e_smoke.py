@@ -159,6 +159,56 @@ def main() -> None:
             ):
                 assert client.get(path).status_code == 200
 
+            export_before = client.get(f"/api/conversations/{conv['id']}").json()
+            export_action_snapshot = [
+                (row["id"], row["status"], row["payload"])
+                for row in export_before["actions"]
+            ]
+            exported = client.post(
+                "/api/runtime/decision-exports",
+                json={"conversation_id": conv["id"]},
+            )
+            assert exported.status_code == 200
+            decision_export = exported.json()
+            assert len(decision_export["content_hash"]) == 64
+            assert decision_export["payload"]["manifest"]["asset_binary_included"] is False
+            assert decision_export["payload"]["manifest"]["server_local_paths_included"] is False
+            assert all("path" not in row for row in decision_export["payload"]["assets"])
+            assert decision_export["payload"]["feedback"]["disputes"]
+            assert decision_export["payload"]["manifest"]["counts"]["collaboration_events"] == collaboration_event_count
+            export_collaboration_types = [
+                row["event_type"]
+                for row in decision_export["payload"]["collaboration"]["events"]
+            ]
+            assert "handoff_accepted" in export_collaboration_types
+            assert decision_export["authority"] == {
+                "export_changes_production_authority": False,
+                "export_changes_action_state": False,
+                "export_changes_policy": False,
+                "export_changes_routing": False,
+                "export_changes_runtime_skills": False,
+                "export_executes_tools": False,
+            }
+            export_id = decision_export["id"]
+            verified_export = client.get(
+                f"/api/runtime/decision-exports/{export_id}/verify"
+            )
+            assert verified_export.status_code == 200
+            assert verified_export.json()["valid"] is True
+            downloaded_export = client.get(
+                f"/api/runtime/decision-exports/{export_id}/download"
+            )
+            assert downloaded_export.status_code == 200
+            assert downloaded_export.json()["content_hash"] == decision_export["content_hash"]
+            assert client.get("/api/runtime/decision-exports/ui").status_code == 200
+            assert client.get("/assets/decision-exports.js").status_code == 200
+            assert client.get("/assets/decision-exports.css").status_code == 200
+            export_after = client.get(f"/api/conversations/{conv['id']}").json()
+            assert [
+                (row["id"], row["status"], row["payload"])
+                for row in export_after["actions"]
+            ] == export_action_snapshot
+
             action = detail["actions"][0]
             queue_item = client.get(f"/api/inbox/{conv['id']}").json()
             if action["requires_confirmation"]:
@@ -200,6 +250,9 @@ def main() -> None:
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
                 "feedback_target_type": feedback.json()["target_snapshot"]["target"]["type"],
+                "decision_export_id": export_id,
+                "decision_export_hash_valid": verified_export.json()["valid"],
+                "decision_export_collaboration_events": decision_export["payload"]["manifest"]["counts"]["collaboration_events"],
                 "connections_console": True,
                 "connections_configuration_mutation": False,
                 "observability_jobs": observability["reliability"]["jobs"],
