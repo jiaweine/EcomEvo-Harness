@@ -17,6 +17,7 @@ from .decision_export_routes import install_decision_export_routes
 from .evaluation_api import build_evaluation_router
 from .feedback_routes import install_feedback_routes
 from .inbox_routes import install_inbox_routes
+from .knowledge_routes import install_knowledge_routes
 from .observability_routes import install_observability_routes
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
@@ -67,6 +68,14 @@ if not getattr(_application.app.state, "feedback_routes_installed", False):
 if not getattr(_application.app.state, "observability_routes_installed", False):
     install_observability_routes(_application.app, _application.store, _application.FRONTEND)
     _application.app.state.observability_routes_installed = True
+
+if not getattr(_application.app.state, "knowledge_routes_installed", False):
+    _application.knowledge_source_store = install_knowledge_routes(
+        _application.app,
+        db_path=_application.DATA_DIR / "knowledge.db",
+        frontend=_application.FRONTEND,
+    )
+    _application.app.state.knowledge_routes_installed = True
 
 if not getattr(_application.app.state, "decision_export_routes_installed", False):
     _application.decision_export_center = install_decision_export_routes(
