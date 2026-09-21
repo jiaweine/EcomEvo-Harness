@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from .base import BaseProvider, ProviderError, ProviderInfo
+from .telemetry import normalize_openai_usage, record_provider_usage
 
 
 def _data_url(path: str, mime: str | None = None) -> str:
@@ -57,6 +58,12 @@ class OpenAICompatProvider(BaseProvider):
         if r.status_code >= 400:
             raise ProviderError(f"{self.info.name} 请求失败 {r.status_code}: {r.text[:300]}")
         data = r.json()
+        record_provider_usage(
+            provider=self.info.key,
+            model=self.model,
+            source="openai_compatible.chat_completions",
+            usage=normalize_openai_usage(data.get("usage")),
+        )
         try:
             return data["choices"][0]["message"]["content"] or ""
         except Exception as exc:
