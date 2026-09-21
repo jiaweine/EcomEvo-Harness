@@ -86,7 +86,9 @@
     const warnings = Array.isArray(governance.warnings) ? governance.warnings : [];
     const evidenceTags = Array.isArray(governance.evidence_tags) ? governance.evidence_tags : [];
     const schemaFingerprint = row.schema?.fingerprint || reliability.latest_schema_fingerprint || '';
-    const schemaChange = row.schema?.change || reliability.latest_schema_change || 'unknown';
+    const schemaChange = row.schema?.change && row.schema.change !== 'unknown'
+      ? row.schema.change
+      : (reliability.latest_schema_change || 'unknown');
     const successRate = typeof reliability.success_rate === 'number'
       ? `${Math.round(reliability.success_rate * 1000) / 10}%`
       : '—';
