@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from ecomevo.identity import current_principal
-from ecomevo.product.observability import QualityObservability
+from ecomevo.product.operator_observability import OperatorAwareQualityObservability
 
 
 Window = Literal["24h", "7d", "30d"]
@@ -16,7 +16,7 @@ Window = Literal["24h", "7d", "30d"]
 def install_observability_routes(app: FastAPI, store, frontend: Path) -> None:
     """Install admin-only read-model routes under the existing runtime boundary."""
 
-    service = QualityObservability(store)
+    service = OperatorAwareQualityObservability(store)
 
     @app.get("/api/runtime/observability/ui", include_in_schema=False)
     def observability_ui():
