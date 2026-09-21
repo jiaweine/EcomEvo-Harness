@@ -26,6 +26,17 @@ def test_decision_export_routes_are_admin_only_and_tenant_scoped(monkeypatch):
             "当前结论仍需要人工复核。",
             {"domain": "risk_review", "secret": "must-redact"},
         )
+        store.watch_conversation(
+            conv["id"],
+            "reviewer-route-a",
+            tenant_id="tenant-export-route-a",
+        )
+        store.add_collaboration_comment(
+            conv["id"],
+            "admin-a",
+            "@reviewer-route-a 请复核导出材料。",
+            tenant_id="tenant-export-route-a",
+        )
         before = client.get(f"/api/conversations/{conv['id']}").json()
         action_before = [
             (row["id"], row["status"], row["payload"])
@@ -42,6 +53,8 @@ def test_decision_export_routes_are_admin_only_and_tenant_scoped(monkeypatch):
         assert len(snapshot["content_hash"]) == 64
         assert snapshot["payload"]["messages"][-1]["payload"]["secret"] == "[redacted]"
         assert all(value is False for value in snapshot["authority"].values())
+        assert snapshot["payload"]["collaboration"]["watchers"][0]["user_id"] == "reviewer-route-a"
+        assert snapshot["payload"]["collaboration"]["events"][1]["mentions"] == ["reviewer-route-a"]
 
         listed = client.get("/api/runtime/decision-exports")
         assert listed.status_code == 200
