@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from typing import Any, Literal
 
@@ -9,6 +10,12 @@ from .tenant_store import TenantConversationStore
 
 QueueView = Literal["all", "mine", "unassigned"]
 QUEUE_PRIORITIES = {"low", "normal", "high", "urgent"}
+HANDOFF_TERMINAL_EVENTS = {"handoff_accepted", "handoff_declined", "handoff_cancelled", "handoff_invalidated"}
+MENTION_PATTERN = re.compile(r"(?<![A-Za-z0-9._:@-])@([A-Za-z0-9][A-Za-z0-9._:@-]{0,119})")
+
+
+class CollaborationConflict(RuntimeError):
+    """Task collaboration state changed while a collaboration action was pending."""
 
 
 class QueueConversationStore(TenantConversationStore):
@@ -38,6 +45,33 @@ class QueueConversationStore(TenantConversationStore):
             db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_conversations_tenant_priority_updated "
                 "ON conversations(tenant_id,queue_priority,updated_at DESC)"
+            )
+            db.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS task_watchers(
+                    conversation_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY(conversation_id,user_id)
+                );
+                CREATE TABLE IF NOT EXISTS task_collaboration_events(
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    actor_user_id TEXT NOT NULL,
+                    target_user_id TEXT NOT NULL DEFAULT '',
+                    body TEXT NOT NULL DEFAULT '',
+                    mentions TEXT NOT NULL DEFAULT '[]',
+                    related_event_id INTEGER,
+                    created_at REAL NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_task_watchers_conversation
+                    ON task_watchers(conversation_id,created_at,user_id);
+                CREATE INDEX IF NOT EXISTS idx_task_collaboration_events_conversation
+                    ON task_collaboration_events(conversation_id,id);
+                CREATE INDEX IF NOT EXISTS idx_task_collaboration_events_related
+                    ON task_collaboration_events(related_event_id,id);
+                """
             )
 
     @staticmethod
@@ -260,6 +294,13 @@ class QueueConversationStore(TenantConversationStore):
             if owner and owner != actor and not allow_override:
                 raise PermissionError(owner)
             if owner:
+                self._invalidate_pending_handoffs(
+                    db,
+                    cid=cid,
+                    owner_user_id=owner,
+                    actor_user_id=actor or owner,
+                    created_at=now,
+                )
                 if tenant is None:
                     db.execute(
                         "UPDATE conversations SET owner_user_id=NULL,owner_claimed_at=NULL,queue_updated_at=? WHERE id=?",
@@ -293,3 +334,460 @@ class QueueConversationStore(TenantConversationStore):
             if cur.rowcount != 1:
                 raise KeyError(cid)
         return self.get_inbox_item(cid, tenant_id=tenant)
+
+
+    @staticmethod
+    def _collaboration_user(value: Any, *, field: str = "user") -> str:
+        user = str(value or "").strip()
+        if not user:
+            raise ValueError(f"{field} required")
+        if len(user) > 240 or any(ord(ch) < 32 for ch in user):
+            raise ValueError(f"invalid {field}")
+        return user
+
+    @staticmethod
+    def _collaboration_body(value: Any, *, required: bool = False, limit: int = 4000) -> str:
+        body = str(value or "").strip()
+        if required and not body:
+            raise ValueError("body required")
+        if len(body) > limit:
+            raise ValueError("body too long")
+        return body
+
+    @classmethod
+    def _mentions_from_body(cls, body: str) -> list[str]:
+        seen: set[str] = set()
+        mentions: list[str] = []
+        for match in MENTION_PATTERN.finditer(body):
+            user = match.group(1)
+            if user in seen:
+                continue
+            seen.add(user)
+            mentions.append(user)
+            if len(mentions) >= 50:
+                break
+        return mentions
+
+    def _collaboration_conversation_row(self, db, cid: str, tenant: str | None):
+        if tenant is None:
+            row = db.execute(
+                "SELECT id,tenant_id,owner_user_id,updated_at FROM conversations WHERE id=?",
+                (cid,),
+            ).fetchone()
+        else:
+            row = db.execute(
+                "SELECT id,tenant_id,owner_user_id,updated_at FROM conversations WHERE id=? AND tenant_id=?",
+                (cid, tenant),
+            ).fetchone()
+        if not row:
+            raise KeyError(cid)
+        return row
+
+    @staticmethod
+    def _decode_collaboration_event(row) -> dict[str, Any]:
+        value = dict(row)
+        try:
+            mentions = json.loads(value.get("mentions") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            mentions = []
+        value["mentions"] = [str(item) for item in mentions if str(item).strip()][:50] if isinstance(mentions, list) else []
+        value["id"] = int(value["id"])
+        if value.get("related_event_id") is not None:
+            value["related_event_id"] = int(value["related_event_id"])
+        return value
+
+    def _append_collaboration_event(
+        self,
+        db,
+        *,
+        cid: str,
+        event_type: str,
+        actor_user_id: str,
+        target_user_id: str = "",
+        body: str = "",
+        mentions: list[str] | None = None,
+        related_event_id: int | None = None,
+        created_at: float | None = None,
+    ) -> int:
+        now = time.time() if created_at is None else float(created_at)
+        cur = db.execute(
+            "INSERT INTO task_collaboration_events("
+            "conversation_id,event_type,actor_user_id,target_user_id,body,mentions,related_event_id,created_at"
+            ") VALUES(?,?,?,?,?,?,?,?)",
+            (
+                cid,
+                event_type,
+                actor_user_id,
+                target_user_id,
+                body,
+                json.dumps(mentions or [], ensure_ascii=False),
+                related_event_id,
+                now,
+            ),
+        )
+        return int(cur.lastrowid)
+
+    def _invalidate_pending_handoffs(
+        self,
+        db,
+        *,
+        cid: str,
+        owner_user_id: str,
+        actor_user_id: str,
+        created_at: float,
+    ) -> None:
+        rows = db.execute(
+            """
+            SELECT req.id,req.target_user_id
+            FROM task_collaboration_events req
+            WHERE req.conversation_id=?
+              AND req.event_type='handoff_requested'
+              AND req.actor_user_id=?
+              AND NOT EXISTS(
+                SELECT 1
+                FROM task_collaboration_events done
+                WHERE done.related_event_id=req.id
+                  AND done.event_type IN (
+                    'handoff_accepted','handoff_declined','handoff_cancelled','handoff_invalidated'
+                  )
+              )
+            ORDER BY req.id
+            """,
+            (cid, owner_user_id),
+        ).fetchall()
+        for row in rows:
+            self._append_collaboration_event(
+                db,
+                cid=cid,
+                event_type="handoff_invalidated",
+                actor_user_id=actor_user_id,
+                target_user_id=str(row["target_user_id"] or ""),
+                related_event_id=int(row["id"]),
+                created_at=created_at,
+            )
+
+    def list_collaboration(
+        self,
+        cid: str,
+        *,
+        tenant_id: str | None = None,
+        current_user_id: str | None = None,
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        tenant = self._request_tenant(tenant_id)
+        current_user = str(current_user_id or "").strip()
+        bounded_limit = max(1, min(500, int(limit)))
+        with self._conn() as db:
+            conversation = self._collaboration_conversation_row(db, cid, tenant)
+            watcher_rows = db.execute(
+                "SELECT user_id,created_at FROM task_watchers WHERE conversation_id=? "
+                "ORDER BY created_at,user_id",
+                (cid,),
+            ).fetchall()
+            event_rows = db.execute(
+                "SELECT id,conversation_id,event_type,actor_user_id,target_user_id,body,"
+                "mentions,related_event_id,created_at FROM task_collaboration_events "
+                "WHERE conversation_id=? ORDER BY id DESC LIMIT ?",
+                (cid, bounded_limit),
+            ).fetchall()
+            pending_rows = db.execute(
+                """
+                SELECT req.id,req.actor_user_id,req.target_user_id,req.body,req.created_at
+                FROM task_collaboration_events req
+                WHERE req.conversation_id=?
+                  AND req.event_type='handoff_requested'
+                  AND NOT EXISTS(
+                    SELECT 1
+                    FROM task_collaboration_events done
+                    WHERE done.related_event_id=req.id
+                      AND done.event_type IN ('handoff_accepted','handoff_declined','handoff_cancelled','handoff_invalidated')
+                  )
+                ORDER BY req.id
+                """,
+                (cid,),
+            ).fetchall()
+        watchers = [
+            {"user_id": str(row["user_id"]), "created_at": row["created_at"]}
+            for row in watcher_rows
+        ]
+        events = [self._decode_collaboration_event(row) for row in reversed(event_rows)]
+        pending_handoffs = [
+            {
+                "id": int(row["id"]),
+                "actor_user_id": str(row["actor_user_id"]),
+                "target_user_id": str(row["target_user_id"]),
+                "body": str(row["body"] or ""),
+                "created_at": row["created_at"],
+            }
+            for row in pending_rows
+        ]
+        return {
+            "conversation_id": cid,
+            "owner_user_id": str(conversation["owner_user_id"] or "") or None,
+            "watchers": watchers,
+            "current_user_watching": bool(current_user and any(row["user_id"] == current_user for row in watchers)),
+            "events": events,
+            "pending_handoffs": pending_handoffs,
+            "authority": {
+                "collaboration_grants_approval": False,
+                "review_request_grants_approval": False,
+                "handoff_grants_approval": False,
+                "comments_change_runtime": False,
+                "watching_changes_runtime": False,
+            },
+        }
+
+    def watch_conversation(
+        self,
+        cid: str,
+        actor_user_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
+        actor = self._collaboration_user(actor_user_id, field="actor")
+        tenant = self._request_tenant(tenant_id)
+        now = time.time()
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._collaboration_conversation_row(db, cid, tenant)
+            cur = db.execute(
+                "INSERT OR IGNORE INTO task_watchers(conversation_id,user_id,created_at) VALUES(?,?,?)",
+                (cid, actor, now),
+            )
+            if cur.rowcount == 1:
+                self._append_collaboration_event(
+                    db,
+                    cid=cid,
+                    event_type="watch_started",
+                    actor_user_id=actor,
+                    created_at=now,
+                )
+        return self.list_collaboration(
+            cid,
+            tenant_id=tenant,
+            current_user_id=actor,
+        )
+
+    def unwatch_conversation(
+        self,
+        cid: str,
+        actor_user_id: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
+        actor = self._collaboration_user(actor_user_id, field="actor")
+        tenant = self._request_tenant(tenant_id)
+        now = time.time()
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._collaboration_conversation_row(db, cid, tenant)
+            cur = db.execute(
+                "DELETE FROM task_watchers WHERE conversation_id=? AND user_id=?",
+                (cid, actor),
+            )
+            if cur.rowcount == 1:
+                self._append_collaboration_event(
+                    db,
+                    cid=cid,
+                    event_type="watch_stopped",
+                    actor_user_id=actor,
+                    created_at=now,
+                )
+        return self.list_collaboration(
+            cid,
+            tenant_id=tenant,
+            current_user_id=actor,
+        )
+
+    def add_collaboration_comment(
+        self,
+        cid: str,
+        actor_user_id: str,
+        body: str,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
+        actor = self._collaboration_user(actor_user_id, field="actor")
+        text = self._collaboration_body(body, required=True, limit=4000)
+        tenant = self._request_tenant(tenant_id)
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._collaboration_conversation_row(db, cid, tenant)
+            self._append_collaboration_event(
+                db,
+                cid=cid,
+                event_type="comment",
+                actor_user_id=actor,
+                body=text,
+                mentions=self._mentions_from_body(text),
+            )
+        return self.list_collaboration(
+            cid,
+            tenant_id=tenant,
+            current_user_id=actor,
+        )
+
+    def request_task_review(
+        self,
+        cid: str,
+        actor_user_id: str,
+        target_user_id: str,
+        *,
+        note: str = "",
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
+        actor = self._collaboration_user(actor_user_id, field="actor")
+        target = self._collaboration_user(target_user_id, field="target user")
+        if target == actor:
+            raise ValueError("review target must be another user")
+        body = self._collaboration_body(note, limit=2000)
+        tenant = self._request_tenant(tenant_id)
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            self._collaboration_conversation_row(db, cid, tenant)
+            self._append_collaboration_event(
+                db,
+                cid=cid,
+                event_type="review_requested",
+                actor_user_id=actor,
+                target_user_id=target,
+                body=body,
+                mentions=self._mentions_from_body(body),
+            )
+        return self.list_collaboration(
+            cid,
+            tenant_id=tenant,
+            current_user_id=actor,
+        )
+
+    def request_task_handoff(
+        self,
+        cid: str,
+        actor_user_id: str,
+        target_user_id: str,
+        *,
+        note: str = "",
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
+        actor = self._collaboration_user(actor_user_id, field="actor")
+        target = self._collaboration_user(target_user_id, field="target user")
+        if target == actor:
+            raise ValueError("handoff target must be another user")
+        body = self._collaboration_body(note, limit=2000)
+        tenant = self._request_tenant(tenant_id)
+        now = time.time()
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            conversation = self._collaboration_conversation_row(db, cid, tenant)
+            if str(conversation["owner_user_id"] or "") != actor:
+                raise PermissionError("only the current owner can request handoff")
+            pending = db.execute(
+                """
+                SELECT req.id
+                FROM task_collaboration_events req
+                WHERE req.conversation_id=?
+                  AND req.event_type='handoff_requested'
+                  AND NOT EXISTS(
+                    SELECT 1
+                    FROM task_collaboration_events done
+                    WHERE done.related_event_id=req.id
+                      AND done.event_type IN ('handoff_accepted','handoff_declined','handoff_cancelled','handoff_invalidated')
+                  )
+                LIMIT 1
+                """,
+                (cid,),
+            ).fetchone()
+            if pending:
+                raise CollaborationConflict("a handoff request is already pending")
+            self._append_collaboration_event(
+                db,
+                cid=cid,
+                event_type="handoff_requested",
+                actor_user_id=actor,
+                target_user_id=target,
+                body=body,
+                mentions=self._mentions_from_body(body),
+                created_at=now,
+            )
+        return self.list_collaboration(
+            cid,
+            tenant_id=tenant,
+            current_user_id=actor,
+        )
+
+    def resolve_task_handoff(
+        self,
+        cid: str,
+        request_id: int,
+        actor_user_id: str,
+        decision: Literal["accept", "decline", "cancel"],
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
+        actor = self._collaboration_user(actor_user_id, field="actor")
+        if decision not in {"accept", "decline", "cancel"}:
+            raise ValueError("invalid handoff decision")
+        tenant = self._request_tenant(tenant_id)
+        now = time.time()
+        with self._conn() as db:
+            db.execute("BEGIN IMMEDIATE")
+            conversation = self._collaboration_conversation_row(db, cid, tenant)
+            request = db.execute(
+                "SELECT id,actor_user_id,target_user_id,body FROM task_collaboration_events "
+                "WHERE id=? AND conversation_id=? AND event_type='handoff_requested'",
+                (int(request_id), cid),
+            ).fetchone()
+            if not request:
+                raise KeyError(request_id)
+            terminal = db.execute(
+                "SELECT event_type FROM task_collaboration_events "
+                "WHERE related_event_id=? AND event_type IN "
+                "('handoff_accepted','handoff_declined','handoff_cancelled','handoff_invalidated') LIMIT 1",
+                (int(request_id),),
+            ).fetchone()
+            if terminal:
+                raise CollaborationConflict("handoff request is already resolved")
+            requester = str(request["actor_user_id"])
+            target = str(request["target_user_id"])
+            if decision in {"accept", "decline"} and actor != target:
+                raise PermissionError("only the handoff target can respond")
+            if decision == "cancel" and actor != requester:
+                raise PermissionError("only the handoff requester can cancel")
+
+            if decision == "accept":
+                if str(conversation["owner_user_id"] or "") != requester:
+                    raise CollaborationConflict("task owner changed before handoff acceptance")
+                if tenant is None:
+                    cur = db.execute(
+                        "UPDATE conversations SET owner_user_id=?,owner_claimed_at=?,queue_updated_at=? "
+                        "WHERE id=? AND owner_user_id=?",
+                        (target, now, now, cid, requester),
+                    )
+                else:
+                    cur = db.execute(
+                        "UPDATE conversations SET owner_user_id=?,owner_claimed_at=?,queue_updated_at=? "
+                        "WHERE id=? AND tenant_id=? AND owner_user_id=?",
+                        (target, now, now, cid, tenant, requester),
+                    )
+                if cur.rowcount != 1:
+                    raise CollaborationConflict("task owner changed before handoff acceptance")
+                event_type = "handoff_accepted"
+            elif decision == "decline":
+                event_type = "handoff_declined"
+            else:
+                event_type = "handoff_cancelled"
+
+            self._append_collaboration_event(
+                db,
+                cid=cid,
+                event_type=event_type,
+                actor_user_id=actor,
+                target_user_id=target,
+                related_event_id=int(request_id),
+                created_at=now,
+            )
+        return self.list_collaboration(
+            cid,
+            tenant_id=tenant,
+            current_user_id=actor,
+        )
