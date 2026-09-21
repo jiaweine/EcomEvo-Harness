@@ -120,15 +120,20 @@ def main() -> None:
                 f"/api/conversations/{conv['id']}/feedback",
                 json={
                     "assistant_message_id": assistant["id"],
-                    "category": "missing_support",
-                    "impact": "decision_relevant",
-                    "target_type": "answer",
-                    "explanation": "请把物流签收结论对应到更直接的承运商证据。",
-                    "proposed_correction": "补充承运商原始轨迹后再确认。",
+                    "category": "inappropriate_action",
+                    "impact": "action_blocking",
+                    "target_type": "action",
+                    "target_ref": detail["actions"][0]["id"],
+                    "explanation": "当前证据不足以支持直接执行这项业务动作。",
+                    "proposed_correction": "补充承运商原始轨迹后再重新判断动作。",
                 },
             )
             assert feedback.status_code == 200
             feedback_id = feedback.json()["id"]
+            assert feedback.json()["category"] == "inappropriate_action"
+            assert feedback.json()["target_snapshot"]["target"]["type"] == "action"
+            assert feedback.json()["target_snapshot"]["target"]["ref"] == detail["actions"][0]["id"]
+            assert "payload" not in feedback.json()["target_snapshot"]["target"]
             unchanged = client.get(f"/api/conversations/{conv['id']}").json()
             assert [(row["id"], row["status"]) for row in unchanged["actions"]] == action_snapshot
             unchanged_assistant = [row for row in unchanged["messages"] if row["id"] == assistant["id"]][0]
@@ -194,6 +199,7 @@ def main() -> None:
                 "handoff_accepted": True,
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
+                "feedback_target_type": feedback.json()["target_snapshot"]["target"]["type"],
                 "connections_console": True,
                 "connections_configuration_mutation": False,
                 "observability_jobs": observability["reliability"]["jobs"],

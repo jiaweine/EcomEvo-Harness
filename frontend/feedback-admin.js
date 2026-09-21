@@ -7,6 +7,12 @@
     wrong_rule: '规则引用有误',
     stale_source: '来源已过期',
     evidence_conflict: '证据存在冲突',
+    incorrect_evidence: '证据本身有误',
+    rule_not_applicable: '规则不适用',
+    over_inference: '结论过度推断',
+    inappropriate_action: '动作不合适',
+    stale_attachment: '附件已过期',
+    unreliable_attachment: '附件不可靠',
     other: '其他问题',
   };
   const STATUS = {
@@ -58,6 +64,8 @@
     const target = item?.target_snapshot?.target || {};
     if (target.type === 'claim') return `声明 · ${target.text || target.ref || '未命名'}`;
     if (target.type === 'evidence') return `证据 · ${target.title || target.ref || '未命名'}`;
+    if (target.type === 'action') return `动作 · ${target.title || target.kind || target.ref || '未命名'}`;
+    if (target.type === 'asset') return `附件 · ${target.name || target.ref || '未命名'}`;
     return '整个回答';
   }
 

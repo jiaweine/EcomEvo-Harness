@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from ecomevo.models import BusinessAction
 from ecomevo.product.feedback_store import FeedbackConversationStore
 
 
@@ -14,6 +15,7 @@ def _store(tmp_path):
 def _payload():
     return {
         "domain": "aftersales",
+        "session_id": "session-feedback-1",
         "evidence": [
             {
                 "evidence_id": "ev-order-1",
@@ -104,6 +106,208 @@ def test_feedback_target_must_exist_in_original_assistant_message(tmp_path):
             explanation="不能引用不存在的证据。",
             tenant_id="tenant-a",
         )
+
+
+
+
+def test_precise_correction_categories_bind_to_expected_grounding_targets(tmp_path):
+    store = _store(tmp_path)
+    conv, assistant = _conversation(store, "tenant-a")
+    targets = store.feedback_targets(conv["id"], assistant["id"], tenant_id="tenant-a")
+    claim_ref = targets["claims"][0]["ref"]
+
+    evidence_feedback = store.submit_feedback(
+        conv["id"],
+        assistant["id"],
+        submitted_by="operator-1",
+        category="incorrect_evidence",
+        impact="decision_relevant",
+        target_type="evidence",
+        target_ref="ev-order-1",
+        explanation="订单记录里的状态字段本身可能错误。",
+        tenant_id="tenant-a",
+    )
+    assert evidence_feedback["target_snapshot"]["target"]["type"] == "evidence"
+
+    rule_feedback = store.submit_feedback(
+        conv["id"],
+        assistant["id"],
+        submitted_by="operator-1",
+        category="rule_not_applicable",
+        impact="decision_relevant",
+        target_type="evidence",
+        target_ref="ev-policy-1",
+        explanation="该售后规则不适用于当前订单类型。",
+        tenant_id="tenant-a",
+    )
+    assert rule_feedback["target_snapshot"]["target"]["ref"] == "ev-policy-1"
+
+    inference_feedback = store.submit_feedback(
+        conv["id"],
+        assistant["id"],
+        submitted_by="operator-1",
+        category="over_inference",
+        impact="decision_relevant",
+        target_type="claim",
+        target_ref=claim_ref,
+        explanation="该结论超出了当前证据能支持的范围。",
+        tenant_id="tenant-a",
+    )
+    assert inference_feedback["target_snapshot"]["target"]["type"] == "claim"
+
+    with pytest.raises(ValueError, match="does not match target type"):
+        store.submit_feedback(
+            conv["id"],
+            assistant["id"],
+            submitted_by="operator-1",
+            category="incorrect_evidence",
+            impact="answer_only",
+            target_type="answer",
+            explanation="证据错误必须指向具体证据。",
+            tenant_id="tenant-a",
+        )
+
+
+def test_action_and_asset_corrections_capture_safe_immutable_targets(tmp_path):
+    store = _store(tmp_path)
+    conv, assistant = _conversation(store, "tenant-a")
+    action = BusinessAction(
+        action_id="action-feedback-1",
+        kind="refund",
+        title="发起退款",
+        description="建议退款 299 元",
+        risk_level="high",
+        side_effect=True,
+        requires_confirmation=True,
+        payload={"amount": 299, "internal_token": "must-not-surface"},
+        status="proposed",
+    )
+    store.save_actions(conv["id"], "session-feedback-1", [action])
+    asset_path = tmp_path / "private-order.txt"
+    asset_path.write_text("private fixture", encoding="utf-8")
+    asset = store.add_asset(
+        conv["id"],
+        name="order.txt",
+        mime="text/plain",
+        path=str(asset_path),
+        size=15,
+        meta={
+            "sha256": "sha-feedback-1",
+            "server_path": "/private/server/path",
+            "credential": "must-not-surface",
+        },
+    )
+
+    targets = store.feedback_targets(conv["id"], assistant["id"], tenant_id="tenant-a")
+    action_target = next(row for row in targets["actions"] if row["ref"] == action.action_id)
+    asset_target = next(row for row in targets["assets"] if row["ref"] == asset["id"])
+
+    assert targets["action_session_id"] == "session-feedback-1"
+    assert action_target["session_id"] == "session-feedback-1"
+    assert action_target["status"] == "proposed"
+    assert action_target["requires_confirmation"] is True
+    assert "payload" not in action_target
+    assert "internal_token" not in json.dumps(action_target, ensure_ascii=False)
+    assert asset_target == {
+        "ref": asset["id"],
+        "name": "order.txt",
+        "mime": "text/plain",
+        "size": 15,
+        "sha256": "sha-feedback-1",
+        "active": True,
+        "excluded_at": None,
+        "excluded_reason": "",
+        "created_at": asset_target["created_at"],
+    }
+    assert "path" not in asset_target
+    assert "credential" not in json.dumps(asset_target, ensure_ascii=False)
+
+    action_before = store.get_action(action.action_id)
+    action_feedback = store.submit_feedback(
+        conv["id"],
+        assistant["id"],
+        submitted_by="operator-1",
+        category="inappropriate_action",
+        impact="action_blocking",
+        target_type="action",
+        target_ref=action.action_id,
+        explanation="现有证据不足以支持直接退款。",
+        proposed_correction="先补充承运商轨迹再决定动作。",
+        tenant_id="tenant-a",
+    )
+    assert action_feedback["target_snapshot"]["schema_version"] == 2
+    assert action_feedback["target_snapshot"]["target"]["type"] == "action"
+    assert action_feedback["target_snapshot"]["target"]["ref"] == action.action_id
+    assert store.get_action(action.action_id) == action_before
+
+    asset_before = store.get_asset(asset["id"])
+    asset_feedback = store.submit_feedback(
+        conv["id"],
+        assistant["id"],
+        submitted_by="operator-1",
+        category="stale_attachment",
+        impact="decision_relevant",
+        target_type="asset",
+        target_ref=asset["id"],
+        explanation="该附件可能不是本次争议的最新版本。",
+        tenant_id="tenant-a",
+    )
+    assert asset_feedback["target_snapshot"]["target"]["type"] == "asset"
+    assert asset_feedback["target_snapshot"]["target"]["sha256"] == "sha-feedback-1"
+    assert store.get_asset(asset["id"]) == asset_before
+
+    with pytest.raises(ValueError, match="does not match target type"):
+        store.submit_feedback(
+            conv["id"],
+            assistant["id"],
+            submitted_by="operator-1",
+            category="inappropriate_action",
+            impact="decision_relevant",
+            target_type="answer",
+            explanation="动作类反馈不能挂在整个回答上。",
+            tenant_id="tenant-a",
+        )
+
+    with pytest.raises(ValueError, match="does not exist"):
+        store.submit_feedback(
+            conv["id"],
+            assistant["id"],
+            submitted_by="operator-1",
+            category="unreliable_attachment",
+            impact="decision_relevant",
+            target_type="asset",
+            target_ref="asset-not-present",
+            explanation="不能对不存在的附件提交结构化异议。",
+            tenant_id="tenant-a",
+        )
+
+
+def test_legacy_assistant_without_session_id_does_not_guess_action_targets(tmp_path):
+    store = _store(tmp_path)
+    conv = store.create_conversation("legacy correction", "aftersales", tenant_id="tenant-a")
+    store.add_message(conv["id"], "user", "legacy?", {})
+    assistant = store.add_message(
+        conv["id"],
+        "assistant",
+        "legacy answer",
+        {"domain": "aftersales", "grounding": {"schema_version": 3, "claims": []}},
+    )
+    store.save_actions(
+        conv["id"],
+        "unrelated-session",
+        [
+            BusinessAction(
+                action_id="action-unrelated",
+                kind="refund",
+                title="旧动作",
+                description="不应被猜测关联到 legacy assistant",
+            )
+        ],
+    )
+
+    targets = store.feedback_targets(conv["id"], assistant["id"], tenant_id="tenant-a")
+    assert targets["action_session_id"] is None
+    assert targets["actions"] == []
 
 
 def test_review_is_append_only_and_does_not_mutate_message_or_dispute(tmp_path):

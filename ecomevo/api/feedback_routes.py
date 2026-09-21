@@ -17,10 +17,16 @@ FeedbackCategory = Literal[
     "wrong_rule",
     "stale_source",
     "evidence_conflict",
+    "incorrect_evidence",
+    "rule_not_applicable",
+    "over_inference",
+    "inappropriate_action",
+    "stale_attachment",
+    "unreliable_attachment",
     "other",
 ]
 FeedbackImpact = Literal["answer_only", "decision_relevant", "action_blocking"]
-TargetType = Literal["answer", "claim", "evidence"]
+TargetType = Literal["answer", "claim", "evidence", "action", "asset"]
 ReviewDecision = Literal["acknowledged", "accepted_for_eval", "needs_followup", "dismissed"]
 
 

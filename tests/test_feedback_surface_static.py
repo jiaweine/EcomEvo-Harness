@@ -21,6 +21,15 @@ def test_operator_feedback_surface_only_submits_quality_signal():
     assert "tools/call" not in js
     assert "accepted_for_eval" not in js
     assert "反馈只会进入质量复核" in js
+    assert "证据本身有误" in js
+    assert "规则不适用" in js
+    assert "结论过度推断" in js
+    assert "动作不合适" in js
+    assert "附件已过期" in js
+    assert "附件不可靠" in js
+    assert "data.actions" in js
+    assert "data.assets" in js
+    assert "CATEGORY_TARGET_TYPES" in js
 
 
 def test_admin_feedback_console_does_not_auto_promote_or_execute_actions():
@@ -34,6 +43,13 @@ def test_admin_feedback_console_does_not_auto_promote_or_execute_actions():
     assert "tools/call" not in js
     assert "不会自动加入 Gold Set" in html
     assert "不会修改 policy、routing、Verifier 或 BusinessAction" in html
+    assert "incorrect_evidence" in html
+    assert "rule_not_applicable" in html
+    assert "inappropriate_action" in html
+    assert "stale_attachment" in html
+    assert "unreliable_attachment" in html
+    assert "动作 ·" in js
+    assert "附件 ·" in js
 
 
 def test_feedback_dialog_remains_mobile_usable():
