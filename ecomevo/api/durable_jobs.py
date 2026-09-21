@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ecomevo.models import BusinessAction
+from ecomevo.providers.telemetry import (
+    begin_provider_usage_capture,
+    current_provider_usage_events,
+    reset_provider_usage_capture,
+    summarize_provider_usage,
+)
 
 EmitFn = Callable[
     [str, str, dict[str, Any], str | None, str | None],
@@ -186,16 +192,27 @@ class DurableConversationWorker:
                     raise _JobLeaseLost(job["id"])
                 return event
 
-            analysis_task = asyncio.create_task(
-                self.analyzer.run(
-                    text=str(payload.get("content") or ""),
-                    assets=assets,
-                    provider_key=str(payload.get("provider") or "auto"),
-                    sink=sink,
-                    domain_hint=str(payload.get("domain") or "") or None,
-                    history=list(payload.get("history") or []),
-                )
-            )
+            async def run_analysis_with_usage():
+                usage_token = begin_provider_usage_capture()
+                try:
+                    result = await self.analyzer.run(
+                        text=str(payload.get("content") or ""),
+                        assets=assets,
+                        provider_key=str(payload.get("provider") or "auto"),
+                        sink=sink,
+                        domain_hint=str(payload.get("domain") or "") or None,
+                        history=list(payload.get("history") or []),
+                    )
+                    # Usage telemetry is observational. Missing/invalid usage or pricing
+                    # must never change the business result or make a successful job fail.
+                    result["provider_usage"] = summarize_provider_usage(
+                        current_provider_usage_events()
+                    )
+                    return result
+                finally:
+                    reset_provider_usage_capture(usage_token)
+
+            analysis_task = asyncio.create_task(run_analysis_with_usage())
             lease_watch = asyncio.create_task(lease_lost.wait())
             await asyncio.wait(
                 {analysis_task, lease_watch},
