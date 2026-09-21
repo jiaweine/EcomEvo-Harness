@@ -45,7 +45,12 @@ if not getattr(_application.app.state, "evaluation_router_installed", False):
     _application.app.state.evaluation_router_installed = True
 
 if not getattr(_application.app.state, "connection_routes_installed", False):
-    install_connection_routes(_application.app, _application.mcp, _application.FRONTEND)
+    install_connection_routes(
+        _application.app,
+        _application.mcp,
+        _application.FRONTEND,
+        _application.DATA_DIR,
+    )
     _application.app.state.connection_routes_installed = True
 
 if not getattr(_application.app.state, "inbox_routes_installed", False):

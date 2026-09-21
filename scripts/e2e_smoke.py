@@ -22,6 +22,8 @@ def main() -> None:
             assert connections.status_code == 200
             assert connections.json()["scope"] == "deployment"
             assert connections.json()["safety"]["business_tool_execution"] is False
+            assert connections.json()["safety"]["configuration_mutation"] is False
+            assert connections.json()["safety"]["secrets_exposed"] is False
             assert client.get("/api/runtime/connections/ui").status_code == 200
             assert client.get("/assets/connections.js").status_code == 200
             assert client.get("/assets/connections.css").status_code == 200
@@ -146,6 +148,7 @@ def main() -> None:
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
                 "connections_console": True,
+                "connections_configuration_mutation": False,
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],
                 "observability_read_only": observability["methodology"]["read_only"],
