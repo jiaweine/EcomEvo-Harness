@@ -34,7 +34,9 @@ def test_governance_and_reliability_are_visible_without_becoming_authority():
     assert 'Failure rate' in JS
     assert 'P95 latency' in JS
     assert 'Schema fingerprint' in JS
-    assert 'configuration_mutation' not in JS or 'tools/call' not in JS
+    assert '/probe' in JS
+    assert '/execute' not in JS
+    assert '/decision' not in JS
 
 
 def test_unknown_tools_are_visible_not_guessed_safe():
