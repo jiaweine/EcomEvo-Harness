@@ -12,7 +12,7 @@
       <div>
         <small>Evaluate · Feedback Review</small>
         <h1>质量异议复核</h1>
-        <p>查看 operator 提交的事实、证据与规则异议。复核结果只进入质量治理，不会自动修改生产结论或权限。</p>
+        <p>查看 operator 提交的事实、证据、规则、推断、业务动作与附件异议。复核结果只进入质量治理，不会自动修改生产结论或权限。</p>
       </div>
       <a href="/" class="feedback-admin-back">返回工作台</a>
     </header>
@@ -38,6 +38,12 @@
         <option value="wrong_rule">规则引用有误</option>
         <option value="stale_source">来源已过期</option>
         <option value="evidence_conflict">证据存在冲突</option>
+        <option value="incorrect_evidence">证据本身有误</option>
+        <option value="rule_not_applicable">规则不适用</option>
+        <option value="over_inference">结论过度推断</option>
+        <option value="inappropriate_action">动作不合适</option>
+        <option value="stale_attachment">附件已过期</option>
+        <option value="unreliable_attachment">附件不可靠</option>
         <option value="other">其他问题</option>
       </select></label>
       <button id="feedbackRefreshBtn" type="button">刷新</button>
