@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f1ec" />
+  <title>EcomEvo · Release Readiness</title>
+  <link rel="stylesheet" href="/assets/release-readiness.css" />
+</head>
+<body>
+  <div class="rr-shell">
+    <header class="rr-topbar">
+      <a class="rr-brand" href="/" aria-label="返回业务工作台"><span>E</span><div><b>EcomEvo</b><small>Release Readiness</small></div></a>
+      <div class="rr-meta"><span>Admin · Evidence only</span><a href="/">返回业务工作台</a></div>
+    </header>
+
+    <main class="rr-main">
+      <section class="rr-hero">
+        <div>
+          <p class="eyebrow">Evaluate · Governance evidence</p>
+          <h1>把“可以进入人工发布评审”与“已经获准发布”严格分开。</h1>
+          <p>Readiness 汇总现有确定性控制面，只生成发布前证据快照。它不会发布 Policy、激活 Skill、批准 BusinessAction、执行工具、合并代码或部署。</p>
+        </div>
+        <div class="rr-actions">
+          <select id="windowSelect" aria-label="观察窗口">
+            <option value="24h">24 小时</option>
+            <option value="7d" selected>7 天</option>
+            <option value="30d">30 天</option>
+          </select>
+          <button id="refreshBtn" class="secondary" type="button">刷新预览</button>
+          <button id="snapshotBtn" class="primary" type="button">保存证据快照</button>
+        </div>
+      </section>
+
+      <section class="rr-guardrails" aria-label="边界说明">
+        <article><b>Readiness ≠ Approval</b><span>无 blocker 只表示可进入人工发布评审。</span></article>
+        <article><b>Warnings ≠ Blockers</b><span>证据缺口、retry 等观察项不会被任意阈值升级成硬阻断。</span></article>
+        <article><b>Policy scope-sensitive</b><span>没有具体请求 scope 时只展示 inventory，不伪造“全局无冲突”。</span></article>
+      </section>
+
+      <section class="rr-summary">
+        <article><small>当前状态</small><strong id="statusValue">—</strong><span id="statusDetail">加载中</span></article>
+        <article><small>Blockers</small><strong id="blockerCount">—</strong><span>确定性硬阻断</span></article>
+        <article><small>Warnings</small><strong id="warningCount">—</strong><span>人工评审提醒</span></article>
+        <article><small>Tenant</small><strong id="tenantValue">—</strong><span id="windowValue">—</span></article>
+      </section>
+
+      <div class="rr-grid">
+        <section class="rr-panel">
+          <header><div><p class="eyebrow">Deterministic checks</p><h2>发布前检查</h2></div><span id="generatedAt">—</span></header>
+          <div id="checkList" class="rr-check-list"></div>
+        </section>
+
+        <aside class="rr-panel">
+          <header><div><p class="eyebrow">Evidence sources</p><h2>证据来源</h2></div></header>
+          <div id="sourceSummary" class="rr-source-list"></div>
+        </aside>
+      </div>
+
+      <section class="rr-panel">
+        <header>
+          <div><p class="eyebrow">Immutable snapshots</p><h2>历史准备度快照</h2></div>
+          <button id="historyRefreshBtn" class="ghost" type="button">刷新</button>
+        </header>
+        <div id="snapshotList" class="rr-snapshots"></div>
+      </section>
+
+      <div id="toast" class="rr-toast" role="status" aria-live="polite"></div>
+    </main>
+  </div>
+  <script src="/assets/release-readiness.js" defer></script>
+</body>
+</html>
