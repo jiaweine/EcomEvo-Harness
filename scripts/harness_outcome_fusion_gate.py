@@ -13,8 +13,8 @@ from ecomevo.runtime.bundled_harness_optimizer import BundledHarnessEvolutionOpt
 from ecomevo.runtime.harness_optimizer import HarnessEvolutionOptimizer
 
 
-TASKS = 64
-EXPERIMENTS = 3
+TASKS = 256
+EXPERIMENTS = 6
 DOMAIN = "merchant_review"
 WALL_RATIO_LIMIT = 1.10
 P99_RATIO_LIMIT = 1.10
