@@ -133,6 +133,7 @@ class MCPConnectionCatalog:
                 "domains": [str(row.get("domain") or "general")],
                 "evidence_tags": _safe_tags(row.get("evidence_tags")),
                 "idempotency": "not_applicable",
+                "idempotency_conflict": False,
             }
         for action_kind, row in self.registry.action_map.items():
             if not isinstance(row, dict) or str(row.get("server") or "") != server_key:
@@ -154,14 +155,25 @@ class MCPConnectionCatalog:
                     "domains": [],
                     "evidence_tags": _safe_tags(row.get("evidence_tags")),
                     "idempotency": action_idempotency,
+                    "idempotency_conflict": False,
                 }
                 tools[name] = current
             else:
                 # A tool that is also configured as an action must be presented with
                 # the stricter capability. The console never treats action bindings as read-only.
+                previous_capability = current.get("capability")
+                previous_idempotency = str(current.get("idempotency") or "unknown")
                 current["capability"] = "governed_action"
                 current["risk"] = "governed_side_effect"
-                current["idempotency"] = action_idempotency
+                if previous_capability == "read" or previous_idempotency == "not_applicable":
+                    current["idempotency"] = action_idempotency
+                elif action_idempotency == "unknown":
+                    pass
+                elif previous_idempotency == "unknown":
+                    current["idempotency"] = action_idempotency
+                elif previous_idempotency != action_idempotency:
+                    current["idempotency"] = "unknown"
+                    current["idempotency_conflict"] = True
                 current["evidence_tags"] = sorted(
                     set(current.get("evidence_tags", [])) | set(_safe_tags(row.get("evidence_tags")))
                 )
@@ -202,7 +214,14 @@ class MCPConnectionCatalog:
         if auth_configured and not credential_owner:
             warnings.append("credential_owner_not_declared")
         if any(
-            row.get("capability") == "governed_action" and row.get("idempotency") == "unknown"
+            row.get("capability") == "governed_action" and row.get("idempotency_conflict")
+            for row in tools.values()
+        ):
+            warnings.append("governed_action_idempotency_conflict")
+        if any(
+            row.get("capability") == "governed_action"
+            and row.get("idempotency") == "unknown"
+            and not row.get("idempotency_conflict")
             for row in tools.values()
         ):
             warnings.append("governed_action_idempotency_not_declared")
@@ -227,7 +246,11 @@ class MCPConnectionCatalog:
             connection_idempotency = "unknown"
         if connection_idempotency in {"required", "supported"}:
             for tool in declared.values():
-                if tool.get("capability") == "governed_action" and tool.get("idempotency") == "unknown":
+                if (
+                    tool.get("capability") == "governed_action"
+                    and tool.get("idempotency") == "unknown"
+                    and not tool.get("idempotency_conflict")
+                ):
                     tool["idempotency"] = connection_idempotency
         warnings = self._governance_warnings(
             declared_scope=declared_scope,
@@ -485,6 +508,7 @@ class MCPConnectionCatalog:
                         "domains": [],
                         "evidence_tags": [],
                         "idempotency": "unknown",
+                        "idempotency_conflict": False,
                     }
                 explicit["description"] = str(row.get("description") or "").strip()
                 merged.append(explicit)
