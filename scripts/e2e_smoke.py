@@ -40,8 +40,53 @@ def main() -> None:
                 "assignment_grants_approval": False,
                 "priority_changes_runtime_routing": False,
             }
+            assert inbox.json()["can_collaborate"] is True
+            original_user = inbox.json()["current_user"]
             assert client.get("/api/inbox/ui").status_code == 200
-            assert client.post(f"/api/inbox/{conv['id']}/claim").status_code == 200
+            claimed = client.post(f"/api/inbox/{conv['id']}/claim")
+            assert claimed.status_code == 200
+            assert claimed.json()["owner_user_id"] == original_user
+
+            watched = client.put(f"/api/inbox/{conv['id']}/watch")
+            assert watched.status_code == 200
+            assert watched.json()["current_user_watching"] is True
+            assert watched.json()["authority"] == {
+                "collaboration_grants_approval": False,
+                "review_request_grants_approval": False,
+                "handoff_grants_approval": False,
+                "comments_change_runtime": False,
+                "watching_changes_runtime": False,
+            }
+            comment = client.post(
+                f"/api/inbox/{conv['id']}/comments",
+                json={"body": "@smoke-reviewer 请复核证据和交接上下文。"},
+            )
+            assert comment.status_code == 200
+            comment_event = [row for row in comment.json()["events"] if row["event_type"] == "comment"][-1]
+            assert comment_event["mentions"] == ["smoke-reviewer"]
+            review_request = client.post(
+                f"/api/inbox/{conv['id']}/review-requests",
+                json={"target_user_id": "smoke-reviewer", "note": "仅协作 review，不授予审批权限。"},
+            )
+            assert review_request.status_code == 200
+            handoff = client.post(
+                f"/api/inbox/{conv['id']}/handoffs",
+                json={"target_user_id": "smoke-reviewer", "note": "请接手后续处理。"},
+            )
+            assert handoff.status_code == 200
+            assert handoff.json()["owner_user_id"] == original_user
+            handoff_id = handoff.json()["pending_handoffs"][0]["id"]
+
+            os.environ["ECOMEVO_LOCAL_USER"] = "smoke-reviewer"
+            accepted_handoff = client.post(
+                f"/api/inbox/{conv['id']}/handoffs/{handoff_id}/accept"
+            )
+            assert accepted_handoff.status_code == 200
+            assert accepted_handoff.json()["owner_user_id"] == "smoke-reviewer"
+            assert accepted_handoff.json()["pending_handoffs"] == []
+            collaboration_event_count = len(accepted_handoff.json()["events"])
+
+            os.environ["ECOMEVO_LOCAL_USER"] = original_user
             priority = client.patch(f"/api/inbox/{conv['id']}/priority", json={"priority": "urgent"})
             assert priority.status_code == 200 and priority.json()["queue_priority"] == "urgent"
             assert client.delete(f"/api/inbox/{conv['id']}/claim").json()["owner_user_id"] is None
@@ -145,6 +190,8 @@ def main() -> None:
                 "domain": assistant["payload"]["domain"],
                 "actions": len(detail["actions"]),
                 "queue_state": queue_item["queue_state"],
+                "collaboration_events": collaboration_event_count,
+                "handoff_accepted": True,
                 "feedback_id": feedback_id,
                 "feedback_status": reviewed.json()["status"],
                 "connections_console": True,
