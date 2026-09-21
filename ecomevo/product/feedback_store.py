@@ -16,10 +16,24 @@ FEEDBACK_CATEGORIES = {
     "wrong_rule",
     "stale_source",
     "evidence_conflict",
+    "incorrect_evidence",
+    "rule_not_applicable",
+    "over_inference",
+    "inappropriate_action",
+    "stale_attachment",
+    "unreliable_attachment",
     "other",
 }
 FEEDBACK_IMPACTS = {"answer_only", "decision_relevant", "action_blocking"}
-TARGET_TYPES = {"answer", "claim", "evidence"}
+TARGET_TYPES = {"answer", "claim", "evidence", "action", "asset"}
+CATEGORY_TARGET_TYPES = {
+    "incorrect_evidence": {"evidence"},
+    "rule_not_applicable": {"claim", "evidence"},
+    "over_inference": {"answer", "claim"},
+    "inappropriate_action": {"action"},
+    "stale_attachment": {"asset"},
+    "unreliable_attachment": {"asset"},
+}
 REVIEW_DECISIONS = {"acknowledged", "accepted_for_eval", "needs_followup", "dismissed"}
 
 
@@ -31,7 +45,7 @@ class FeedbackConversationStore(TenantConversationStore):
     append-only events so a later reviewer cannot erase the audit trail.
     """
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def _init(self):
         super()._init()
@@ -180,6 +194,71 @@ class FeedbackConversationStore(TenantConversationStore):
                 }
             )
 
+        tenant = self._request_tenant(tenant_id)
+        action_session_id = str(payload.get("session_id") or "").strip()
+        with self._conn() as db:
+            if action_session_id:
+                action_rows = db.execute(
+                    """
+                    SELECT a.id,a.session_id,a.kind,a.title,a.description,a.risk_level,
+                           a.side_effect,a.requires_confirmation,a.status,a.created_at,a.updated_at
+                    FROM actions a
+                    JOIN conversations c ON c.id=a.conversation_id
+                    WHERE a.conversation_id=?
+                      AND a.session_id=?
+                      AND (? IS NULL OR c.tenant_id=?)
+                    ORDER BY a.created_at,a.id
+                    """,
+                    (cid, action_session_id, tenant, tenant),
+                ).fetchall()
+            else:
+                action_rows = []
+            asset_rows = db.execute(
+                """
+                SELECT a.id,a.name,a.mime,a.size,a.meta,a.created_at,
+                       a.active,a.excluded_at,a.excluded_reason
+                FROM assets a
+                JOIN conversations c ON c.id=a.conversation_id
+                WHERE a.conversation_id=?
+                  AND (? IS NULL OR c.tenant_id=?)
+                ORDER BY a.created_at,a.id
+                """,
+                (cid, tenant, tenant),
+            ).fetchall()
+
+        actions = [
+            {
+                "ref": str(row["id"]),
+                "session_id": str(row["session_id"] or "")[:160],
+                "kind": str(row["kind"] or "")[:120],
+                "title": str(row["title"] or "")[:400],
+                "description": str(row["description"] or "")[:1600],
+                "risk_level": str(row["risk_level"] or "")[:64],
+                "side_effect": bool(row["side_effect"]),
+                "requires_confirmation": bool(row["requires_confirmation"]),
+                "status": str(row["status"] or "")[:64],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in action_rows
+        ]
+        assets = []
+        for row in asset_rows:
+            meta = self._json(row["meta"])
+            assets.append(
+                {
+                    "ref": str(row["id"]),
+                    "name": str(row["name"] or "")[:400],
+                    "mime": str(row["mime"] or "")[:160],
+                    "size": int(row["size"] or 0),
+                    "sha256": str(meta.get("sha256") or "")[:128],
+                    "active": bool(row["active"]),
+                    "excluded_at": row["excluded_at"],
+                    "excluded_reason": str(row["excluded_reason"] or "")[:500],
+                    "created_at": row["created_at"],
+                }
+            )
+
         return {
             "schema_version": self.SCHEMA_VERSION,
             "conversation_id": cid,
@@ -190,6 +269,9 @@ class FeedbackConversationStore(TenantConversationStore):
             "evidence_sufficiency": grounding.get("evidence_sufficiency"),
             "claims": claims,
             "evidence": evidence,
+            "action_session_id": action_session_id or None,
+            "actions": actions,
+            "assets": assets,
         }
 
     @staticmethod
@@ -204,11 +286,19 @@ class FeedbackConversationStore(TenantConversationStore):
                 "ref": "",
                 "answer_excerpt": str(targets.get("answer_excerpt") or "")[:4000],
             }
-        key = "claims" if target_type == "claim" else "evidence"
+        key_by_type = {
+            "claim": "claims",
+            "evidence": "evidence",
+            "action": "actions",
+            "asset": "assets",
+        }
+        key = key_by_type.get(target_type)
+        if not key:
+            raise ValueError("invalid feedback target type")
         for row in targets.get(key) or []:
             if str(row.get("ref") or "") == target_ref:
                 return {"type": target_type, **row}
-        raise ValueError("target reference does not exist in the assistant message")
+        raise ValueError("target reference does not exist in the conversation snapshot")
 
     def submit_feedback(
         self,
@@ -239,6 +329,9 @@ class FeedbackConversationStore(TenantConversationStore):
             raise ValueError("invalid feedback impact")
         if target_type not in TARGET_TYPES:
             raise ValueError("invalid feedback target type")
+        allowed_targets = CATEGORY_TARGET_TYPES.get(category)
+        if allowed_targets is not None and target_type not in allowed_targets:
+            raise ValueError("feedback category does not match target type")
         if not actor:
             raise ValueError("submitter required")
         if not explanation:
