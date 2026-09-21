@@ -10,6 +10,7 @@ from PIL import Image
 
 from ecomevo.evaluation import EvaluationCenter
 from ecomevo.identity import IdentityMiddleware
+from ecomevo.product.release_readiness import ReleaseReadinessCenter
 from . import application as _application
 from .connection_routes import install_connection_routes
 from .decision_export_routes import install_decision_export_routes
@@ -19,6 +20,7 @@ from .inbox_routes import install_inbox_routes
 from .observability_routes import install_observability_routes
 from .policy_api import build_policy_router
 from .policy_worker import PolicyAwareDurableConversationWorker
+from .release_readiness_routes import install_release_readiness_routes
 from .upload_security import validate_raster as _validate_raster
 
 _application.Image = Image
@@ -74,6 +76,21 @@ if not getattr(_application.app.state, "decision_export_routes_installed", False
         _application.DATA_DIR / "decision_exports.db",
     )
     _application.app.state.decision_export_routes_installed = True
+
+if not getattr(_application.app.state, "release_readiness_routes_installed", False):
+    _application.release_readiness_center = ReleaseReadinessCenter(
+        _application.DATA_DIR / "release_readiness.db",
+        store=_application.store,
+        evaluation_center=_application.evaluation_center,
+        mcp_registry=_application.mcp,
+        policy_store=_application.engine.policies,
+    )
+    install_release_readiness_routes(
+        _application.app,
+        center=_application.release_readiness_center,
+        frontend=_application.FRONTEND,
+    )
+    _application.app.state.release_readiness_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
