@@ -5,10 +5,10 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ecomevo.identity import current_principal
-from ecomevo.product.queue_store import QUEUE_PRIORITIES
+from ecomevo.product.queue_store import CollaborationConflict, QUEUE_PRIORITIES
 
 
 QueueView = Literal["all", "mine", "unassigned"]
@@ -17,6 +17,15 @@ QueueScene = Literal["product_governance", "merchant_review", "aftersales", "ris
 
 class PriorityPatch(BaseModel):
     priority: Literal["low", "normal", "high", "urgent"]
+
+
+class CollaborationCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=4000)
+
+
+class CollaborationTargetCreate(BaseModel):
+    target_user_id: str = Field(min_length=1, max_length=240)
+    note: str = Field(default="", max_length=2000)
 
 
 def _summary(items: list[dict]) -> dict:
@@ -66,6 +75,7 @@ def install_inbox_routes(app: FastAPI, store, frontend: Path) -> None:
             "view": view,
             "scene": scene,
             "current_user": principal.user_id,
+            "can_collaborate": principal.can("operator"),
             "count": len(items),
             "summary": _summary(items),
             "items": items,
@@ -126,3 +136,126 @@ def install_inbox_routes(app: FastAPI, store, frontend: Path) -> None:
             )
         except KeyError as exc:
             raise HTTPException(404, "任务不存在") from exc
+
+
+    @app.get("/api/inbox/{cid}/collaboration")
+    def inbox_collaboration(cid: str):
+        principal = current_principal()
+        try:
+            return store.list_collaboration(
+                cid,
+                tenant_id=principal.tenant_id,
+                current_user_id=principal.user_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "任务不存在") from exc
+
+    @app.put("/api/inbox/{cid}/watch")
+    def inbox_watch(cid: str):
+        principal = current_principal()
+        try:
+            return store.watch_conversation(
+                cid,
+                principal.user_id,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "任务不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.delete("/api/inbox/{cid}/watch")
+    def inbox_unwatch(cid: str):
+        principal = current_principal()
+        try:
+            return store.unwatch_conversation(
+                cid,
+                principal.user_id,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "任务不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/inbox/{cid}/comments")
+    def inbox_comment(cid: str, req: CollaborationCommentCreate):
+        principal = current_principal()
+        try:
+            return store.add_collaboration_comment(
+                cid,
+                principal.user_id,
+                req.body,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "任务不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/inbox/{cid}/review-requests")
+    def inbox_review_request(cid: str, req: CollaborationTargetCreate):
+        principal = current_principal()
+        try:
+            return store.request_task_review(
+                cid,
+                principal.user_id,
+                req.target_user_id,
+                note=req.note,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "任务不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/inbox/{cid}/handoffs")
+    def inbox_handoff_request(cid: str, req: CollaborationTargetCreate):
+        principal = current_principal()
+        try:
+            return store.request_task_handoff(
+                cid,
+                principal.user_id,
+                req.target_user_id,
+                note=req.note,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "任务不存在") from exc
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from exc
+        except CollaborationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    def resolve_handoff(cid: str, request_id: int, decision: Literal["accept", "decline", "cancel"]):
+        principal = current_principal()
+        try:
+            return store.resolve_task_handoff(
+                cid,
+                request_id,
+                principal.user_id,
+                decision,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "交接请求不存在") from exc
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from exc
+        except CollaborationConflict as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/inbox/{cid}/handoffs/{request_id}/accept")
+    def inbox_handoff_accept(cid: str, request_id: int):
+        return resolve_handoff(cid, request_id, "accept")
+
+    @app.post("/api/inbox/{cid}/handoffs/{request_id}/decline")
+    def inbox_handoff_decline(cid: str, request_id: int):
+        return resolve_handoff(cid, request_id, "decline")
+
+    @app.post("/api/inbox/{cid}/handoffs/{request_id}/cancel")
+    def inbox_handoff_cancel(cid: str, request_id: int):
+        return resolve_handoff(cid, request_id, "cancel")

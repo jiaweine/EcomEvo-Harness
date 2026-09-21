@@ -116,6 +116,46 @@
                 <button class="secondary" id="claimBtn" type="button">认领任务</button>
                 <a class="primary-link" id="openTaskLink" href="/">打开工作台</a>
               </div>
+
+              <section class="collaboration-card" aria-labelledby="collaborationHeading">
+                <div class="collaboration-head">
+                  <div>
+                    <small>COLLABORATE</small>
+                    <h4 id="collaborationHeading">协作与交接</h4>
+                  </div>
+                  <button class="secondary compact" id="watchBtn" type="button">关注任务</button>
+                </div>
+                <p class="collaboration-guardrail">协作 ≠ 审批。关注、评论、@mention、review request 和 handoff 都不会授予 approver 权限，也不会改变 Runtime、Policy 或 BusinessAction；负责人变化会使未完成 handoff 自动失效。</p>
+                <div class="watcher-row"><span>关注者</span><strong id="watcherList">暂无</strong></div>
+
+                <div class="handoff-pending" id="handoffPending" hidden></div>
+
+                <div class="collaboration-timeline" id="collaborationTimeline">
+                  <div class="collaboration-empty">暂无协作记录。</div>
+                </div>
+
+                <form class="collaboration-form" id="commentForm">
+                  <label>
+                    <span>评论 / @mention</span>
+                    <textarea id="commentBody" maxlength="4000" rows="3" placeholder="例如：@reviewer-a 请复核承运商证据。"></textarea>
+                  </label>
+                  <button class="secondary" type="submit">追加评论</button>
+                </form>
+
+                <div class="collaboration-grid">
+                  <form class="collaboration-form compact-form" id="reviewRequestForm">
+                    <label><span>请求 review</span><input id="reviewTarget" maxlength="240" placeholder="目标用户 ID" /></label>
+                    <label><span>备注</span><input id="reviewNote" maxlength="2000" placeholder="可选" /></label>
+                    <button class="secondary" type="submit">发送 review request</button>
+                  </form>
+                  <form class="collaboration-form compact-form" id="handoffForm">
+                    <label><span>请求 handoff</span><input id="handoffTarget" maxlength="240" placeholder="目标用户 ID" /></label>
+                    <label><span>备注</span><input id="handoffNote" maxlength="2000" placeholder="可选" /></label>
+                    <button class="secondary" id="handoffSubmitBtn" type="submit">发起交接</button>
+                  </form>
+                </div>
+              </section>
+
               <div class="safety-card">
                 <b>队列不会执行真实业务动作</b>
                 <p>审批、退款、下架、冻结等操作仍由原有 Approval / Governance / Sandbox 边界控制。</p>
