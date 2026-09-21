@@ -399,6 +399,10 @@ class MCPConnectionCatalog:
             maximum = round(max(latencies), 1)
             p95 = round(latencies[max(0, math.ceil(0.95 * len(latencies)) - 1)], 1)
         latest = rows[0] if rows else None
+        latest_schema = next(
+            (row for row in rows if str(row.get("schema_fingerprint") or "")),
+            None,
+        )
         latest_schema_change = next(
             (row for row in rows if row.get("schema_change") == "changed"),
             None,
@@ -417,8 +421,9 @@ class MCPConnectionCatalog:
             },
             "latest_checked_at": latest["checked_at"] if latest else None,
             "latest_state": latest["state"] if latest else None,
-            "latest_schema_fingerprint": latest["schema_fingerprint"] if latest else "",
-            "latest_schema_change": latest["schema_change"] if latest else "unknown",
+            "latest_schema_fingerprint": latest_schema["schema_fingerprint"] if latest_schema else "",
+            "latest_schema_change": latest_schema["schema_change"] if latest_schema else "unknown",
+            "latest_schema_observed_at": latest_schema["checked_at"] if latest_schema else None,
             "last_schema_change_at": latest_schema_change["checked_at"] if latest_schema_change else None,
         }
 
