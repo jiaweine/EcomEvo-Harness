@@ -12,6 +12,7 @@ from ecomevo.evaluation import EvaluationCenter
 from ecomevo.identity import IdentityMiddleware
 from . import application as _application
 from .connection_routes import install_connection_routes
+from .decision_export_routes import install_decision_export_routes
 from .evaluation_api import build_evaluation_router
 from .feedback_routes import install_feedback_routes
 from .inbox_routes import install_inbox_routes
@@ -64,6 +65,15 @@ if not getattr(_application.app.state, "feedback_routes_installed", False):
 if not getattr(_application.app.state, "observability_routes_installed", False):
     install_observability_routes(_application.app, _application.store, _application.FRONTEND)
     _application.app.state.observability_routes_installed = True
+
+if not getattr(_application.app.state, "decision_export_routes_installed", False):
+    _application.decision_export_center = install_decision_export_routes(
+        _application.app,
+        _application.store,
+        _application.FRONTEND,
+        _application.DATA_DIR / "decision_exports.db",
+    )
+    _application.app.state.decision_export_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
