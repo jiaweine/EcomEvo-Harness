@@ -23,6 +23,7 @@ from .policy_api import build_policy_router
 from .policy_workflow_routes import install_policy_workflow_routes
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .release_readiness_routes import install_release_readiness_routes
+from .routing_quality_routes import install_routing_quality_routes
 from .skill_studio_routes import install_skill_studio_routes
 from .upload_security import validate_raster as _validate_raster
 
@@ -78,6 +79,14 @@ if not getattr(_application.app.state, "feedback_routes_installed", False):
 if not getattr(_application.app.state, "observability_routes_installed", False):
     install_observability_routes(_application.app, _application.store, _application.FRONTEND)
     _application.app.state.observability_routes_installed = True
+
+if not getattr(_application.app.state, "routing_quality_routes_installed", False):
+    install_routing_quality_routes(
+        _application.app,
+        _application.store,
+        _application.FRONTEND,
+    )
+    _application.app.state.routing_quality_routes_installed = True
 
 if not getattr(_application.app.state, "knowledge_routes_installed", False):
     _application.knowledge_source_store = install_knowledge_routes(
