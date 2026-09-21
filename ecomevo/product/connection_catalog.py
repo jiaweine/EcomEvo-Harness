@@ -221,6 +221,12 @@ class MCPConnectionCatalog:
         connection_idempotency = _enum(meta.get("idempotency"), IDEMPOTENCY_LEVELS)
         if not action_count:
             connection_idempotency = "not_applicable"
+        elif connection_idempotency == "not_applicable":
+            connection_idempotency = "unknown"
+        if connection_idempotency in {"required", "supported"}:
+            for tool in declared.values():
+                if tool.get("capability") == "governed_action" and tool.get("idempotency") == "unknown":
+                    tool["idempotency"] = connection_idempotency
         warnings = self._governance_warnings(
             declared_scope=declared_scope,
             effective_scope=effective_scope,
