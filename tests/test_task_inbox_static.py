@@ -14,7 +14,17 @@ def test_inbox_frontend_is_separate_operator_surface():
     assert "任务队列" in html
     assert "认领 ≠ 审批" in html
     assert "优先级 ≠ Runtime 路由" in html
+    assert "协作 ≠ 审批" in html
+    assert "review request" in html
+    assert "handoff" in html
+    assert "@mention" in html
     assert "/api/inbox" in js
+    assert "/collaboration" in js
+    assert "/comments" in js
+    assert "/review-requests" in js
+    assert "/handoffs" in js
+    assert "esc(event.body)" in js
+    assert "previousSelectedId !== state.selectedId" in js
     assert "/api/actions/" not in js
     assert "call_tool" not in js
     assert "mcp" not in js.lower()
@@ -26,10 +36,15 @@ def test_inbox_routes_do_not_expose_business_action_execution():
     assert '"/api/inbox"' in source
     assert "claim_conversation" in source
     assert "update_queue_priority" in source
+    assert "add_collaboration_comment" in source
+    assert "request_task_review" in source
+    assert "request_task_handoff" in source
+    assert "resolve_task_handoff" in source
     assert "/api/actions/" not in source
     assert ".call_tool(" not in source
     assert "assignment_grants_approval" in source
     assert "priority_changes_runtime_routing" in source
+    assert "handoff_grants_approval" not in source or "list_collaboration" in source
 
 
 def test_queue_persists_only_collaboration_metadata_not_runtime_state():
@@ -43,6 +58,23 @@ def test_queue_persists_only_collaboration_metadata_not_runtime_state():
     assert "turn_leases" in source
     assert "status='uncertain'" in source
     assert "evidence_sufficiency" in source
+
+
+def test_collaboration_store_is_metadata_only_and_handoff_is_two_party():
+    source = (ROOT / "ecomevo" / "product" / "queue_store.py").read_text(encoding="utf-8")
+    assert "task_watchers" in source
+    assert "task_collaboration_events" in source
+    assert "review_requested" in source
+    assert "handoff_requested" in source
+    assert "handoff_accepted" in source
+    assert "handoff_invalidated" in source
+    assert "only the current owner can request handoff" in source
+    assert "only the handoff target can respond" in source
+    assert "UPDATE actions" not in source
+    assert "DELETE FROM task_collaboration_events" not in source
+    assert "UPDATE task_collaboration_events" not in source
+    assert ".call_tool(" not in source
+    assert "/api/actions/" not in source
 
 
 def test_workbench_exposes_inbox_as_progressive_enhancement():
