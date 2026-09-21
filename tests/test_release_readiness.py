@@ -77,6 +77,7 @@ def test_missing_gold_set_fails_closed_without_invented_thresholds(tmp_path):
     assert preview["methodology"]["evidence_gap_threshold"] is None
     assert preview["authority"]["approved_for_release"] is False
     assert preview["authority"]["changes_production_authority"] is False
+    assert preview["sources"]["connections"]["safety"]["configuration_mutation"] is False
 
 
 def test_passing_gold_set_only_means_ready_for_human_review(tmp_path):
