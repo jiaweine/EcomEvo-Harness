@@ -9,6 +9,8 @@
     items: [],
     selectedId: null,
     currentUser: '',
+    canCollaborate: false,
+    collaboration: null,
     loading: false,
   };
 
@@ -35,6 +37,18 @@
     high: '高',
     normal: '普通',
     low: '低',
+  };
+
+  const COLLAB_EVENTS = {
+    watch_started: '开始关注',
+    watch_stopped: '取消关注',
+    comment: '评论',
+    review_requested: '请求 review',
+    handoff_requested: '请求 handoff',
+    handoff_accepted: '接受 handoff',
+    handoff_declined: '拒绝 handoff',
+    handoff_cancelled: '取消 handoff',
+    handoff_invalidated: 'handoff 已失效',
   };
 
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -141,8 +155,10 @@
     box.querySelectorAll('.queue-item').forEach(button => {
       button.addEventListener('click', () => {
         state.selectedId = button.dataset.id;
+        state.collaboration = null;
         renderList();
         renderDetail();
+        loadCollaboration();
       });
     });
   }
@@ -189,6 +205,187 @@
       claim.dataset.action = 'other';
       claim.textContent = '已被其他同事认领';
     }
+    renderCollaboration();
+  }
+
+  function collaborationEventMarkup(event) {
+    const label = COLLAB_EVENTS[event.event_type] || event.event_type || '协作事件';
+    const actor = esc(event.actor_user_id || 'unknown');
+    const target = event.target_user_id ? ` → ${esc(event.target_user_id)}` : '';
+    const body = event.body ? `<p>${esc(event.body)}</p>` : '';
+    const mentions = Array.isArray(event.mentions) && event.mentions.length
+      ? `<small>@ ${event.mentions.map(esc).join(' · ')}</small>`
+      : '';
+    return `<article class="collaboration-event">
+      <div><b>${esc(label)}</b><span>${actor}${target}</span><time>${esc(formatTime(event.created_at))}</time></div>
+      ${body}${mentions}
+    </article>`;
+  }
+
+  function renderCollaboration() {
+    const item = selectedItem();
+    if (!item) return;
+    const collaboration = state.collaboration;
+    const canWrite = Boolean(state.canCollaborate);
+
+    const watchBtn = $('watchBtn');
+    const forms = [$('commentForm'), $('reviewRequestForm'), $('handoffForm')];
+    forms.forEach(form => {
+      if (!form) return;
+      form.querySelectorAll('input,textarea,button').forEach(node => { node.disabled = !canWrite; });
+    });
+    watchBtn.disabled = !canWrite;
+
+    if (!collaboration) {
+      $('watcherList').textContent = '正在加载…';
+      $('collaborationTimeline').innerHTML = '<div class="collaboration-empty">正在读取协作记录…</div>';
+      $('handoffPending').hidden = true;
+      return;
+    }
+
+    watchBtn.textContent = collaboration.current_user_watching ? '取消关注' : '关注任务';
+    watchBtn.dataset.action = collaboration.current_user_watching ? 'unwatch' : 'watch';
+    const watchers = Array.isArray(collaboration.watchers) ? collaboration.watchers : [];
+    $('watcherList').textContent = watchers.length
+      ? watchers.map(row => row.user_id).join(' · ')
+      : '暂无';
+
+    const events = Array.isArray(collaboration.events) ? collaboration.events : [];
+    $('collaborationTimeline').innerHTML = events.length
+      ? events.map(collaborationEventMarkup).join('')
+      : '<div class="collaboration-empty">暂无协作记录。</div>';
+
+    const pending = Array.isArray(collaboration.pending_handoffs) ? collaboration.pending_handoffs : [];
+    const pendingBox = $('handoffPending');
+    if (!pending.length) {
+      pendingBox.hidden = true;
+      pendingBox.innerHTML = '';
+    } else {
+      const request = pending[0];
+      const mineToAnswer = request.target_user_id === state.currentUser;
+      const mineToCancel = request.actor_user_id === state.currentUser;
+      pendingBox.hidden = false;
+      pendingBox.innerHTML = `
+        <div>
+          <b>待处理 handoff</b>
+          <p>${esc(request.actor_user_id)} → ${esc(request.target_user_id)}${request.body ? ` · ${esc(request.body)}` : ''}</p>
+        </div>
+        <div class="handoff-actions">
+          ${mineToAnswer && canWrite ? `<button type="button" data-handoff-id="${Number(request.id)}" data-handoff-decision="accept">接受</button><button type="button" data-handoff-id="${Number(request.id)}" data-handoff-decision="decline">拒绝</button>` : ''}
+          ${mineToCancel && canWrite ? `<button type="button" data-handoff-id="${Number(request.id)}" data-handoff-decision="cancel">取消请求</button>` : ''}
+        </div>`;
+      pendingBox.querySelectorAll('[data-handoff-decision]').forEach(button => {
+        button.addEventListener('click', () => resolveHandoff(
+          Number(button.dataset.handoffId),
+          button.dataset.handoffDecision,
+        ));
+      });
+    }
+
+    const handoffSubmit = $('handoffSubmitBtn');
+    const isOwner = item.owner_user_id === state.currentUser;
+    handoffSubmit.disabled = !canWrite || !isOwner || pending.length > 0;
+    handoffSubmit.title = !isOwner ? '只有当前负责人可以发起 handoff' : '';
+  }
+
+  async function loadCollaboration() {
+    const item = selectedItem();
+    if (!item) return;
+    try {
+      state.collaboration = await api(`/api/inbox/${encodeURIComponent(item.id)}/collaboration`);
+      renderCollaboration();
+    } catch (error) {
+      state.collaboration = null;
+      $('collaborationTimeline').innerHTML = `<div class="collaboration-empty">${esc(error.message || '协作记录加载失败')}</div>`;
+      toast(error.message || '协作记录加载失败');
+    }
+  }
+
+  async function toggleWatch() {
+    const item = selectedItem();
+    if (!item || !state.canCollaborate) return;
+    const action = $('watchBtn').dataset.action || 'watch';
+    try {
+      state.collaboration = await api(`/api/inbox/${encodeURIComponent(item.id)}/watch`, {
+        method: action === 'unwatch' ? 'DELETE' : 'PUT',
+      });
+      renderCollaboration();
+      toast(action === 'unwatch' ? '已取消关注' : '已关注任务');
+    } catch (error) {
+      toast(error.message || '关注状态更新失败');
+    }
+  }
+
+  async function submitComment(event) {
+    event.preventDefault();
+    const item = selectedItem();
+    const body = $('commentBody').value.trim();
+    if (!item || !body || !state.canCollaborate) return;
+    try {
+      state.collaboration = await api(`/api/inbox/${encodeURIComponent(item.id)}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+      });
+      $('commentBody').value = '';
+      renderCollaboration();
+      toast('评论已追加');
+    } catch (error) {
+      toast(error.message || '评论提交失败');
+    }
+  }
+
+  async function submitReviewRequest(event) {
+    event.preventDefault();
+    const item = selectedItem();
+    const target = $('reviewTarget').value.trim();
+    if (!item || !target || !state.canCollaborate) return;
+    try {
+      state.collaboration = await api(`/api/inbox/${encodeURIComponent(item.id)}/review-requests`, {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: target, note: $('reviewNote').value.trim() }),
+      });
+      $('reviewTarget').value = '';
+      $('reviewNote').value = '';
+      renderCollaboration();
+      toast('review request 已记录；不会授予审批权限');
+    } catch (error) {
+      toast(error.message || 'review request 失败');
+    }
+  }
+
+  async function submitHandoff(event) {
+    event.preventDefault();
+    const item = selectedItem();
+    const target = $('handoffTarget').value.trim();
+    if (!item || !target || !state.canCollaborate) return;
+    try {
+      state.collaboration = await api(`/api/inbox/${encodeURIComponent(item.id)}/handoffs`, {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: target, note: $('handoffNote').value.trim() }),
+      });
+      $('handoffTarget').value = '';
+      $('handoffNote').value = '';
+      renderCollaboration();
+      toast('handoff 请求已发送，等待目标用户本人确认');
+    } catch (error) {
+      toast(error.message || 'handoff 请求失败');
+    }
+  }
+
+  async function resolveHandoff(requestId, decision) {
+    const item = selectedItem();
+    if (!item || !state.canCollaborate) return;
+    try {
+      state.collaboration = await api(
+        `/api/inbox/${encodeURIComponent(item.id)}/handoffs/${Number(requestId)}/${encodeURIComponent(decision)}`,
+        { method: 'POST' },
+      );
+      toast(decision === 'accept' ? 'handoff 已接受' : decision === 'decline' ? 'handoff 已拒绝' : 'handoff 请求已取消');
+      await loadInbox();
+    } catch (error) {
+      toast(error.message || 'handoff 更新失败');
+      await loadCollaboration();
+    }
   }
 
   function setLoading(value) {
@@ -203,14 +400,18 @@
       const params = new URLSearchParams({ view: state.view, limit: '200' });
       if (state.scene) params.set('scene', state.scene);
       const payload = await api(`/api/inbox?${params.toString()}`);
+      const previousSelectedId = state.selectedId;
       state.currentUser = payload.current_user || '';
+      state.canCollaborate = Boolean(payload.can_collaborate);
       state.items = Array.isArray(payload.items) ? payload.items : [];
       if (!preserveSelection || !state.items.some(item => item.id === state.selectedId)) {
         state.selectedId = state.items[0]?.id || null;
       }
+      if (previousSelectedId !== state.selectedId) state.collaboration = null;
       renderMetrics();
       renderList();
       renderDetail();
+      await loadCollaboration();
       $('syncState').textContent = '已同步';
     } catch (error) {
       $('syncState').textContent = '同步失败';
@@ -285,6 +486,10 @@
     $('refreshBtn').addEventListener('click', () => loadInbox());
     $('claimBtn').addEventListener('click', claimOrRelease);
     $('prioritySelect').addEventListener('change', updatePriority);
+    $('watchBtn').addEventListener('click', toggleWatch);
+    $('commentForm').addEventListener('submit', submitComment);
+    $('reviewRequestForm').addEventListener('submit', submitReviewRequest);
+    $('handoffForm').addEventListener('submit', submitHandoff);
   }
 
   document.addEventListener('DOMContentLoaded', () => {
