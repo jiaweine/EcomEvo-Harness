@@ -266,6 +266,35 @@ def test_governance_mismatches_fail_visible_without_changing_runtime(monkeypatch
     assert row['tools'][0]['capability'] == 'governed_action'
 
 
+def test_conflicting_action_idempotency_is_fail_visible(monkeypatch):
+    monkeypatch.setenv('ECOMEVO_MCP_CONNECTION_META', json.dumps({
+        'core': {'access_scope': 'governed_write', 'idempotency': 'required'},
+    }))
+    registry = MCPRegistry()
+    registry.servers = {'core': MCPServer('core', '核心系统', 'https://core.example/mcp')}
+    registry.action_map = {
+        'merchant.approve': {
+            'server': 'core',
+            'tool': 'review_case',
+            'arguments': {},
+            'idempotency': 'required',
+        },
+        'merchant.reject': {
+            'server': 'core',
+            'tool': 'review_case',
+            'arguments': {},
+            'idempotency': 'supported',
+        },
+    }
+
+    row = MCPConnectionCatalog(registry).get('core')
+    tool = row['tools'][0]
+    assert tool['idempotency'] == 'unknown'
+    assert tool['idempotency_conflict'] is True
+    assert 'governed_action_idempotency_conflict' in row['governance']['warnings']
+    assert 'governed_action_idempotency_not_declared' not in row['governance']['warnings']
+
+
 def test_structured_governance_metadata_is_not_stringified_to_browser(monkeypatch):
     monkeypatch.setenv('ECOMEVO_MCP_CONNECTION_META', json.dumps({
         'core': {
