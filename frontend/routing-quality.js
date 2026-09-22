@@ -10,7 +10,7 @@ function stats(label, s) {
   return metric(label, fmt(s?.p50), `p95 ${fmt(s?.p95)} · n=${fmt(s?.samples)}`);
 }
 
-function render(data) {
+function render(data, offPolicy) {
   $("status").textContent = `Tenant ${data.tenant_scope} · ${data.window.key} · ${data.coverage.assistant_results} assistant results · read-only`;
   $("cards").innerHTML = [
     metric("Residual EWMA p50", fmt(data.routing_policy.residual_ewma.p50)),
@@ -44,6 +44,22 @@ function render(data) {
     metric("Evidence tags yielded", fmt(data.tool_quality.evidence_tags_yielded)),
   ].join("");
 
+  const ope = offPolicy || {};
+  $("offPolicy").innerHTML = [
+    metric("Decision rounds", fmt(ope.coverage?.decision_rounds)),
+    metric("Feature-complete rounds", pct(ope.coverage?.full_feature_round_coverage)),
+    metric("Reward linkage", pct(ope.coverage?.reward_linkage_coverage)),
+    metric("Propensity coverage", pct(ope.behavior_policy?.propensity_coverage), "deterministic UCB does not imply probability"),
+    metric("Current behavior replay", ope.current_behavior_replay?.status || "unavailable"),
+    metric(
+      "Exact logged-behavior replay",
+      ope.readiness?.exact_behavior_replay ? "ready" : "not ready",
+      "requires complete reward linkage and an untruncated window",
+    ),
+    metric("Candidate counterfactual", ope.candidate_counterfactual?.status || "unavailable"),
+    metric("Doubly robust", ope.doubly_robust?.status || "unavailable", "missing prerequisites are surfaced, not estimated"),
+  ].join("");
+
   $("authority").innerHTML = Object.entries(data.authority)
     .map(([k,v]) => metric(k.replaceAll("_"," "), v ? "true" : "false"))
     .join("");
@@ -51,12 +67,16 @@ function render(data) {
 
 async function load() {
   $("status").textContent = "加载中…";
-  const response = await fetch(`/api/runtime/routing-quality?window=${encodeURIComponent($("window").value)}`);
-  if (!response.ok) {
-    $("status").textContent = `加载失败：HTTP ${response.status}`;
+  const windowKey = encodeURIComponent($("window").value);
+  const [qualityResponse, offPolicyResponse] = await Promise.all([
+    fetch(`/api/runtime/routing-quality?window=${windowKey}`),
+    fetch(`/api/runtime/routing-quality/off-policy?window=${windowKey}`),
+  ]);
+  if (!qualityResponse.ok || !offPolicyResponse.ok) {
+    $("status").textContent = `加载失败：HTTP ${qualityResponse.ok ? offPolicyResponse.status : qualityResponse.status}`;
     return;
   }
-  render(await response.json());
+  render(await qualityResponse.json(), await offPolicyResponse.json());
 }
 $("window").addEventListener("change", load);
 load();

@@ -29,17 +29,37 @@ def test_routing_quality_is_admin_only_and_server_tenant_scoped(monkeypatch):
         }
         assert client.get("/api/runtime/routing-quality/ui").status_code == 200
 
+        off_policy = client.get(
+            "/api/runtime/routing-quality/off-policy",
+            params={"window": "24h"},
+        )
+        assert off_policy.status_code == 200
+        off_policy_payload = off_policy.json()
+        assert off_policy_payload["tenant_scope"] == "routing-tenant-a"
+        assert off_policy_payload["behavior_policy"]["family"] == "deterministic_ucb"
+        assert off_policy_payload["candidate_counterfactual"]["status"] == "unavailable"
+        assert off_policy_payload["doubly_robust"]["status"] == "unavailable"
+        assert off_policy_payload["authority"]["changes_routing"] is False
+
         _identity(monkeypatch, tenant="routing-tenant-b", role="admin", user="admin-b")
         other = client.get("/api/runtime/routing-quality", params={"window": "24h"})
         assert other.status_code == 200
         assert other.json()["tenant_scope"] == "routing-tenant-b"
+        other_off_policy = client.get(
+            "/api/runtime/routing-quality/off-policy",
+            params={"window": "24h"},
+        )
+        assert other_off_policy.status_code == 200
+        assert other_off_policy.json()["tenant_scope"] == "routing-tenant-b"
 
         _identity(monkeypatch, tenant="routing-tenant-a", role="operator", user="operator-a")
         assert client.get("/api/runtime/routing-quality").status_code == 403
         assert client.get("/api/runtime/routing-quality/ui").status_code == 403
+        assert client.get("/api/runtime/routing-quality/off-policy").status_code == 403
 
         _identity(monkeypatch, tenant="routing-tenant-a", role="viewer", user="viewer-a")
         assert client.get("/api/runtime/routing-quality").status_code == 403
+        assert client.get("/api/runtime/routing-quality/off-policy").status_code == 403
 
 
 def test_routing_quality_window_validation(monkeypatch):
@@ -47,3 +67,8 @@ def test_routing_quality_window_validation(monkeypatch):
         _identity(monkeypatch)
         response = client.get("/api/runtime/routing-quality", params={"window": "90d"})
         assert response.status_code == 422
+        off_policy = client.get(
+            "/api/runtime/routing-quality/off-policy",
+            params={"window": "90d"},
+        )
+        assert off_policy.status_code == 422

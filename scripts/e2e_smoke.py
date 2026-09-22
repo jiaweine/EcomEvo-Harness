@@ -452,6 +452,27 @@ def main() -> None:
             assert client.get("/assets/routing-quality.js").status_code == 200
             assert client.get("/assets/routing-quality.css").status_code == 200
 
+            off_policy_response = client.get(
+                "/api/runtime/routing-quality/off-policy?window=24h"
+            )
+            assert off_policy_response.status_code == 200
+            off_policy = off_policy_response.json()
+            assert off_policy["tenant_scope"] == "local"
+            assert off_policy["behavior_policy"]["family"] == "deterministic_ucb"
+            assert off_policy["behavior_policy"]["randomized_action_assignment"] is False
+            assert off_policy["behavior_policy"]["positivity_for_alternative_actions"] is False
+            assert off_policy["candidate_counterfactual"]["status"] == "unavailable"
+            assert off_policy["direct_method"]["status"] == "unavailable"
+            assert off_policy["doubly_robust"]["status"] == "unavailable"
+            assert off_policy["authority"] == {
+                "read_only": True,
+                "changes_routing": False,
+                "changes_policy": False,
+                "changes_runtime_skills": False,
+                "approves_business_actions": False,
+                "executes_tools": False,
+            }
+
             readiness_action_before = [
                 (row["id"], row["status"])
                 for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
@@ -529,6 +550,9 @@ def main() -> None:
                 "operator_activity_duplicate_write_suppression": observability["operator_activity"]["duplicate_bucket_write_suppressed"],
                 "routing_quality_read_only": routing_quality["authority"]["read_only"],
                 "routing_quality_domains": len(routing_quality["routing_policy"]["domains"]),
+                "routing_off_policy_behavior": off_policy["behavior_policy"]["family"],
+                "routing_off_policy_candidate_counterfactual": off_policy["candidate_counterfactual"]["status"],
+                "routing_off_policy_doubly_robust": off_policy["doubly_robust"]["status"],
                 "release_readiness_status": readiness["status"],
                 "deployment_topology_status": readiness_checks["deployment_topology"]["status"],
                 "deployment_topology_nodes": readiness["sources"]["deployment_topology"]["declared_nodes"],
