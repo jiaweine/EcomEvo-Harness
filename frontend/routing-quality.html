@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Routing Quality Control Tower · EcomEvo</title>
+  <link rel="stylesheet" href="/assets/routing-quality.css">
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <p class="eyebrow">READ-ONLY CONTROL PLANE</p>
+        <h1>Routing Quality Control Tower</h1>
+        <p class="lede">持续观察 posterior、residual、adaptive activation、tool reliability、失败调用、停滞与成本效率。这里只读，不修改 routing / policy / skill / BusinessAction。</p>
+      </div>
+      <label class="window">窗口
+        <select id="window">
+          <option value="24h">24h</option>
+          <option value="7d" selected>7d</option>
+          <option value="30d">30d</option>
+        </select>
+      </label>
+    </header>
+
+    <section id="status" class="status">加载中…</section>
+    <section id="cards" class="cards"></section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Routing policy by domain</h2><span>描述性趋势，不自动判定 drift</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Domain</th><th>Runs</th><th>Samples</th><th>Reward EWMA</th><th>Residual EWMA</th><th>Residual Δ</th></tr></thead>
+          <tbody id="domains"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel"><h2>Adaptive routing</h2><div id="adaptive"></div></article>
+      <article class="panel"><h2>Tool quality</h2><div id="tools"></div></article>
+      <article class="panel"><h2>Authority boundary</h2><div id="authority"></div></article>
+    </section>
+  </main>
+  <script src="/assets/routing-quality.js"></script>
+</body>
+</html>

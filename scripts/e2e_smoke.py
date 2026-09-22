@@ -380,6 +380,24 @@ def main() -> None:
             assert client.get("/assets/observability.js").status_code == 200
             assert client.get("/assets/observability.css").status_code == 200
 
+            routing_quality_response = client.get("/api/runtime/routing-quality?window=24h")
+            assert routing_quality_response.status_code == 200
+            routing_quality = routing_quality_response.json()
+            assert routing_quality["tenant_scope"] == "local"
+            assert routing_quality["coverage"]["assistant_results"] >= 1
+            assert routing_quality["routing_policy"]["domains"]
+            assert routing_quality["authority"] == {
+                "read_only": True,
+                "changes_routing": False,
+                "changes_policy": False,
+                "changes_runtime_skills": False,
+                "approves_business_actions": False,
+                "executes_tools": False,
+            }
+            assert client.get("/api/runtime/routing-quality/ui").status_code == 200
+            assert client.get("/assets/routing-quality.js").status_code == 200
+            assert client.get("/assets/routing-quality.css").status_code == 200
+
             readiness_action_before = [
                 (row["id"], row["status"])
                 for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
@@ -442,6 +460,8 @@ def main() -> None:
                 "provider_usage_instrumented": provider_usage["schema_version"] == 1,
                 "provider_external_calls": provider_usage["external_calls"],
                 "observability_read_only": observability["methodology"]["read_only"],
+                "routing_quality_read_only": routing_quality["authority"]["read_only"],
+                "routing_quality_domains": len(routing_quality["routing_policy"]["domains"]),
                 "release_readiness_status": readiness["status"],
                 "release_readiness_snapshot": readiness_snapshot_id,
                 "release_readiness_authority_changed": False,

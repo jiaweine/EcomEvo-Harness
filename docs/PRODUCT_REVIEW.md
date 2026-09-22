@@ -90,21 +90,23 @@ MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明�
 
 ---
 
-## 下一阶段 P1：真实业务产品化
+## P1 产品化控制面：代码侧已落地，真实业务接入继续扩展
 
-这些不是当前代码缺陷，而是下一阶段需要真实组织/业务环境共同完成的产品工作。
+### Structured Correction / Evidence Dispute
 
-### 扩大 Structured Correction / Evidence Dispute
-
-现有“继续追证 / 检查反证”应进一步结构化为：证据错误、证据缺失、规则不适用、结论过度推断、动作不合适、附件过期/不可靠。纠错信号应进入 eval dataset 和运营分析。
+已落地结构化纠错 taxonomy、具体 target snapshot、append-only review history 与 evaluation-candidate export；反馈不会改写原回答、Policy、routing、Verifier、BusinessAction 或 Gold Set。真实业务仍应持续把已裁决纠错样本扩进 eval dataset 与运营分析。
 
 ### Enterprise MCP Control Plane
 
-需要在真实企业环境管理 data source、read/write scope、credential owner、health、latency、failure rate、evidence tags、idempotency 与 schema change；当前代码已经有受控 MCP runtime，但不是完整企业连接管理产品。
+已落地 declared/effective read-write scope、credential owner、evidence tags、idempotency 冲突检测、probe health / latency / failure rate / schema drift 与服务端 schema fingerprint。浏览器不接收 endpoint、token env、secret 或完整 schema；probe 只调用 tools/list，不触发 tools/call。真实企业 deployment 仍需接入具体 IdP、secret manager 与 provider auth/rate-limit matrix。
 
 ### Collaboration / Decision Export
 
-真实组织通常需要 owner、watcher、reviewer、approver、comment/mention、handoff、decision export 与 audit export。当前审批身份链已经有底层 actor audit，但协作产品面仍可扩展。
+已落地 owner、watcher、comment/@mention、定向 review request、双边确认 handoff，以及 immutable decision/audit export。协作状态不授予 approver 权限，handoff 接受时才原子转移 owner，export 不改变 action / policy / routing / skill / tool 状态。
+
+### Procedure / Skill Studio + Policy Center
+
+已落地隔离的 Procedure / Skill Studio 与 maker-checker Policy Center。Studio 评估通过不等于生产启用；Policy draft/review 在 checker approval + publish 前不进入 runtime resolution。两者都不新增 BusinessAction、MCP tool 或 deterministic authority 旁路。
 
 ### Business Gold Set Expansion
 
@@ -116,7 +118,7 @@ MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明�
 
 ### Routing Quality Control Tower
 
-持续观测 posterior samples、residual/drift、adaptive activation、tool reliability、evidence gain/call、cost/completed task、stagnation、tool diversity 和 failed-call rate。
+v1 已落地 tenant-safe、admin-only、read-only 控制塔，直接消费 durable assistant/runtime snapshots 与 task events，持续观测 posterior samples、reward/residual EWMA、adaptive activation、tool reliability、diversity overlap、failed-call rate、evidence-tag yield、stagnation 与 tool-cost/completed run。Residual delta 只作为描述性趋势，不自动宣称 drift；控制塔不能改 routing、Policy、Runtime Skill、BusinessAction，也不能执行 tool。
 
 ### Off-policy Evaluation
 
@@ -138,6 +140,7 @@ MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明�
 
 成熟企业生产定位仍要求真实部署继续满足：
 
+- Operator active-hours telemetry 仍未进入当前 main，因此 Verified Decisions per Operator Hour 的 denominator 继续显式 unavailable，不能用估算替代；
 - 企业 IdP / Gateway 接入；
 - 真实 provider/MCP auth/rate-limit/idempotency/failure matrix；
 - Safari/Edge 与目标设备；
