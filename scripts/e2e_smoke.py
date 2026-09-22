@@ -13,6 +13,7 @@ def main() -> None:
         os.environ["ECOMEVO_DATA"] = tmp
         os.environ.setdefault("ECOMEVO_AUTH_MODE", "local")
         os.environ.setdefault("ECOMEVO_LOCAL_ROLE", "admin")
+        os.environ.setdefault("ECOMEVO_DEPLOYMENT_NODES", "1")
 
         from fastapi.testclient import TestClient
         from ecomevo.api.app import app
@@ -441,6 +442,11 @@ def main() -> None:
             assert readiness["status"] == "blocked"
             readiness_checks = {row["id"]: row for row in readiness["checks"]}
             assert readiness_checks["gold_set_latest"]["status"] == "blocker"
+            assert readiness_checks["deployment_topology"]["status"] == "pass"
+            assert readiness["sources"]["deployment_topology"]["declared_nodes"] == 1
+            assert readiness["sources"]["deployment_topology"]["certified_max_nodes"] == 1
+            assert readiness["sources"]["deployment_topology"]["cross_node_supported"] is False
+            assert readiness["sources"]["deployment_topology"]["actual_replica_discovery"] is False
             assert readiness["authority"] == {
                 "approved_for_release": False,
                 "changes_production_authority": False,
@@ -502,6 +508,8 @@ def main() -> None:
                 "routing_quality_read_only": routing_quality["authority"]["read_only"],
                 "routing_quality_domains": len(routing_quality["routing_policy"]["domains"]),
                 "release_readiness_status": readiness["status"],
+                "deployment_topology_status": readiness_checks["deployment_topology"]["status"],
+                "deployment_topology_nodes": readiness["sources"]["deployment_topology"]["declared_nodes"],
                 "release_readiness_snapshot": readiness_snapshot_id,
                 "release_readiness_authority_changed": False,
                 "event_chain_valid": True,

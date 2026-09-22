@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from ecomevo.product import ConversationStore
+from ecomevo.product.deployment_topology import evaluate_deployment_topology
 from ecomevo.product.release_readiness import ReleaseReadinessCenter
 
 
@@ -38,7 +39,7 @@ class FakePolicyStore:
         return list(self.rows)
 
 
-def make_center(tmp_path, *, eval_rows=None):
+def make_center(tmp_path, *, eval_rows=None, deployment_nodes="1"):
     store = ConversationStore(tmp_path / "product.db", tmp_path / "assets")
     center = ReleaseReadinessCenter(
         tmp_path / "readiness.db",
@@ -46,6 +47,10 @@ def make_center(tmp_path, *, eval_rows=None):
         evaluation_center=FakeEvaluationCenter(eval_rows),
         mcp_registry=FakeRegistry(),
         policy_store=FakePolicyStore(),
+        deployment_topology_provider=lambda: evaluate_deployment_topology(
+            deployment_nodes,
+            source="test",
+        ),
     )
     return store, center
 
@@ -71,6 +76,7 @@ def test_missing_gold_set_fails_closed_without_invented_thresholds(tmp_path):
     assert preview["blocker_count"] == 1
     checks = {row["id"]: row for row in preview["checks"]}
     assert checks["gold_set_latest"]["status"] == "blocker"
+    assert checks["deployment_topology"]["status"] == "pass"
     assert checks["uncertain_side_effects"]["status"] == "pass"
     assert checks["quality_sample"]["status"] == "warning"
     assert preview["methodology"]["success_rate_threshold"] is None
@@ -90,6 +96,60 @@ def test_passing_gold_set_only_means_ready_for_human_review(tmp_path):
     assert preview["warning_count"] == 1
     assert preview["authority"]["approved_for_release"] is False
     assert preview["methodology"]["readiness_means"].startswith("ready for human release review")
+
+
+def test_deployment_topology_fails_closed_when_declaration_is_missing(tmp_path):
+    _store, center = make_center(
+        tmp_path,
+        eval_rows=[passing_eval()],
+        deployment_nodes=None,
+    )
+
+    preview = center.preview(tenant_id="tenant-a", now=1000.0)
+    checks = {row["id"]: row for row in preview["checks"]}
+    topology = preview["sources"]["deployment_topology"]
+
+    assert preview["status"] == "blocked"
+    assert checks["deployment_topology"]["status"] == "blocker"
+    assert topology["declaration_present"] is False
+    assert topology["actual_replica_discovery"] is False
+    assert topology["release_supported"] is False
+
+
+@pytest.mark.parametrize("raw_nodes", ["0", "-1", "not-a-number"])
+def test_deployment_topology_rejects_invalid_declarations(tmp_path, raw_nodes):
+    _store, center = make_center(
+        tmp_path,
+        eval_rows=[passing_eval()],
+        deployment_nodes=raw_nodes,
+    )
+
+    preview = center.preview(tenant_id="tenant-a", now=1000.0)
+    checks = {row["id"]: row for row in preview["checks"]}
+
+    assert preview["status"] == "blocked"
+    assert checks["deployment_topology"]["status"] == "blocker"
+    assert preview["sources"]["deployment_topology"]["declaration_valid"] is False
+
+
+def test_multi_node_declaration_is_a_hard_blocker_for_sqlite(tmp_path):
+    _store, center = make_center(
+        tmp_path,
+        eval_rows=[passing_eval()],
+        deployment_nodes="2",
+    )
+
+    preview = center.preview(tenant_id="tenant-a", now=1000.0)
+    checks = {row["id"]: row for row in preview["checks"]}
+    topology = preview["sources"]["deployment_topology"]
+
+    assert preview["status"] == "blocked"
+    assert checks["deployment_topology"]["status"] == "blocker"
+    assert topology["declared_nodes"] == 2
+    assert topology["certified_max_nodes"] == 1
+    assert topology["same_node_multi_process_supported"] is True
+    assert topology["cross_node_supported"] is False
+    assert topology["requires_central_transactional_backend_for_multi_node"] is True
 
 
 def _insert_open_feedback(store, cid, feedback_id, impact, created_at):

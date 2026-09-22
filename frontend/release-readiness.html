@@ -36,6 +36,7 @@
         <article><b>Readiness ≠ Approval</b><span>无 blocker 只表示可进入人工发布评审。</span></article>
         <article><b>Warnings ≠ Blockers</b><span>证据缺口、retry 等观察项不会被任意阈值升级成硬阻断。</span></article>
         <article><b>Policy scope-sensitive</b><span>没有具体请求 scope 时只展示 inventory，不伪造“全局无冲突”。</span></article>
+        <article><b>Topology fail-closed</b><span>当前 SQLite/WAL 只认证单节点多进程；节点数未声明或声明多节点时阻断发布评审。</span></article>
       </section>
 
       <section class="rr-summary">

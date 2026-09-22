@@ -8,9 +8,10 @@ import time
 import uuid
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ecomevo.product.connection_catalog import MCPConnectionCatalog
+from ecomevo.product.deployment_topology import current_deployment_topology
 from ecomevo.product.observability import QualityObservability
 
 
@@ -42,6 +43,7 @@ class ReleaseReadinessCenter:
         evaluation_center: Any,
         mcp_registry: Any,
         policy_store: Any,
+        deployment_topology_provider: Callable[[], dict[str, Any]] | None = None,
     ):
         self.db_path = str(db_path)
         self.store = store
@@ -49,6 +51,9 @@ class ReleaseReadinessCenter:
         self.connections = MCPConnectionCatalog(mcp_registry)
         self.policy_store = policy_store
         self.observability = QualityObservability(store)
+        self.deployment_topology_provider = (
+            deployment_topology_provider or current_deployment_topology
+        )
         self._lock = threading.RLock()
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._init()
@@ -229,6 +234,7 @@ class ReleaseReadinessCenter:
         evaluation = self._evaluation_snapshot()
         connections = self.connections.list()
         policy = self._policy_inventory(tenant_id)
+        deployment_topology = dict(self.deployment_topology_provider())
 
         checks: list[dict[str, str]] = []
 
@@ -256,6 +262,39 @@ class ReleaseReadinessCenter:
                 "Latest Gold Set passed",
                 f"{int((latest or {}).get('case_count') or 0)} cases; replay drift={int((latest or {}).get('drift_case_count') or 0)}.",
                 source="evaluation",
+            ))
+
+        if not bool(deployment_topology.get("declaration_present")):
+            checks.append(self._check(
+                "deployment_topology",
+                "blocker",
+                "Deployment node count is not declared",
+                str(deployment_topology.get("reason") or "deployment topology declaration missing"),
+                source="deployment_topology",
+            ))
+        elif not bool(deployment_topology.get("declaration_valid")):
+            checks.append(self._check(
+                "deployment_topology",
+                "blocker",
+                "Deployment node count is invalid",
+                str(deployment_topology.get("reason") or "deployment topology declaration invalid"),
+                source="deployment_topology",
+            ))
+        elif not bool(deployment_topology.get("release_supported")):
+            checks.append(self._check(
+                "deployment_topology",
+                "blocker",
+                "Current storage backend is not certified for multi-node release",
+                str(deployment_topology.get("reason") or "multi-node deployment is unsupported"),
+                source="deployment_topology",
+            ))
+        else:
+            checks.append(self._check(
+                "deployment_topology",
+                "pass",
+                "Deployment topology matches current storage boundary",
+                str(deployment_topology.get("reason") or "single-node deployment declared"),
+                source="deployment_topology",
             ))
 
         uncertain = int(observability["authority_workload"]["current_uncertain_actions"])
@@ -393,6 +432,7 @@ class ReleaseReadinessCenter:
                     "safety": safety,
                 },
                 "policy": policy,
+                "deployment_topology": deployment_topology,
             },
             "authority": self.authority(),
             "methodology": {
@@ -401,10 +441,14 @@ class ReleaseReadinessCenter:
                     "current uncertain side-effect action exists",
                     "open action-blocking feedback exists",
                     "connection control-plane safety invariant fails",
+                    "deployment node count missing or invalid",
+                    "declared deployment exceeds the current single-node SQLite boundary",
                 ],
                 "warnings_are_not_blockers": True,
                 "success_rate_threshold": None,
                 "evidence_gap_threshold": None,
+                "deployment_topology_is_declared_not_discovered": True,
+                "deployment_topology_can_change_runtime": False,
                 "readiness_means": "ready for human release review; not approved, published, promoted, merged, or deployed",
             },
         }
