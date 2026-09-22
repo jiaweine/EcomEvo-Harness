@@ -207,12 +207,18 @@ async def emit(
     payload: dict[str, Any],
     job_id: str | None = None,
     worker_id: str | None = None,
+    lease_fence: int | None = None,
 ):
     if job_id is not None or worker_id is not None:
         if not job_id or not worker_id:
             return None
         event = await asyncio.to_thread(
-            store.add_job_event, job_id, worker_id, event_type, payload
+            store.add_job_event,
+            job_id,
+            worker_id,
+            event_type,
+            payload,
+            lease_fence=lease_fence,
         )
     else:
         event = await asyncio.to_thread(store.add_event, cid, event_type, payload)
@@ -276,7 +282,13 @@ def runtime_info():
         "event_store": {"append_only": True, "hash_chain": True, "checkpoint": True, "rollback": True, "fork_ready": True},
         "planner": {"adaptive": True, "parallel_tool_composition": True, "recursive_review": True, "cost_gate": True, "learned_checks": engine.planner.evolution_state()},
         "recovery": {"verify_before_finish": True, "rollback_replan": True, "failure_driven_evolution": True, "sandbox_replay": True, "regression_gate": True},
-        "execution": {"durable_jobs": True, "cross_process_lease": True, "immutable_asset_snapshot": True, "jobs": store.job_counts()},
+        "execution": {
+            "durable_jobs": True,
+            "cross_process_lease": True,
+            "immutable_asset_snapshot": True,
+            "jobs": store.job_counts(),
+            "coordination": store.coordination_capabilities(),
+        },
         "deployment_topology": getattr(app.state, "deployment_topology", IMPORT_DEPLOYMENT_TOPOLOGY),
         "mcp": mcp.list(),
         "evolution_patches": engine.events.list_patches(10),
