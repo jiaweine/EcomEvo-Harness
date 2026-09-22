@@ -74,20 +74,6 @@ class SkillStudioStore:
         connection.execute("PRAGMA busy_timeout=15000")
         return connection
 
-    @staticmethod
-    def _ensure_column(
-        connection: sqlite3.Connection,
-        table: str,
-        column: str,
-        ddl: str,
-    ) -> None:
-        columns = {
-            str(row["name"])
-            for row in connection.execute(f"PRAGMA table_info({table})").fetchall()  # nosec B608
-        }
-        if column not in columns:
-            connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")  # nosec B608
-
     def _init(self) -> None:
         with self._lock, self._conn() as connection:
             connection.executescript(
@@ -139,12 +125,17 @@ class SkillStudioStore:
                     ON studio_skill_evaluations(version_id, created_at DESC);
                 """
             )
-            self._ensure_column(
-                connection,
-                "studio_skill_versions",
-                "tenant_id",
-                "TEXT NOT NULL DEFAULT 'local'",
-            )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(studio_skill_versions)"
+                ).fetchall()
+            }
+            if "tenant_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE studio_skill_versions "
+                    "ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'local'"
+                )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_studio_skill_versions_tenant "
                 "ON studio_skill_versions(tenant_id,created_at DESC)"
