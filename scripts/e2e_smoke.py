@@ -571,6 +571,20 @@ def main() -> None:
             assert readiness["sources"]["deployment_topology"]["certified_max_nodes"] == 1
             assert readiness["sources"]["deployment_topology"]["cross_node_supported"] is False
             assert readiness["sources"]["deployment_topology"]["actual_replica_discovery"] is False
+            migration = readiness["sources"]["multi_node_migration"]
+            assert migration["ready"] is False
+            assert migration["status"] == "not_ready_not_requested"
+            assert migration["blocker_count"] == 5
+            assert "shared_product_transaction_domain" in migration["blocker_ids"]
+            assert "cross_node_lease_fencing_clock" in migration["blocker_ids"]
+            assert "shared_immutable_asset_storage" in migration["blocker_ids"]
+            assert migration["methodology"]["self_attested_backend_capabilities_accepted"] is False
+            assert migration["methodology"]["database_url_swap_is_sufficient"] is False
+            migration_route = client.get("/api/runtime/readiness/multi-node")
+            assert migration_route.status_code == 200
+            assert migration_route.json()["ready"] is False
+            assert migration_route.json()["authority"]["changes_runtime_topology"] is False
+            assert migration_route.json()["authority"]["changes_storage_backend"] is False
             assert readiness["authority"] == {
                 "approved_for_release": False,
                 "changes_production_authority": False,
@@ -645,6 +659,9 @@ def main() -> None:
                 "release_readiness_status": readiness["status"],
                 "deployment_topology_status": readiness_checks["deployment_topology"]["status"],
                 "deployment_topology_nodes": readiness["sources"]["deployment_topology"]["declared_nodes"],
+                "multi_node_migration_ready": migration["ready"],
+                "multi_node_migration_blockers": migration["blocker_count"],
+                "multi_node_database_url_swap_sufficient": migration["methodology"]["database_url_swap_is_sufficient"],
                 "runtime_topology_start_allowed": runtime_topology["runtime_start_allowed"],
                 "runtime_topology_actual_replica_discovery": runtime_topology["actual_replica_discovery"],
                 "release_readiness_snapshot": readiness_snapshot_id,

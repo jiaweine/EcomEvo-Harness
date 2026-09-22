@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 from ecomevo.product.connection_catalog import MCPConnectionCatalog
 from ecomevo.product.deployment_topology import current_deployment_topology
+from ecomevo.product.multi_node_readiness import multi_node_migration_readiness
 from ecomevo.product.observability import QualityObservability
 
 
@@ -215,6 +216,13 @@ class ReleaseReadinessCenter:
             "source": source,
         }
 
+    def multi_node_readiness(self) -> dict[str, Any]:
+        topology = dict(self.deployment_topology_provider())
+        return multi_node_migration_readiness(
+            declared_nodes=topology.get("declared_nodes"),
+            declaration_valid=bool(topology.get("declaration_valid")),
+        )
+
     def preview(
         self,
         *,
@@ -235,6 +243,10 @@ class ReleaseReadinessCenter:
         connections = self.connections.list()
         policy = self._policy_inventory(tenant_id)
         deployment_topology = dict(self.deployment_topology_provider())
+        multi_node = multi_node_migration_readiness(
+            declared_nodes=deployment_topology.get("declared_nodes"),
+            declaration_valid=bool(deployment_topology.get("declaration_valid")),
+        )
 
         checks: list[dict[str, str]] = []
 
@@ -296,6 +308,25 @@ class ReleaseReadinessCenter:
                 str(deployment_topology.get("reason") or "single-node deployment declared"),
                 source="deployment_topology",
             ))
+
+        if bool(multi_node.get("multi_node_requested")):
+            migration_detail = (
+                f"multi-node migration prerequisites remain unmet: "
+                f"{', '.join(multi_node.get('blocker_ids') or [])}"
+            )
+        else:
+            migration_detail = (
+                f"current multi-node migration readiness remains false with "
+                f"{int(multi_node.get('blocker_count') or 0)} explicit prerequisites; "
+                "this does not block a correctly declared single-node release"
+            )
+        checks.append(self._check(
+            "multi_node_migration_readiness",
+            "info",
+            "Multi-node migration contract is explicit",
+            migration_detail,
+            source="multi_node_migration",
+        ))
 
         uncertain = int(observability["authority_workload"]["current_uncertain_actions"])
         checks.append(self._check(
@@ -433,6 +464,7 @@ class ReleaseReadinessCenter:
                 },
                 "policy": policy,
                 "deployment_topology": deployment_topology,
+                "multi_node_migration": multi_node,
             },
             "authority": self.authority(),
             "methodology": {
@@ -443,12 +475,15 @@ class ReleaseReadinessCenter:
                     "connection control-plane safety invariant fails",
                     "deployment node count missing or invalid",
                     "declared deployment exceeds the current single-node SQLite boundary",
+                    "multi-node release remains blocked until every migration prerequisite and certification gate is verified",
                 ],
                 "warnings_are_not_blockers": True,
                 "success_rate_threshold": None,
                 "evidence_gap_threshold": None,
                 "deployment_topology_is_declared_not_discovered": True,
                 "deployment_topology_can_change_runtime": False,
+                "multi_node_migration_contract_is_observational": True,
+                "multi_node_backend_self_attestation_accepted": False,
                 "readiness_means": "ready for human release review; not approved, published, promoted, merged, or deployed",
             },
         }

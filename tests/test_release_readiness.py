@@ -84,6 +84,10 @@ def test_missing_gold_set_fails_closed_without_invented_thresholds(tmp_path):
     assert preview["authority"]["approved_for_release"] is False
     assert preview["authority"]["changes_production_authority"] is False
     assert preview["sources"]["connections"]["safety"]["configuration_mutation"] is False
+    migration = preview["sources"]["multi_node_migration"]
+    assert migration["ready"] is False
+    assert migration["status"] == "not_ready_not_requested"
+    assert migration["blocker_count"] == 5
 
 
 def test_passing_gold_set_only_means_ready_for_human_review(tmp_path):
@@ -150,6 +154,14 @@ def test_multi_node_declaration_is_a_hard_blocker_for_sqlite(tmp_path):
     assert topology["same_node_multi_process_supported"] is True
     assert topology["cross_node_supported"] is False
     assert topology["requires_central_transactional_backend_for_multi_node"] is True
+    migration = preview["sources"]["multi_node_migration"]
+    assert migration["multi_node_requested"] is True
+    assert migration["ready"] is False
+    assert migration["status"] == "blocked"
+    assert "cross_node_lease_fencing_clock" in migration["blocker_ids"]
+    assert "shared_immutable_asset_storage" in migration["blocker_ids"]
+    migration_check = {row["id"]: row for row in preview["checks"]}["multi_node_migration_readiness"]
+    assert migration_check["status"] == "info"
 
 
 def _insert_open_feedback(store, cid, feedback_id, impact, created_at):
