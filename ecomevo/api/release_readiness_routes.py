@@ -25,6 +25,11 @@ def install_release_readiness_routes(
     def readiness_ui():
         return FileResponse(frontend / "release-readiness.html")
 
+    @app.get("/api/runtime/readiness/multi-node")
+    def readiness_multi_node():
+        current_principal()
+        return center.multi_node_readiness()
+
     @app.get("/api/runtime/readiness/preview")
     def readiness_preview(window: Window = Query(default="7d")):
         principal = current_principal()

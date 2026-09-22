@@ -74,6 +74,7 @@
     const policy = src.policy || {};
     const connection = src.connections || {};
     const topology = src.deployment_topology || {};
+    const migration = src.multi_node_migration || {};
     const openFeedbackCount = Number(feedback.open_count ?? 0);
     const openFeedbackCountLabel = feedback.exact_count === true
       ? `${openFeedbackCount} open · exact`
@@ -90,6 +91,12 @@
         topology.declaration_valid
           ? `${topology.storage_backend || 'unknown'} · declared ${topology.declared_nodes} node(s) · certified max ${topology.certified_max_nodes ?? '—'}`
           : 'node count 未有效声明 · fail closed',
+      ],
+      [
+        'Multi-node migration',
+        migration.ready === true
+          ? 'ready'
+          : `not ready · ${migration.blocker_count ?? '—'} prerequisites · self-attestation disabled`,
       ],
     ].map(([label, value]) => `
       <article><small>${esc(label)}</small><b>${esc(value)}</b></article>
