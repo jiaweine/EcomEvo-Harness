@@ -412,3 +412,99 @@ def test_connection_history_route_is_admin_only_and_persistent(monkeypatch, tmp_
     monkeypatch.setenv('ECOMEVO_LOCAL_ROLE', 'viewer')
     with TestClient(app) as client:
         assert client.get('/api/runtime/connections/core/history').status_code == 403
+
+
+def test_release_evidence_fails_closed_until_probe_and_schema_are_confirmed(tmp_path, monkeypatch):
+    monkeypatch.setenv("CORE_TOKEN", "configured-secret")
+    monkeypatch.setenv("ECOMEVO_MCP_CONNECTION_META", json.dumps({
+        "core": {
+            "access_scope": "read_only",
+            "credential_owner": "platform-security",
+        },
+    }))
+
+    calls = 0
+
+    def handler(request: httpx.Request):
+        nonlocal calls
+        payload = json.loads(request.content.decode("utf-8"))
+        assert payload["method"] == "tools/list"
+        calls += 1
+        schema = {
+            "type": "object",
+            "properties": {"order_id": {"type": "string"}},
+        }
+        if calls >= 3:
+            schema["properties"]["market"] = {"type": "string"}
+        return httpx.Response(200, request=request, json={
+            "jsonrpc": "2.0",
+            "id": payload["id"],
+            "result": {"tools": [{"name": "lookup", "inputSchema": schema}]},
+        })
+
+    registry = MCPRegistry(transport=httpx.MockTransport(handler))
+    registry.servers = {
+        "core": MCPServer("core", "核心系统", "https://core.example/mcp", "CORE_TOKEN")
+    }
+    registry.read_tools = [{
+        "key": "mcp.orders",
+        "domain": "aftersales",
+        "server": "core",
+        "tool": "lookup",
+        "purpose": "读取订单",
+        "arguments": {},
+        "evidence_tags": ["order_identity"],
+        "cost": 1.0,
+    }]
+    catalog = MCPConnectionCatalog(registry, history_path=tmp_path / "connections.db")
+
+    initial = catalog.release_evidence()
+    assert initial["status"] == "blocked"
+    assert "core:probe_history_missing" in initial["blocker_ids"]
+
+    asyncio.run(catalog.probe("core"))
+    baseline = catalog.release_evidence()
+    assert "core:schema_baseline_not_confirmed" in baseline["blocker_ids"]
+
+    asyncio.run(catalog.probe("core"))
+    confirmed = catalog.release_evidence()
+    assert confirmed["status"] == "control_plane_ready"
+    assert confirmed["ready"] is True
+    assert confirmed["blocker_count"] == 0
+
+    asyncio.run(catalog.probe("core"))
+    drifted = catalog.release_evidence()
+    assert drifted["status"] == "blocked"
+    assert "core:schema_change_not_revalidated" in drifted["blocker_ids"]
+    assert drifted["methodology"]["business_tool_execution"] is False
+    assert drifted["methodology"]["provider_rate_limits_certified"] is False
+
+    asyncio.run(catalog.probe("core"))
+    revalidated = catalog.release_evidence()
+    assert revalidated["status"] == "control_plane_ready"
+    assert revalidated["connections"][0]["probe_evidence"]["latest_schema_change"] == "unchanged"
+
+
+def test_release_evidence_blocks_missing_required_credential_without_exposing_secret_name(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.delenv("CORE_PRIVATE_TOKEN", raising=False)
+    monkeypatch.setenv("ECOMEVO_MCP_CONNECTION_META", json.dumps({
+        "core": {
+            "access_scope": "read_only",
+            "credential_owner": "platform-security",
+        },
+    }))
+    registry = MCPRegistry()
+    registry.servers = {
+        "core": MCPServer("core", "核心系统", "https://core.example/mcp", "CORE_PRIVATE_TOKEN")
+    }
+    catalog = MCPConnectionCatalog(registry, history_path=tmp_path / "connections.db")
+
+    evidence = catalog.release_evidence()
+    encoded = json.dumps(evidence, ensure_ascii=False)
+    assert "core:credential_not_configured" in evidence["blocker_ids"]
+    assert "CORE_PRIVATE_TOKEN" not in encoded
+    assert evidence["connections"][0]["governance"]["auth_required"] is True
+    assert evidence["connections"][0]["governance"]["auth_configured"] is False

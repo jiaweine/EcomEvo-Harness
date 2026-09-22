@@ -585,6 +585,18 @@ def main() -> None:
             assert migration_route.json()["ready"] is False
             assert migration_route.json()["authority"]["changes_runtime_topology"] is False
             assert migration_route.json()["authority"]["changes_storage_backend"] is False
+            connection_release = readiness["sources"]["connection_release_evidence"]
+            assert connection_release["status"] == "not_applicable"
+            assert connection_release["enabled_connections"] == 0
+            assert connection_release["blocker_count"] == 0
+            assert connection_release["methodology"]["probe_method"] == "tools/list"
+            assert connection_release["methodology"]["business_tool_execution"] is False
+            assert connection_release["methodology"]["success_rate_threshold"] is None
+            assert connection_release["methodology"]["latency_threshold_ms"] is None
+            connection_release_route = client.get("/api/runtime/readiness/connections")
+            assert connection_release_route.status_code == 200
+            assert connection_release_route.json()["status"] == "not_applicable"
+            assert connection_release_route.json()["methodology"]["provider_rate_limits_certified"] is False
             assert readiness["authority"] == {
                 "approved_for_release": False,
                 "changes_production_authority": False,
@@ -662,6 +674,10 @@ def main() -> None:
                 "multi_node_migration_ready": migration["ready"],
                 "multi_node_migration_blockers": migration["blocker_count"],
                 "multi_node_database_url_swap_sufficient": migration["methodology"]["database_url_swap_is_sufficient"],
+                "connection_release_evidence_status": connection_release["status"],
+                "connection_release_enabled_connections": connection_release["enabled_connections"],
+                "connection_release_business_tool_execution": connection_release["methodology"]["business_tool_execution"],
+                "connection_release_full_provider_certification": connection_release["methodology"]["provider_auth_behavior_fully_certified"],
                 "runtime_topology_start_allowed": runtime_topology["runtime_start_allowed"],
                 "runtime_topology_actual_replica_discovery": runtime_topology["actual_replica_discovery"],
                 "release_readiness_snapshot": readiness_snapshot_id,

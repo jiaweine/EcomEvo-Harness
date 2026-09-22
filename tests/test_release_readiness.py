@@ -39,14 +39,22 @@ class FakePolicyStore:
         return list(self.rows)
 
 
-def make_center(tmp_path, *, eval_rows=None, deployment_nodes="1"):
+def make_center(
+    tmp_path,
+    *,
+    eval_rows=None,
+    deployment_nodes="1",
+    registry=None,
+    connection_history_path=None,
+):
     store = ConversationStore(tmp_path / "product.db", tmp_path / "assets")
     center = ReleaseReadinessCenter(
         tmp_path / "readiness.db",
         store=store,
         evaluation_center=FakeEvaluationCenter(eval_rows),
-        mcp_registry=FakeRegistry(),
+        mcp_registry=registry or FakeRegistry(),
         policy_store=FakePolicyStore(),
+        connection_history_path=connection_history_path,
         deployment_topology_provider=lambda: evaluate_deployment_topology(
             deployment_nodes,
             source="test",
@@ -274,3 +282,116 @@ def test_snapshots_are_immutable_and_tenant_scoped(tmp_path):
     with pytest.raises(KeyError):
         center.get_snapshot(first["id"], tenant_id="tenant-b")
     assert center.list_snapshots(tenant_id="tenant-b") == []
+
+
+def test_enabled_connection_requires_durable_probe_and_confirmed_schema_before_release(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("ECOMEVO_MCP_CONNECTION_META", '{"core":{"access_scope":"read_only"}}')
+    registry = FakeRegistry()
+    registry.servers = {
+        "core": SimpleNamespace(
+            key="core",
+            name="核心系统",
+            enabled=True,
+            token_env=None,
+        ),
+    }
+    history_path = tmp_path / "connection_governance.db"
+    _store, center = make_center(
+        tmp_path,
+        eval_rows=[passing_eval()],
+        registry=registry,
+        connection_history_path=history_path,
+    )
+
+    missing = center.preview(tenant_id="tenant-a", now=1000.0)
+    checks = {row["id"]: row for row in missing["checks"]}
+    assert missing["status"] == "blocked"
+    assert checks["connection_release_evidence"]["status"] == "blocker"
+    assert "core:probe_history_missing" in missing["sources"]["connection_release_evidence"]["blocker_ids"]
+
+    center.connections._record_probe(
+        key="core",
+        checked_at=900.0,
+        state="healthy",
+        latency_ms=10.0,
+        protocol="test",
+        discovered_tools=1,
+        schema_fingerprint="a" * 64,
+        schema_change="first_observation",
+    )
+    baseline = center.preview(tenant_id="tenant-a", now=1000.0)
+    assert baseline["status"] == "blocked"
+    assert "core:schema_baseline_not_confirmed" in baseline["sources"]["connection_release_evidence"]["blocker_ids"]
+
+    center.connections._record_probe(
+        key="core",
+        checked_at=950.0,
+        state="healthy",
+        latency_ms=11.0,
+        protocol="test",
+        discovered_tools=1,
+        schema_fingerprint="a" * 64,
+        schema_change="unchanged",
+    )
+    ready = center.preview(tenant_id="tenant-a", now=1000.0)
+    checks = {row["id"]: row for row in ready["checks"]}
+    assert ready["status"] == "ready_for_human_release_review"
+    assert checks["connection_release_evidence"]["status"] == "pass"
+    evidence = ready["sources"]["connection_release_evidence"]
+    assert evidence["status"] == "control_plane_ready"
+    assert evidence["methodology"]["success_rate_threshold"] is None
+    assert evidence["methodology"]["latency_threshold_ms"] is None
+    assert evidence["methodology"]["provider_auth_behavior_fully_certified"] is False
+
+
+def test_latest_unhealthy_connection_probe_is_release_blocker(tmp_path, monkeypatch):
+    monkeypatch.setenv("ECOMEVO_MCP_CONNECTION_META", '{"core":{"access_scope":"read_only"}}')
+    registry = FakeRegistry()
+    registry.servers = {
+        "core": SimpleNamespace(
+            key="core",
+            name="核心系统",
+            enabled=True,
+            token_env=None,
+        ),
+    }
+    _store, center = make_center(
+        tmp_path,
+        eval_rows=[passing_eval()],
+        registry=registry,
+        connection_history_path=tmp_path / "connection_governance.db",
+    )
+    center.connections._record_probe(
+        key="core",
+        checked_at=900.0,
+        state="healthy",
+        latency_ms=10.0,
+        protocol="test",
+        discovered_tools=1,
+        schema_fingerprint="a" * 64,
+        schema_change="first_observation",
+    )
+    center.connections._record_probe(
+        key="core",
+        checked_at=920.0,
+        state="healthy",
+        latency_ms=10.0,
+        protocol="test",
+        discovered_tools=1,
+        schema_fingerprint="a" * 64,
+        schema_change="unchanged",
+    )
+    center.connections._record_probe(
+        key="core",
+        checked_at=940.0,
+        state="unhealthy",
+        latency_ms=20.0,
+        public_error="连接检查失败",
+    )
+
+    preview = center.preview(tenant_id="tenant-a", now=1000.0)
+    assert preview["status"] == "blocked"
+    assert "core:latest_probe_not_healthy" in preview["sources"]["connection_release_evidence"]["blocker_ids"]

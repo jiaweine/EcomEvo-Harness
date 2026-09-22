@@ -73,6 +73,7 @@
     const obs = src.observability || {};
     const policy = src.policy || {};
     const connection = src.connections || {};
+    const connectionEvidence = src.connection_release_evidence || {};
     const topology = src.deployment_topology || {};
     const migration = src.multi_node_migration || {};
     const openFeedbackCount = Number(feedback.open_count ?? 0);
@@ -85,6 +86,12 @@
       ['Uncertain actions', obs.authority_workload?.current_uncertain_actions ?? 0],
       ['Evidence gaps', `${obs.quality?.evidence_gap_results || 0}/${obs.quality?.assistant_results || 0}`],
       ['Connections', `${connection.count || 0} · observational catalog`],
+      [
+        'Connection release evidence',
+        connectionEvidence.status === 'not_applicable'
+          ? 'not applicable · no enabled connections'
+          : `${connectionEvidence.status || "unknown"} · blockers ${connectionEvidence.blocker_count ?? "—"}`,
+      ],
       ['Policy inventory', `${policy.visible_versions || 0} visible versions · scope-dependent`],
       [
         'Deployment topology',

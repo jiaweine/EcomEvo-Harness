@@ -44,12 +44,16 @@ class ReleaseReadinessCenter:
         evaluation_center: Any,
         mcp_registry: Any,
         policy_store: Any,
+        connection_history_path: str | Path | None = None,
         deployment_topology_provider: Callable[[], dict[str, Any]] | None = None,
     ):
         self.db_path = str(db_path)
         self.store = store
         self.evaluation_center = evaluation_center
-        self.connections = MCPConnectionCatalog(mcp_registry)
+        self.connections = MCPConnectionCatalog(
+            mcp_registry,
+            history_path=connection_history_path,
+        )
         self.policy_store = policy_store
         self.observability = QualityObservability(store)
         self.deployment_topology_provider = (
@@ -223,6 +227,9 @@ class ReleaseReadinessCenter:
             declaration_valid=bool(topology.get("declaration_valid")),
         )
 
+    def connection_readiness(self) -> dict[str, Any]:
+        return self.connections.release_evidence()
+
     def preview(
         self,
         *,
@@ -241,6 +248,7 @@ class ReleaseReadinessCenter:
         feedback = self._feedback_snapshot(tenant_id)
         evaluation = self._evaluation_snapshot()
         connections = self.connections.list()
+        connection_evidence = self.connections.release_evidence()
         policy = self._policy_inventory(tenant_id)
         deployment_topology = dict(self.deployment_topology_provider())
         multi_node = multi_node_migration_readiness(
@@ -379,6 +387,33 @@ class ReleaseReadinessCenter:
             source="connections",
         ))
 
+        enabled_connections = int(connection_evidence.get("enabled_connections") or 0)
+        connection_blockers = int(connection_evidence.get("blocker_count") or 0)
+        if enabled_connections == 0:
+            checks.append(self._check(
+                "connection_release_evidence",
+                "info",
+                "No enabled MCP connections require release evidence",
+                "enabled_connections=0; full provider integration certification is outside this control-plane check.",
+                source="connection_release_evidence",
+            ))
+        elif connection_blockers:
+            checks.append(self._check(
+                "connection_release_evidence",
+                "blocker",
+                "Enabled connection evidence is incomplete",
+                f"enabled_connections={enabled_connections}; blockers={connection_blockers}.",
+                source="connection_release_evidence",
+            ))
+        else:
+            checks.append(self._check(
+                "connection_release_evidence",
+                "pass",
+                "Enabled connection control-plane evidence is current",
+                f"enabled_connections={enabled_connections}; latest probes are healthy with confirmed unchanged schemas.",
+                source="connection_release_evidence",
+            ))
+
         quality = observability["quality"]
         assistant_results = int(quality.get("assistant_results") or 0)
         evidence_gaps = int(quality.get("evidence_gap_results") or 0)
@@ -462,6 +497,7 @@ class ReleaseReadinessCenter:
                     "count": connections.get("count"),
                     "safety": safety,
                 },
+                "connection_release_evidence": connection_evidence,
                 "policy": policy,
                 "deployment_topology": deployment_topology,
                 "multi_node_migration": multi_node,
@@ -473,6 +509,7 @@ class ReleaseReadinessCenter:
                     "current uncertain side-effect action exists",
                     "open action-blocking feedback exists",
                     "connection control-plane safety invariant fails",
+                    "enabled MCP connection governance/probe/schema evidence is incomplete",
                     "deployment node count missing or invalid",
                     "declared deployment exceeds the current single-node SQLite boundary",
                     "multi-node release remains blocked until every migration prerequisite and certification gate is verified",
@@ -484,6 +521,11 @@ class ReleaseReadinessCenter:
                 "deployment_topology_can_change_runtime": False,
                 "multi_node_migration_contract_is_observational": True,
                 "multi_node_backend_self_attestation_accepted": False,
+                "connection_probe_method": "tools/list",
+                "connection_business_tool_execution_for_readiness": False,
+                "connection_success_rate_threshold": None,
+                "connection_latency_threshold_ms": None,
+                "connection_readiness_is_full_provider_certification": False,
                 "readiness_means": "ready for human release review; not approved, published, promoted, merged, or deployed",
             },
         }
