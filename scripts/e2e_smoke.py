@@ -78,6 +78,9 @@ def main() -> None:
             studio_before = client.get("/api/runtime/skills/catalog")
             assert studio_before.status_code == 200
             studio_catalog_before = studio_before.json()
+            assert studio_catalog_before["scope"] == "mixed"
+            assert studio_catalog_before["scopes"]["studio_families"] == "tenant"
+            assert studio_catalog_before["scopes"]["runtime_skills"] == "deployment_read_only"
             runtime_skills_before = studio_catalog_before["runtime_skills"]
             studio_payload = {
                 "domain": "aftersales",
@@ -100,13 +103,18 @@ def main() -> None:
                 json={**studio_payload, "guidance": "依次核对订单、履约、物流和用户举证；任一关键事实缺失时停止并补证，不得执行退款。"},
             )
             assert studio_v2.status_code == 201
-            assert studio_v2.json()["version"] == 2
+            studio_v2_data = studio_v2.json()
+            assert studio_v2_data["version"] == 2
             submitted = client.post(
-                f"/api/runtime/skills/studio/{studio_v2.json()['version_id']}/submit",
+                f"/api/runtime/skills/studio/{studio_v2_data['version_id']}/submit",
                 json={"note": "进入离线候选评估流程"},
             )
             assert submitted.status_code == 200
             assert submitted.json()["state"] == "review"
+            blocked_export = client.get(
+                f"/api/runtime/skills/studio/{studio_v2_data['version_id']}/release-candidate"
+            )
+            assert blocked_export.status_code == 409
             studio_after = client.get("/api/runtime/skills/catalog").json()
             assert studio_after["runtime_skills"] == runtime_skills_before
             assert studio_after["authority"]["candidate_evaluation_mutates_production"] is False
@@ -501,7 +509,7 @@ def main() -> None:
                 "connections_configuration_mutation": False,
                 "policy_draft_version": policy_version["version_id"],
                 "policy_draft_non_authoritative": True,
-                "skill_studio_version": studio_v2.json()["version_id"],
+                "skill_studio_version": studio_v2_data["version_id"],
                 "skill_studio_runtime_unchanged": True,
                 "observability_jobs": observability["reliability"]["jobs"],
                 "observability_successful_runs": observability["throughput"]["successful_runs"],

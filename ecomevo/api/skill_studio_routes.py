@@ -50,7 +50,7 @@ def install_skill_studio_routes(
     engine,
     frontend: str | Path,
 ) -> SkillStudioStore:
-    """Install admin-only build/review surfaces without runtime promotion authority."""
+    """Install tenant-scoped admin authoring without runtime promotion authority."""
     store = SkillStudioStore(db_path, engine.skills, engine.tools)
     frontend_dir = Path(frontend)
     evaluation_lock = asyncio.Lock()
@@ -75,22 +75,42 @@ def install_skill_studio_routes(
 
     @app.get("/api/runtime/skills/catalog")
     def skill_catalog():
-        return store.catalog()
+        principal = current_principal()
+        return store.catalog(tenant_id=principal.tenant_id)
 
     @app.get("/api/runtime/skills/studio")
     def skill_versions(limit: int = Query(default=100, ge=1, le=200)):
-        return {"items": store.list_versions(limit), "authority": authority_contract()}
+        principal = current_principal()
+        return {
+            "items": store.list_versions(limit, tenant_id=principal.tenant_id),
+            "authority": authority_contract(),
+        }
 
     @app.get("/api/runtime/skills/studio/evaluations/{evaluation_id}")
     def skill_evaluation(evaluation_id: str):
-        item = store.get_evaluation(evaluation_id)
+        principal = current_principal()
+        item = store.get_evaluation(evaluation_id, tenant_id=principal.tenant_id)
         if item is None:
             raise HTTPException(404, "候选评估不存在")
         return item
 
+    @app.get("/api/runtime/skills/studio/{version_id}/release-candidate")
+    def skill_release_candidate(version_id: str):
+        principal = current_principal()
+        try:
+            return store.release_candidate(
+                version_id,
+                tenant_id=principal.tenant_id,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "技能版本不存在") from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
     @app.get("/api/runtime/skills/studio/{version_id}")
     def skill_version(version_id: str):
-        item = store.get_version(version_id)
+        principal = current_principal()
+        item = store.get_version(version_id, tenant_id=principal.tenant_id)
         if item is None:
             raise HTTPException(404, "技能版本不存在")
         return item
@@ -99,7 +119,11 @@ def install_skill_studio_routes(
     def skill_family_create(req: SkillVersionDraft):
         principal = current_principal()
         try:
-            return store.create_family(actor_id=principal.user_id, **payload(req))
+            return store.create_family(
+                actor_id=principal.user_id,
+                tenant_id=principal.tenant_id,
+                **payload(req),
+            )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
@@ -107,7 +131,12 @@ def install_skill_studio_routes(
     def skill_version_create(family_id: str, req: SkillVersionDraft):
         principal = current_principal()
         try:
-            return store.create_version(family_id, actor_id=principal.user_id, **payload(req))
+            return store.create_version(
+                family_id,
+                actor_id=principal.user_id,
+                tenant_id=principal.tenant_id,
+                **payload(req),
+            )
         except KeyError as exc:
             raise HTTPException(404, "技能族不存在") from exc
         except ValueError as exc:
@@ -117,7 +146,12 @@ def install_skill_studio_routes(
     def skill_submit(version_id: str, req: SubmitRequest):
         principal = current_principal()
         try:
-            return store.submit(version_id, actor_id=principal.user_id, note=req.note)
+            return store.submit(
+                version_id,
+                actor_id=principal.user_id,
+                note=req.note,
+                tenant_id=principal.tenant_id,
+            )
         except KeyError as exc:
             raise HTTPException(404, "技能版本不存在") from exc
         except ValueError as exc:
@@ -130,7 +164,11 @@ def install_skill_studio_routes(
         principal = current_principal()
         try:
             async with evaluation_lock:
-                return await store.evaluate(version_id, actor_id=principal.user_id)
+                return await store.evaluate(
+                    version_id,
+                    actor_id=principal.user_id,
+                    tenant_id=principal.tenant_id,
+                )
         except KeyError as exc:
             raise HTTPException(404, "技能版本不存在") from exc
         except ValueError as exc:
@@ -140,11 +178,17 @@ def install_skill_studio_routes(
     def skill_archive(version_id: str, req: ArchiveRequest):
         principal = current_principal()
         try:
-            return store.archive(version_id, actor_id=principal.user_id, note=req.note)
+            return store.archive(
+                version_id,
+                actor_id=principal.user_id,
+                note=req.note,
+                tenant_id=principal.tenant_id,
+            )
         except KeyError as exc:
             raise HTTPException(404, "技能版本不存在") from exc
 
-    # Deliberately no publish/promote/update/delete route. Runtime skill authority remains
-    # inside AdaptiveSkillLibrary shadow/outcome promotion and deterministic release gates.
+    # Deliberately no publish/promote/update/delete route. The release-candidate endpoint
+    # is a deterministic read-only export. Runtime authority remains inside
+    # AdaptiveSkillLibrary shadow/outcome promotion and deterministic release gates.
     app.state.skill_studio_authority = authority_contract()
     return store
