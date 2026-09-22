@@ -383,24 +383,21 @@ class ConversationStore(BaseConversationStore):
     ) -> bool:
         with self._conn() as c:
             now = self._coordination_now(c)
-            params: list[Any] = [
-                now + max(30.0, float(lease_seconds)),
-                now,
-                job_id,
-                worker_id,
-            ]
-            fence_sql = ""
-            if lease_fence is not None:
-                fence_sql = " AND lease_fence=?"
-                params.append(int(lease_fence))
-            params.append(now)
-            cur = c.execute(
-                "UPDATE conversation_jobs SET lease_until=?,updated_at=? "
-                "WHERE id=? AND status='running' AND worker_id=?"
-                + fence_sql
-                + " AND COALESCE(lease_until,0)>?",
-                params,
-            )
+            lease_until = now + max(30.0, float(lease_seconds))
+            if lease_fence is None:
+                cur = c.execute(
+                    "UPDATE conversation_jobs SET lease_until=?,updated_at=? "
+                    "WHERE id=? AND status='running' AND worker_id=? "
+                    "AND COALESCE(lease_until,0)>?",
+                    (lease_until, now, job_id, worker_id, now),
+                )
+            else:
+                cur = c.execute(
+                    "UPDATE conversation_jobs SET lease_until=?,updated_at=? "
+                    "WHERE id=? AND status='running' AND worker_id=? AND lease_fence=? "
+                    "AND COALESCE(lease_until,0)>?",
+                    (lease_until, now, job_id, worker_id, int(lease_fence), now),
+                )
         return cur.rowcount == 1
 
     def add_job_event(
@@ -416,19 +413,20 @@ class ConversationStore(BaseConversationStore):
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             now = self._coordination_now(c)
-            params: list[Any] = [job_id, worker_id]
-            fence_sql = ""
-            if lease_fence is not None:
-                fence_sql = " AND lease_fence=?"
-                params.append(int(lease_fence))
-            params.append(now)
-            job = c.execute(
-                "SELECT conversation_id FROM conversation_jobs "
-                "WHERE id=? AND status='running' AND worker_id=?"
-                + fence_sql
-                + " AND COALESCE(lease_until,0)>?",
-                params,
-            ).fetchone()
+            if lease_fence is None:
+                job = c.execute(
+                    "SELECT conversation_id FROM conversation_jobs "
+                    "WHERE id=? AND status='running' AND worker_id=? "
+                    "AND COALESCE(lease_until,0)>?",
+                    (job_id, worker_id, now),
+                ).fetchone()
+            else:
+                job = c.execute(
+                    "SELECT conversation_id FROM conversation_jobs "
+                    "WHERE id=? AND status='running' AND worker_id=? AND lease_fence=? "
+                    "AND COALESCE(lease_until,0)>?",
+                    (job_id, worker_id, int(lease_fence), now),
+                ).fetchone()
             if not job:
                 return None
             cur = c.execute(
@@ -507,16 +505,18 @@ class ConversationStore(BaseConversationStore):
                 "INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)",
                 (job["conversation_id"], "answer.ready", json.dumps(event_payload, ensure_ascii=False, default=str), now),
             )
-            params: list[Any] = [session_id, now, job_id, worker_id]
-            fence_sql = ""
-            if lease_fence is not None:
-                fence_sql = " AND lease_fence=?"
-                params.append(int(lease_fence))
-            updated = c.execute(
-                "UPDATE conversation_jobs SET status='succeeded',session_id=?,lease_until=NULL,last_error=NULL,updated_at=? "
-                "WHERE id=? AND status='running' AND worker_id=?" + fence_sql,
-                params,
-            )
+            if lease_fence is None:
+                updated = c.execute(
+                    "UPDATE conversation_jobs SET status='succeeded',session_id=?,lease_until=NULL,last_error=NULL,updated_at=? "
+                    "WHERE id=? AND status='running' AND worker_id=?",
+                    (session_id, now, job_id, worker_id),
+                )
+            else:
+                updated = c.execute(
+                    "UPDATE conversation_jobs SET status='succeeded',session_id=?,lease_until=NULL,last_error=NULL,updated_at=? "
+                    "WHERE id=? AND status='running' AND worker_id=? AND lease_fence=?",
+                    (session_id, now, job_id, worker_id, int(lease_fence)),
+                )
             if updated.rowcount != 1:
                 raise RuntimeError("job fencing changed during terminal success transaction")
             job_payload = json.loads(job["payload"] or "{}")
@@ -556,16 +556,18 @@ class ConversationStore(BaseConversationStore):
                 "INSERT INTO task_events(conversation_id,type,payload,created_at) VALUES(?,?,?,?)",
                 (job["conversation_id"], "answer.error", json.dumps(payload, ensure_ascii=False), now),
             )
-            params: list[Any] = [detail[:1000], now, job_id, worker_id]
-            fence_sql = ""
-            if lease_fence is not None:
-                fence_sql = " AND lease_fence=?"
-                params.append(int(lease_fence))
-            updated = c.execute(
-                "UPDATE conversation_jobs SET status='failed',lease_until=NULL,last_error=?,updated_at=? "
-                "WHERE id=? AND status='running' AND worker_id=?" + fence_sql,
-                params,
-            )
+            if lease_fence is None:
+                updated = c.execute(
+                    "UPDATE conversation_jobs SET status='failed',lease_until=NULL,last_error=?,updated_at=? "
+                    "WHERE id=? AND status='running' AND worker_id=?",
+                    (detail[:1000], now, job_id, worker_id),
+                )
+            else:
+                updated = c.execute(
+                    "UPDATE conversation_jobs SET status='failed',lease_until=NULL,last_error=?,updated_at=? "
+                    "WHERE id=? AND status='running' AND worker_id=? AND lease_fence=?",
+                    (detail[:1000], now, job_id, worker_id, int(lease_fence)),
+                )
             if updated.rowcount != 1:
                 raise RuntimeError("job fencing changed during terminal failure transaction")
             job_payload = json.loads(job["payload"] or "{}")
