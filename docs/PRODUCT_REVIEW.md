@@ -106,7 +106,7 @@ MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明�
 
 ### Procedure / Skill Studio + Policy Center
 
-已落地隔离的 Procedure / Skill Studio 与 maker-checker Policy Center。Studio 评估通过不等于生产启用；Policy draft/review 在 checker approval + publish 前不进入 runtime resolution。两者都不新增 BusinessAction、MCP tool 或 deterministic authority 旁路。
+已落地租户隔离的 Procedure / Skill Studio 与 maker-checker Policy Center。Studio 评估通过不等于生产启用；evaluated-pass 可生成只读 Release Candidate，且新评估会把完整 durable evaluation result 的确定性 hash 绑定进评估事件与导出，导出时会校验 immutable version、candidate provenance、summary 与 result hash，一致性失败即拒绝导出；历史未绑定 hash 的评估仍可读，但会明确标记未在评估时绑定。Policy draft/review 在 checker approval + publish 前不进入 runtime resolution。两者都不新增 BusinessAction、MCP tool 或 deterministic authority 旁路。
 
 ### Business Gold Set Expansion
 
