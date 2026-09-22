@@ -24,7 +24,7 @@
 
     <section class="studio-guardrails" aria-label="权限边界">
       <div><b>版本不可变</b><span>修改会创建新版本，历史版本与候选评估快照保留。</span></div>
-      <div><b>不能直接上线</b><span>Studio 不提供 publish/promote；Runtime Skill 仍由 shadow/outcome gate 晋升。</span></div>
+      <div><b>租户隔离</b><span>人工流程版本与候选评估按当前 tenant 隔离；Runtime Skill 与 evolution policy 仅作为 deployment 级只读参照。</span></div>
       <div><b>隔离评估</b><span>候选只在临时 runtime DB 激活；评估结束即销毁，不触碰生产技能、路由或审批。</span></div>
     </section>
 
@@ -63,7 +63,7 @@
       <section class="studio-panel studio-families">
         <div class="panel-head">
           <div><small>Studio versions</small><h2>人工流程版本</h2></div>
-          <span class="scope-badge">Deployment scope</span>
+          <span class="scope-badge">Tenant scope</span>
         </div>
         <div id="studioFamilies" class="card-list"></div>
       </section>
@@ -71,7 +71,7 @@
       <section class="studio-panel studio-runtime">
         <div class="panel-head">
           <div><small>Runtime skills · read only</small><h2>运行时技能</h2></div>
-          <span>只读</span>
+          <span>Deployment · 只读</span>
         </div>
         <p class="panel-copy">这里展示 AdaptiveSkillLibrary 当前 shadow / active / retired 状态。Studio 不会修改这些状态，也不把 guidance 当成 Evidence。</p>
         <div id="runtimeSkills" class="runtime-list"></div>
@@ -95,6 +95,7 @@
         <button type="button" id="newVersionButton" class="ghost">基于此版本创建新版本</button>
         <button type="button" id="submitReviewButton">提交评审</button>
         <button type="button" id="evaluateCandidateButton" class="primary">运行隔离候选评估</button>
+        <button type="button" id="exportCandidateButton">导出 Release Candidate</button>
         <button type="button" id="archiveButton" class="danger-quiet">归档</button>
       </footer>
     </form>
