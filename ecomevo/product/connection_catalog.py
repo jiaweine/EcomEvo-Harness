@@ -201,6 +201,7 @@ class MCPConnectionCatalog:
         declared_scope: str,
         effective_scope: str,
         credential_owner: str,
+        auth_required: bool,
         auth_configured: bool,
         tools: dict[str, dict[str, Any]],
     ) -> list[str]:
@@ -211,7 +212,9 @@ class MCPConnectionCatalog:
             warnings.append("declared_read_only_but_action_binding_exists")
         if declared_scope == "governed_write" and effective_scope == "mixed":
             warnings.append("declared_write_scope_omits_read_bindings")
-        if auth_configured and not credential_owner:
+        if auth_required and not auth_configured:
+            warnings.append("credential_not_configured")
+        if auth_required and not credential_owner:
             warnings.append("credential_owner_not_declared")
         if any(
             row.get("capability") == "governed_action" and row.get("idempotency_conflict")
@@ -234,6 +237,7 @@ class MCPConnectionCatalog:
         meta = self._metadata().get(server.key, {})
         declared_scope = _enum(meta.get("access_scope"), ACCESS_SCOPES)
         effective_scope = self._effective_scope(declared)
+        auth_required = bool(server.token_env)
         auth_configured = bool(server.token_env and os.environ.get(server.token_env))
         credential_owner = _safe_text(meta.get("credential_owner"), 240)
         connection_tags = set(_safe_tags(meta.get("evidence_tags")))
@@ -256,6 +260,7 @@ class MCPConnectionCatalog:
             declared_scope=declared_scope,
             effective_scope=effective_scope,
             credential_owner=credential_owner,
+            auth_required=auth_required,
             auth_configured=auth_configured,
             tools=declared,
         )
@@ -268,6 +273,7 @@ class MCPConnectionCatalog:
             "scope": "deployment",
             "authority": _enum(meta.get("authority"), AUTHORITY_LEVELS),
             "freshness": _enum(meta.get("freshness"), FRESHNESS_LEVELS),
+            "auth_required": auth_required,
             "auth_configured": auth_configured,
             "health": {"state": "not_checked" if server.enabled else "disabled"},
             "governance": {
@@ -304,6 +310,104 @@ class MCPConnectionCatalog:
                 "secrets_exposed": False,
                 "authority_override": False,
                 "configuration_mutation": False,
+            },
+        }
+
+    def release_evidence(self) -> dict[str, Any]:
+        """Summarize deterministic connection evidence for release review.
+
+        This is intentionally narrower than full provider certification. It consumes
+        declared governance plus durable tools/list probe history, never tools/call.
+        No success-rate or latency threshold is invented: enabled connections must
+        have explicit governance, a healthy latest probe, and a confirmed unchanged
+        schema after the initial baseline observation.
+        """
+        catalog = self.list()
+        enabled = [row for row in catalog["connections"] if bool(row.get("enabled"))]
+        connection_rows: list[dict[str, Any]] = []
+        blocker_ids: list[str] = []
+
+        for row in enabled:
+            key = str(row.get("key") or "")
+            governance = row.get("governance") if isinstance(row.get("governance"), dict) else {}
+            reliability = row.get("reliability") if isinstance(row.get("reliability"), dict) else {}
+            reasons: list[str] = []
+
+            for warning in governance.get("warnings") or []:
+                warning_key = str(warning or "").strip()
+                if warning_key:
+                    reasons.append(warning_key)
+
+            observations = int(reliability.get("observations") or 0)
+            latest_state = str(reliability.get("latest_state") or "not_checked")
+            schema_change = str(reliability.get("latest_schema_change") or "unknown")
+            if observations == 0:
+                reasons.append("probe_history_missing")
+            elif latest_state != "healthy":
+                reasons.append("latest_probe_not_healthy")
+            elif schema_change == "first_observation":
+                reasons.append("schema_baseline_not_confirmed")
+            elif schema_change == "changed":
+                reasons.append("schema_change_not_revalidated")
+            elif schema_change != "unchanged":
+                reasons.append("schema_state_unverified")
+
+            unique_reasons = sorted(set(reasons))
+            blocker_ids.extend(f"{key}:{reason}" for reason in unique_reasons)
+            connection_rows.append({
+                "key": key,
+                "name": str(row.get("name") or key),
+                "ready": not unique_reasons,
+                "blocker_ids": unique_reasons,
+                "governance": {
+                    "declared_access_scope": governance.get("declared_access_scope"),
+                    "effective_tool_scope": governance.get("effective_tool_scope"),
+                    "credential_owner_declared": bool(governance.get("credential_owner")),
+                    "auth_required": bool(row.get("auth_required")),
+                    "auth_configured": bool(row.get("auth_configured")),
+                    "warnings": list(governance.get("warnings") or []),
+                },
+                "probe_evidence": {
+                    "observations": observations,
+                    "latest_state": reliability.get("latest_state"),
+                    "latest_checked_at": reliability.get("latest_checked_at"),
+                    "latest_schema_change": reliability.get("latest_schema_change"),
+                    "latest_schema_observed_at": reliability.get("latest_schema_observed_at"),
+                    "success_rate": reliability.get("success_rate"),
+                    "failure_rate": reliability.get("failure_rate"),
+                    "latency_ms": reliability.get("latency_ms"),
+                },
+            })
+
+        blockers = sorted(set(blocker_ids))
+        if not enabled:
+            status = "not_applicable"
+        elif blockers:
+            status = "blocked"
+        else:
+            status = "control_plane_ready"
+
+        return {
+            "scope": "deployment",
+            "status": status,
+            "ready": bool(enabled) and not blockers,
+            "enabled_connections": len(enabled),
+            "blocker_count": len(blockers),
+            "blocker_ids": blockers,
+            "connections": connection_rows,
+            "safety": catalog["safety"],
+            "methodology": {
+                "probe_method": "tools/list",
+                "requires_durable_probe_history": True,
+                "requires_latest_probe_healthy": True,
+                "requires_confirmed_unchanged_schema": True,
+                "success_rate_threshold": None,
+                "latency_threshold_ms": None,
+                "business_tool_execution": False,
+                "provider_auth_behavior_fully_certified": False,
+                "provider_rate_limits_certified": False,
+                "side_effect_idempotency_behavior_certified": False,
+                "readiness_means": "connection control-plane evidence ready for human release review; not full provider integration certification",
             },
         }
 
