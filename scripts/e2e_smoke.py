@@ -355,6 +355,27 @@ def main() -> None:
                 assert completed["status"] == "simulated"
                 assert completed["payload"]["execution_outcome"] == "simulated"
 
+            activity_action_before = [
+                (row["id"], row["status"], row["payload"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            heartbeat = client.post(
+                "/api/operator-activity/heartbeat",
+                json={"surface": "workbench"},
+            )
+            assert heartbeat.status_code == 200
+            assert heartbeat.json() == {
+                "recorded": True,
+                "bucket_seconds": 15,
+                "client_duration_accepted": False,
+                "changes_authority": False,
+            }
+            activity_action_after = [
+                (row["id"], row["status"], row["payload"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            assert activity_action_after == activity_action_before
+
             observability_response = client.get("/api/runtime/observability?window=24h")
             assert observability_response.status_code == 200
             observability = observability_response.json()
@@ -367,8 +388,16 @@ def main() -> None:
             assert observability["distribution"]["job_scenes"].get("aftersales", 0) >= 1
             assert observability["methodology"]["read_only"] is True
             assert observability["methodology"]["changes_authority"] is False
-            assert observability["north_star"]["operator_hours"]["available"] is False
+            assert observability["north_star"]["operator_hours"]["available"] is True
+            assert observability["north_star"]["operator_hours"]["active_seconds"] >= 15
+            assert observability["north_star"]["operator_hours"]["bucket_seconds"] == 15
+            assert observability["north_star"]["operator_hours"]["coverage_complete"] is False
+            assert 0.0 < observability["north_star"]["operator_hours"]["coverage_rate"] < 1.0
             assert observability["north_star"]["verified_decisions_per_operator_hour"]["available"] is False
+            assert "partial denominator" in observability["north_star"]["verified_decisions_per_operator_hour"]["reason"]
+            assert observability["telemetry_availability"]["operator_active_hours"]["available"] is True
+            assert observability["telemetry_availability"]["operator_active_hours"]["complete"] is False
+            assert observability["methodology"]["operator_active_hours_client_duration_accepted"] is False
             assert observability["model_telemetry"]["assistant_results"] >= 1
             assert observability["model_telemetry"]["instrumented_results"] >= 1
             assert observability["model_telemetry"]["result_coverage_rate"] == 1.0
@@ -460,6 +489,11 @@ def main() -> None:
                 "provider_usage_instrumented": provider_usage["schema_version"] == 1,
                 "provider_external_calls": provider_usage["external_calls"],
                 "observability_read_only": observability["methodology"]["read_only"],
+                "operator_active_seconds": observability["north_star"]["operator_hours"]["active_seconds"],
+                "operator_hours_coverage_rate": observability["north_star"]["operator_hours"]["coverage_rate"],
+                "operator_hours_coverage_complete": observability["north_star"]["operator_hours"]["coverage_complete"],
+                "verified_decisions_per_operator_hour_available": observability["north_star"]["verified_decisions_per_operator_hour"]["available"],
+                "operator_activity_changes_authority": heartbeat.json()["changes_authority"],
                 "routing_quality_read_only": routing_quality["authority"]["read_only"],
                 "routing_quality_domains": len(routing_quality["routing_policy"]["domains"]),
                 "release_readiness_status": readiness["status"],

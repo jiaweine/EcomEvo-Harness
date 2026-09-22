@@ -45,6 +45,19 @@
     return `${Math.round(seconds / 360) / 10}h`;
   }
 
+  function fmtHours(value) {
+    if (value == null) return '—';
+    const hours = Math.max(0, Number(value));
+    if (hours < 1) return `${Math.round(hours * 600) / 10}m`;
+    return `${Math.round(hours * 100) / 100}h`;
+  }
+
+  function fmtEfficiency(value) {
+    if (value == null) return '—';
+    const number = Number(value);
+    return Number.isFinite(number) ? String(Math.round(number * 100) / 100) : '—';
+  }
+
   function stat(label, value, note = '') {
     return `<article class="obs-stat"><small>${esc(label)}</small><b>${esc(value)}</b>${note ? `<p>${esc(note)}</p>` : ''}</article>`;
   }
@@ -52,13 +65,25 @@
   function renderHero(data) {
     const ns = data.north_star || {};
     const quality = data.quality || {};
-    const reliability = data.reliability || {};
-    const authority = data.authority_workload || {};
+    const operatorHours = ns.operator_hours || {};
+    const efficiency = ns.verified_decisions_per_operator_hour || {};
     $('obsHero').innerHTML = [
+      [
+        'Verified / operator hour',
+        efficiency.available ? fmtEfficiency(efficiency.value) : '—',
+        efficiency.available
+          ? `${efficiency.verified_decisions ?? ns.verified_decisions ?? 0} verified / ${fmtHours(efficiency.operator_hours ?? operatorHours.value)}`
+          : (efficiency.reason || '没有可核验的人工活跃时间，暂不计算'),
+      ],
+      [
+        'Operator hours',
+        operatorHours.available ? fmtHours(operatorHours.value) : '—',
+        operatorHours.available
+          ? `${operatorHours.active_users ?? 0} 位活跃操作员 · ${operatorHours.bucket_seconds ?? 15}s 服务端 bucket · 窗口覆盖 ${fmtRate(operatorHours.coverage_rate)}`
+          : (operatorHours.reason || '未采集'),
+      ],
       ['Verified decisions', ns.verified_decisions ?? 0, '已完成且没有已知证据缺口'],
       ['Evidence gap', fmtRate(quality.evidence_gap_rate), `${quality.evidence_gap_results ?? 0} 个结果存在明确缺口`],
-      ['Run success', fmtRate(reliability.success_rate), `${reliability.succeeded ?? 0} 成功 · ${reliability.failed ?? 0} 失败`],
-      ['Uncertain actions', authority.current_uncertain_actions ?? 0, '当前必须先核对下游状态，禁止盲目重试'],
     ].map(([label, value, note], index) => `<article class="obs-hero-card ${index ? 'muted' : ''}"><small>${esc(label)}</small><b>${esc(value)}</b><p>${esc(note)}</p></article>`).join('');
   }
 
@@ -160,7 +185,9 @@
       const gap = Number(row.evidence_gaps || 0);
       const vh = Math.max(3, Math.round(verified / max * 100));
       const gh = Math.max(gap ? 3 : 0, Math.round(gap / max * 100));
-      return `<div class="obs-day"><div class="obs-day-bars"><i title="Verified ${verified}" style="height:${vh}%"></i><i class="gap" title="Evidence gap ${gap}" style="height:${gh}%"></i></div><b>${esc(row.date)}</b><small>Verified ${verified} · Gap ${gap}</small></div>`;
+      const hours = fmtHours(row.operator_hours ?? 0);
+      const vph = row.verified_decisions_per_operator_hour == null ? '—' : fmtEfficiency(row.verified_decisions_per_operator_hour);
+      return `<div class="obs-day"><div class="obs-day-bars"><i title="Verified ${verified}" style="height:${vh}%"></i><i class="gap" title="Evidence gap ${gap}" style="height:${gh}%"></i></div><b>${esc(row.date)}</b><small>Verified ${verified} · Gap ${gap}</small><small>Active ${esc(hours)} · V/OH ${esc(vph)}</small></div>`;
     }).join('');
   }
 
