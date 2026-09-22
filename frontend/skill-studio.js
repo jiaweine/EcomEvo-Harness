@@ -282,6 +282,7 @@
     detail.append(timeline);
     $("submitReviewButton").disabled = item.state !== "draft";
     $("evaluateCandidateButton").disabled = !["review", "evaluated_pass", "evaluated_fail"].includes(item.state);
+    $("exportCandidateButton").disabled = item.state !== "evaluated_pass";
     $("archiveButton").disabled = item.state === "archived";
     $("versionDialog").showModal();
   }
@@ -332,6 +333,27 @@
       if (state.selected) button.disabled = !["review", "evaluated_pass", "evaluated_fail"].includes(state.selected.state);
     }
   });
+  $("exportCandidateButton").addEventListener("click", async () => {
+    if (!state.selected || state.selected.state !== "evaluated_pass") return;
+    try {
+      const exported = await request(
+        `/api/runtime/skills/studio/${encodeURIComponent(state.selected.version_id)}/release-candidate`
+      );
+      const detail = $("versionDetail");
+      const existing = document.getElementById("releaseCandidateSnapshot");
+      if (existing) existing.remove();
+      const block = detailBlock(
+        "Release Candidate · 只读导出，不会激活 Runtime",
+        JSON.stringify(exported, null, 2),
+        true,
+        true,
+      );
+      block.id = "releaseCandidateSnapshot";
+      detail.prepend(block);
+      toast("Release Candidate 已生成；未修改 Runtime");
+    } catch (error) { toast(error.message); }
+  });
+
   $("archiveButton").addEventListener("click", async () => {
     if (!state.selected) return;
     try {
