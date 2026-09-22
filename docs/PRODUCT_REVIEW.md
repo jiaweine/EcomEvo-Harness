@@ -136,7 +136,9 @@ v0 readiness audit 已落地到 Routing Quality Control Tower：它只读 tenant
 
 ### Shadow Environment
 
-可研究 MCP-like / browser / terminal / structured-data 的 shadow enterprise simulator，用于 failure/schema mutation replay。Simulator 只能产生训练/回放候选，不能替代真实 Verifier 或业务 approval。
+v0 已落地 deterministic Shadow Enterprise Simulator，覆盖 MCP / browser / terminal / structured-data 四类 surface 的受限 failure / schema mutation 场景。模拟器只生成 tenant-scoped、内容哈希稳定的 offline replay / training candidate，不连接真实 MCP、Browser、Terminal、Provider 或业务系统，也不持久化 runtime state。对于 governed action 的 post-dispatch timeout / reset / 5xx / malformed response 等不确定故障，候选明确要求 `uncertain`、禁止自动重试并要求先核对业务状态；显式 permission rejection 不会被误标成 uncertain。Schema mutation 必须提供真实发生变化的 before / after fingerprint，否则 fail closed。
+
+Shadow 输出不是生产证据，不能替代真实集成测试、Verifier、Governance 或业务 Approval，也不能修改 routing、Policy、Runtime Skill、BusinessAction 或 tool authority。下一步可在保持这一非执行边界的前提下，把真实 provider/MCP/browser/terminal failure corpus 导入为经过脱敏和 provenance 绑定的 replay fixture。
 
 ---
 

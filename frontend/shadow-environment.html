@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>EcomEvo · Shadow Environment</title>
+  <link rel="stylesheet" href="/assets/shadow-environment.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <a class="back" href="/">← 返回工作台</a>
+        <p class="eyebrow">ADMIN · OFFLINE REPLAY ONLY</p>
+        <h1>Shadow Environment</h1>
+        <p class="lead">构造 MCP、Browser、Terminal 与 Structured Data 的故障 / schema mutation replay candidate。模拟器不会连接真实系统，不执行工具，不修改 routing、Policy、Runtime Skill 或 BusinessAction。</p>
+      </div>
+    </header>
+
+    <section class="guardrail">
+      <div><b>不执行真实系统</b><span>不会触发 MCP tools/call、真实浏览器、终端命令或 provider 请求。</span></div>
+      <div><b>只生成 replay candidate</b><span>输出仅用于离线训练 / 评估；不是生产证据，也不能替代真实集成测试。</span></div>
+      <div><b>Deterministic authority 不变</b><span>Verifier、Governance、Approval 与 BusinessAction 权限不会被模拟结果覆盖。</span></div>
+    </section>
+
+    <section class="layout">
+      <form id="scenarioForm" class="panel">
+        <h2>构造场景</h2>
+        <label>Surface<select id="surface" required></select></label>
+        <label>Operation<select id="operation" required></select></label>
+        <label>Mutation<select id="mutation" required></select></label>
+        <label>Target<input id="target" value="orders.lookup" maxlength="160" required></label>
+        <label>Context labels<input id="labels" placeholder="aftersales, shipment, evidence"></label>
+        <label>Baseline schema JSON<textarea id="baseline" rows="7" placeholder='{"type":"object","properties":{"status":{"type":"string"}}}'></textarea></label>
+        <label>Mutated schema JSON<textarea id="mutated" rows="7" placeholder='{"type":"object","required":["status"],"properties":{"status":{"type":"string"}}}'></textarea></label>
+        <button id="simulateBtn" type="submit">生成 replay candidate</button>
+        <p class="hint">只有 schema mutation 场景要求 before / after schema，且 fingerprint 必须发生变化。</p>
+      </form>
+
+      <section class="panel output">
+        <div class="panel-head"><h2>结果</h2><span id="tenantChip" class="chip">tenant: —</span></div>
+        <div id="status" class="status">加载 catalog…</div>
+        <div id="summary"></div>
+        <pre id="result">—</pre>
+      </section>
+    </section>
+  </main>
+  <script src="/assets/shadow-environment.js"></script>
+</body>
+</html>
