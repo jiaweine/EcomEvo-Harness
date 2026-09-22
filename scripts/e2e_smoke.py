@@ -20,6 +20,15 @@ def main() -> None:
         from ecomevo.api import application as app_module
 
         with TestClient(app) as client:
+            runtime_response = client.get("/api/runtime")
+            assert runtime_response.status_code == 200
+            runtime_topology = runtime_response.json()["deployment_topology"]
+            assert runtime_topology["declared_nodes"] == 1
+            assert runtime_topology["runtime_start_allowed"] is True
+            assert runtime_topology["release_supported"] is True
+            assert runtime_topology["cross_node_supported"] is False
+            assert runtime_topology["actual_replica_discovery"] is False
+
             connections = client.get("/api/runtime/connections")
             assert connections.status_code == 200
             assert connections.json()["scope"] == "deployment"
@@ -510,6 +519,8 @@ def main() -> None:
                 "release_readiness_status": readiness["status"],
                 "deployment_topology_status": readiness_checks["deployment_topology"]["status"],
                 "deployment_topology_nodes": readiness["sources"]["deployment_topology"]["declared_nodes"],
+                "runtime_topology_start_allowed": runtime_topology["runtime_start_allowed"],
+                "runtime_topology_actual_replica_discovery": runtime_topology["actual_replica_discovery"],
                 "release_readiness_snapshot": readiness_snapshot_id,
                 "release_readiness_authority_changed": False,
                 "event_chain_valid": True,

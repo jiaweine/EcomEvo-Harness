@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from ecomevo.product import ConversationStore, ProductAnalyzer, extract_video_frames, probe_media
 from ecomevo.product.asset_binding import AssetBindingConflict, bind_assets_atomically
+from ecomevo.product.deployment_topology import require_runtime_topology_supported
 from ecomevo.providers import ProviderRegistry
 from ecomevo.runtime import EcomEvoEngine
 from ecomevo.runtime.mcp import MCPRegistry
@@ -35,6 +36,10 @@ from .upload_security import (
     upload_limit as _upload_limit,
     validate_uploaded_file as _validate_uploaded_file,
 )
+
+# Fail before creating/opening runtime databases when the deployment explicitly
+# declares a topology the current SQLite/WAL control plane does not support.
+IMPORT_DEPLOYMENT_TOPOLOGY = require_runtime_topology_supported()
 
 DATA_DIR = Path(os.environ.get("ECOMEVO_DATA", Path.cwd() / "outputs" / "runtime"))
 FRONTEND = Path(str(files("frontend")))
@@ -58,6 +63,9 @@ WS_HEARTBEAT_SECONDS = 15.0
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     """Own the durable worker for exactly one ASGI application lifespan."""
+    # Re-check at lifespan entry so tests/orchestrators that mutate the environment
+    # after module import cannot bypass the explicit unsupported-topology guard.
+    application.state.deployment_topology = require_runtime_topology_supported()
     stop = asyncio.Event()
     task = asyncio.create_task(job_worker.loop(stop), name="ecomevo-durable-worker")
     application.state.durable_worker_stop = stop
@@ -269,6 +277,7 @@ def runtime_info():
         "planner": {"adaptive": True, "parallel_tool_composition": True, "recursive_review": True, "cost_gate": True, "learned_checks": engine.planner.evolution_state()},
         "recovery": {"verify_before_finish": True, "rollback_replan": True, "failure_driven_evolution": True, "sandbox_replay": True, "regression_gate": True},
         "execution": {"durable_jobs": True, "cross_process_lease": True, "immutable_asset_snapshot": True, "jobs": store.job_counts()},
+        "deployment_topology": getattr(app.state, "deployment_topology", IMPORT_DEPLOYMENT_TOPOLOGY),
         "mcp": mcp.list(),
         "evolution_patches": engine.events.list_patches(10),
     }

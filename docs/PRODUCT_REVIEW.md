@@ -130,7 +130,7 @@ v1 已落地 tenant-safe、admin-only、read-only 控制塔，直接消费 durab
 
 ### Production Multi-node Control Plane
 
-当前 durable control plane 基于 SQLite WAL，已经能跨进程 reclaim，但仍有单节点/single-writer 边界。v0 部署拓扑前置闸门已落地：Release Readiness 要求部署方显式声明 `ECOMEVO_DEPLOYMENT_NODES`，当前只有 `1` 能通过；未声明、非法值或多节点声明都会 fail closed，并明确说明这不是实际副本自动发现。该闸门只是防止把现有 SQLite 架构误当成已完成多节点支持，不等于完成多节点控制平面。真正需要多节点时，仍应迁移到适合的 transactional database / durable stream，然后重跑现有所有 correctness/authority gates。
+当前 durable control plane 基于 SQLite WAL，已经能跨进程 reclaim，但仍有单节点/single-writer 边界。v0 部署拓扑前置闸门已落地：Release Readiness 要求部署方显式声明 `ECOMEVO_DEPLOYMENT_NODES`，当前只有 `1` 能通过；未声明、非法值或多节点声明都会 fail closed，并明确说明这不是实际副本自动发现。Runtime 进一步 fail fast：完全未声明时仅允许兼容启动且保持 release-unattested；一旦显式声明为空、非法或 `>1`，会在打开 runtime 数据库和启动 durable worker 前拒绝启动。该闸门只是防止把现有 SQLite 架构误当成已完成多节点支持，不等于完成多节点控制平面。真正需要多节点时，仍应迁移到适合的 transactional database / durable stream，然后重跑现有所有 correctness/authority gates。
 
 ### Shadow Environment
 
