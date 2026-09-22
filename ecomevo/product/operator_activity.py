@@ -9,6 +9,10 @@ BUCKET_SECONDS = 15
 BLOCK_SECONDS = 15 * 60
 SLOTS_PER_BLOCK = BLOCK_SECONDS // BUCKET_SECONDS
 MAX_SURFACE_LENGTH = 64
+RETENTION_DAYS = 90
+RETENTION_SECONDS = RETENTION_DAYS * 24 * 60 * 60
+PRUNE_INTERVAL_SECONDS = 24 * 60 * 60
+_ALL_SLOTS_MASK = (1 << SLOTS_PER_BLOCK) - 1
 
 
 class OperatorActivityLedger:
@@ -19,6 +23,10 @@ class OperatorActivityLedger:
     integer bitmask per tenant/user, so multiple tabs collapse onto the same slot and
     long-running telemetry does not create one row per heartbeat.
 
+    Duplicate heartbeats for an already-recorded slot are write-suppressed. A rolling
+    90-day server retention policy prunes expired telemetry at most once per process
+    day; the retention decision is maintenance-only and never depends on client time.
+
     This is operational activity telemetry, not payroll/timekeeping evidence. The
     server rejects client-supplied duration, but an authenticated client signal cannot
     cryptographically prove physical human attention.
@@ -26,6 +34,7 @@ class OperatorActivityLedger:
 
     def __init__(self, store, *, ensure_schema: bool = True):
         self.store = store
+        self._last_prune_at: float | None = None
         if ensure_schema:
             self._init_schema()
 
@@ -49,6 +58,8 @@ class OperatorActivityLedger:
                 );
                 CREATE INDEX IF NOT EXISTS idx_operator_active_blocks_tenant_time
                     ON operator_active_blocks(tenant_id,block_start);
+                CREATE INDEX IF NOT EXISTS idx_operator_active_blocks_time
+                    ON operator_active_blocks(block_start);
                 """
             )
             db.execute(
@@ -126,6 +137,46 @@ class OperatorActivityLedger:
         slot_mask = 1 << slot_index
         return block_start, slot_index, slot_mask
 
+    def _should_prune(self, observed_at: float) -> bool:
+        previous = self._last_prune_at
+        if previous is None:
+            return True
+        if observed_at <= previous:
+            return False
+        return observed_at - previous >= PRUNE_INTERVAL_SECONDS
+
+    @staticmethod
+    def _prune_expired(db, *, observed_at: float) -> None:
+        cutoff = max(0.0, float(observed_at) - RETENTION_SECONDS)
+        cutoff_block = int(cutoff // BLOCK_SECONDS) * BLOCK_SECONDS
+        db.execute(
+            "DELETE FROM operator_active_blocks WHERE block_start<?",
+            (cutoff_block,),
+        )
+
+        offset = cutoff - cutoff_block
+        keep_from_slot = min(
+            SLOTS_PER_BLOCK,
+            max(0, int(math.ceil(offset / BUCKET_SECONDS))),
+        )
+        if keep_from_slot <= 0:
+            return
+
+        expired_mask = (1 << keep_from_slot) - 1
+        keep_mask = _ALL_SLOTS_MASK ^ expired_mask
+        db.execute(
+            """
+            UPDATE operator_active_blocks
+            SET active_slots=active_slots & ?
+            WHERE block_start=?
+            """,
+            (keep_mask, cutoff_block),
+        )
+        db.execute(
+            "DELETE FROM operator_active_blocks WHERE block_start=? AND active_slots=0",
+            (cutoff_block,),
+        )
+
     def record_heartbeat(
         self,
         *,
@@ -141,8 +192,12 @@ class OperatorActivityLedger:
         observed_at = float(time.time() if now is None else now)
         block_start, slot_index, slot_mask = self._slot(observed_at)
         clean_surface = self._surface(surface)
+        should_prune = self._should_prune(observed_at)
+
         with self.store._conn() as db:
-            db.execute(
+            if should_prune:
+                self._prune_expired(db, observed_at=observed_at)
+            cursor = db.execute(
                 """
                 INSERT INTO operator_active_blocks(
                     tenant_id,user_id,block_start,active_slots,surface,updated_at
@@ -151,11 +206,17 @@ class OperatorActivityLedger:
                     active_slots=operator_active_blocks.active_slots | excluded.active_slots,
                     surface=excluded.surface,
                     updated_at=excluded.updated_at
+                WHERE (operator_active_blocks.active_slots & excluded.active_slots)=0
                 """,
                 (tenant, user, block_start, slot_mask, clean_surface, observed_at),
             )
+
+        if should_prune:
+            self._last_prune_at = observed_at
+        new_bucket = int(cursor.rowcount or 0) > 0
         return {
             "recorded": True,
+            "new_bucket": new_bucket,
             "tenant_id": tenant,
             "user_id": user,
             "block_start": block_start,
@@ -187,6 +248,13 @@ class OperatorActivityLedger:
             "bucket duration are authoritative, but authenticated client activity signals do not "
             "cryptographically prove physical attention"
         )
+        retention = {
+            "days": RETENTION_DAYS,
+            "seconds": RETENTION_SECONDS,
+            "granularity_seconds": BUCKET_SECONDS,
+            "server_enforced": True,
+            "client_configurable": False,
+        }
         requested_window_seconds = max(0.0, end - start)
         measurement_started_at = self.measurement_started_at()
         if measurement_started_at is None:
@@ -204,6 +272,8 @@ class OperatorActivityLedger:
                 "active_users": 0,
                 "surfaces": [],
                 "daily_seconds": {},
+                "retention": retention,
+                "duplicate_bucket_write_suppressed": True,
                 "definition": "operator active-time telemetry table is not installed",
                 "limitation": limitation,
                 "client_duration_accepted": False,
@@ -243,10 +313,6 @@ class OperatorActivityLedger:
                     continue
                 bucket_start = int(row["block_start"]) + slot_index * BUCKET_SECONDS
                 bucket_end = bucket_start + BUCKET_SECONDS
-                # A heartbeat is stored at bucket granularity. The first observed
-                # bucket may begin just before the exact server-side measurement
-                # start while still overlapping the covered interval; keep that
-                # bucket rather than dropping a real post-start heartbeat.
                 if bucket_end <= coverage_since or bucket_start >= end:
                     continue
                 bucket_count += 1
@@ -272,6 +338,8 @@ class OperatorActivityLedger:
             "active_users": len(active_users),
             "surfaces": sorted(surfaces),
             "daily_seconds": dict(sorted(daily_seconds.items())),
+            "retention": retention,
+            "duplicate_bucket_write_suppressed": True,
             "definition": definition,
             "limitation": limitation,
             "client_duration_accepted": False,

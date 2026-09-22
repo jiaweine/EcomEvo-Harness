@@ -78,6 +78,10 @@ class OperatorAwareQualityObservability(QualityObservability):
                 "measurement_started_at": float(activity["measurement_started_at"]),
                 "bucket_seconds": int(activity["bucket_seconds"]),
                 "client_duration_accepted": False,
+                "duplicate_bucket_write_suppressed": bool(
+                    activity["duplicate_bucket_write_suppressed"]
+                ),
+                "retention": dict(activity["retention"]),
                 "reason": (
                     None
                     if activity["window_fully_covered"]
@@ -127,6 +131,10 @@ class OperatorAwareQualityObservability(QualityObservability):
         result["operator_activity"] = activity
         result["methodology"]["operator_active_hours"] = activity["definition"]
         result["methodology"]["operator_active_hours_client_duration_accepted"] = False
+        result["methodology"]["operator_active_hours_duplicate_bucket_write_suppressed"] = bool(
+            activity["duplicate_bucket_write_suppressed"]
+        )
+        result["methodology"]["operator_active_hours_retention"] = dict(activity["retention"])
         result["methodology"]["operator_active_hours_window_coverage"] = (
             "Verified Decisions per Operator Hour is emitted only when the durable telemetry "
             "measurement start is at or before the requested window start; partial windows may "

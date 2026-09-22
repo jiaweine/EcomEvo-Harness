@@ -397,6 +397,9 @@ def main() -> None:
             assert "partial denominator" in observability["north_star"]["verified_decisions_per_operator_hour"]["reason"]
             assert observability["telemetry_availability"]["operator_active_hours"]["available"] is True
             assert observability["telemetry_availability"]["operator_active_hours"]["complete"] is False
+            assert observability["telemetry_availability"]["operator_active_hours"]["retention"]["days"] == 90
+            assert observability["telemetry_availability"]["operator_active_hours"]["retention"]["client_configurable"] is False
+            assert observability["telemetry_availability"]["operator_active_hours"]["duplicate_bucket_write_suppressed"] is True
             assert observability["methodology"]["operator_active_hours_client_duration_accepted"] is False
             assert observability["model_telemetry"]["assistant_results"] >= 1
             assert observability["model_telemetry"]["instrumented_results"] >= 1
@@ -494,6 +497,8 @@ def main() -> None:
                 "operator_hours_coverage_complete": observability["north_star"]["operator_hours"]["coverage_complete"],
                 "verified_decisions_per_operator_hour_available": observability["north_star"]["verified_decisions_per_operator_hour"]["available"],
                 "operator_activity_changes_authority": heartbeat.json()["changes_authority"],
+                "operator_activity_retention_days": observability["operator_activity"]["retention"]["days"],
+                "operator_activity_duplicate_write_suppression": observability["operator_activity"]["duplicate_bucket_write_suppressed"],
                 "routing_quality_read_only": routing_quality["authority"]["read_only"],
                 "routing_quality_domains": len(routing_quality["routing_policy"]["domains"]),
                 "release_readiness_status": readiness["status"],
