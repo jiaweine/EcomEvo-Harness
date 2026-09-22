@@ -128,6 +128,7 @@ if not getattr(_application.app.state, "release_readiness_routes_installed", Fal
         evaluation_center=_application.evaluation_center,
         mcp_registry=_application.mcp,
         policy_store=_application.engine.policies,
+        connection_history_path=_application.DATA_DIR / "connection_governance.db",
     )
     install_release_readiness_routes(
         _application.app,
