@@ -21,11 +21,16 @@ def test_skill_studio_ui_explains_evaluation_is_not_production_authority():
     js = (ROOT / "frontend/skill-studio.js").read_text(encoding="utf-8")
     css = (ROOT / "frontend/skill-studio.css").read_text(encoding="utf-8")
     assert "评估通过不等于生产启用" in html
-    assert "不能直接上线" in html
+    assert "租户隔离" in html
     assert "隔离评估" in html
     assert "Studio 不会修改这些状态" in html
     assert "不把 guidance 当成 Evidence" in html
     assert "运行隔离候选评估" in html
+    assert "Tenant scope" in html
+    assert "Deployment · 只读" in html
+    assert "导出 Release Candidate" in html
+    assert "release-candidate" in routes
+    assert "tenant_id=principal.tenant_id" in routes
     assert "innerHTML" not in js
     assert "textContent" in js
     assert "/api/actions" not in js
@@ -42,6 +47,10 @@ def test_studio_store_has_separate_immutable_tables_and_false_authority_contract
     assert "evaluation_pass_auto_promotes" in source
     assert "candidate_evaluation_mutates_production" in source
     assert '"can_promote_runtime": False' in source
+    assert '"studio_cross_tenant_visibility": False' in source
+    assert '"release_candidate_activates_runtime": False' in source
+    assert "tenant_id" in source
+    assert "def release_candidate(" in source
     assert "TemporaryDirectory" in source
     assert '"production_runtime_mutated": False' in source
     assert '"production_skill_promoted": False' in source
