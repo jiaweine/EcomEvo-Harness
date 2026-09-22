@@ -25,11 +25,12 @@ def test_multi_node_contract_names_current_local_state_boundaries():
 
     for token in (
         "sqlite_wal_local_file",
-        "application_wall_clock_plus_sqlite_rows",
+        "sqlite_transaction_clock_with_monotonic_fencing",
         "node_local_filesystem_paths",
         "sqlite_wal_local_runtime_db",
         "multiple_node_local_sqlite_databases",
         "shared_authoritative_lease_clock_and_fencing_tokens",
+        "local_lease_fencing_is_cross_node_certification",
         "shared_content_addressed_or_object_storage_with_hash_verification",
         "cross_node_business_action_cas",
         "cross_node_failure_recovery",

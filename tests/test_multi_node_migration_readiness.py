@@ -49,7 +49,10 @@ def test_multi_node_intent_remains_blocked_by_real_architecture_gaps():
         "product_state": "sqlite_wal_local_file",
         "runtime_authority": "sqlite_wal_local_runtime_db",
         "asset_storage": "node_local_filesystem_paths",
-        "lease_clock": "application_wall_clock",
+        "lease_clock": "sqlite_transaction_domain",
+        "turn_lease_fencing_generation": True,
+        "job_lease_fencing_generation": True,
+        "cross_node_lease_authority": False,
         "admin_control_state": "multiple_node_local_sqlite_databases",
     }
     assert set(result["blocker_ids"]) == EXPECTED_BLOCKERS
@@ -66,6 +69,7 @@ def test_contract_rejects_self_attestation_as_evidence():
     assert methodology["replica_discovery"] is False
     assert methodology["self_attested_backend_capabilities_accepted"] is False
     assert methodology["database_url_swap_is_sufficient"] is False
+    assert methodology["local_lease_fencing_is_cross_node_certification"] is False
     assert methodology["all_requirements_must_be_verified"] is True
     assert methodology["all_certification_gates_must_pass"] is True
     assert methodology["release_authority_granted"] is False
@@ -102,3 +106,21 @@ def test_multi_node_readiness_is_observational_only():
         "executes_tools": False,
         "deploys_code": False,
     }
+
+
+def test_local_fencing_progress_does_not_satisfy_cross_node_requirement():
+    result = multi_node_migration_readiness(
+        declared_nodes=2,
+        declaration_valid=True,
+    )
+    lease_requirement = next(
+        row for row in result["requirements"]
+        if row["id"] == "cross_node_lease_fencing_clock"
+    )
+
+    assert lease_requirement["current_backend"] == "sqlite_transaction_clock_with_monotonic_fencing"
+    assert lease_requirement["current_satisfied"] is False
+    assert result["current_architecture"]["turn_lease_fencing_generation"] is True
+    assert result["current_architecture"]["job_lease_fencing_generation"] is True
+    assert result["current_architecture"]["cross_node_lease_authority"] is False
+    assert result["ready"] is False
