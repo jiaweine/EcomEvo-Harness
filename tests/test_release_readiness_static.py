@@ -36,6 +36,8 @@ def test_readiness_service_has_no_arbitrary_quality_threshold():
     assert '"evidence_gap_threshold": None' in service
     assert "ready_for_human_release_review" in service
     assert '"approved_for_release": False' in service
+    assert '"deployment_topology_is_declared_not_discovered": True' in service
+    assert '"deployment_topology_can_change_runtime": False' in service
 
 
 def test_readiness_page_has_mobile_layout():
@@ -44,3 +46,12 @@ def test_readiness_page_has_mobile_layout():
     assert "@media(max-width:900px)" in css
     assert "@media(max-width:640px)" in css
     assert "@media(max-width:420px)" in css
+
+
+def test_deployment_topology_guard_fails_closed_without_claiming_replica_discovery():
+    service = (ROOT / "ecomevo" / "product" / "deployment_topology.py").read_text(encoding="utf-8")
+
+    assert 'DEPLOYMENT_NODES_ENV = "ECOMEVO_DEPLOYMENT_NODES"' in service
+    assert '"cross_node_supported": False' in service
+    assert '"actual_replica_discovery": False' in service
+    assert '"requires_central_transactional_backend_for_multi_node": True' in service

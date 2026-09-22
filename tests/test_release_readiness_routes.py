@@ -10,6 +10,7 @@ def _identity(monkeypatch, *, tenant="tenant-ready-a", user="admin-ready", role=
     monkeypatch.setenv("ECOMEVO_LOCAL_TENANT", tenant)
     monkeypatch.setenv("ECOMEVO_LOCAL_USER", user)
     monkeypatch.setenv("ECOMEVO_LOCAL_ROLE", role)
+    monkeypatch.setenv("ECOMEVO_DEPLOYMENT_NODES", "1")
 
 
 def test_release_readiness_routes_are_admin_only(monkeypatch):
@@ -20,6 +21,10 @@ def test_release_readiness_routes_are_admin_only(monkeypatch):
         body = preview.json()
         assert body["tenant_scope"] == "tenant-ready-a"
         assert body["authority"]["approved_for_release"] is False
+        checks = {row["id"]: row for row in body["checks"]}
+        assert checks["deployment_topology"]["status"] == "pass"
+        assert body["sources"]["deployment_topology"]["declared_nodes"] == 1
+        assert body["sources"]["deployment_topology"]["actual_replica_discovery"] is False
 
         created = client.post("/api/runtime/readiness/snapshots", params={"window": "7d"})
         assert created.status_code == 201

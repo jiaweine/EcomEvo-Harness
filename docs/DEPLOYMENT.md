@@ -9,8 +9,10 @@
 - 默认同源；前后端分离时配置 `ECOMEVO_CORS_ORIGINS`。
 - 外部模型和 MCP 均通过环境变量配置，不要把 Key 写进前端或仓库。
 - 正式环境建议由企业反向代理/SSO 保护整个工作区服务。
-- 多 worker 可用：EventStore 序号写入、动作确认和同任务处理租约均使用 SQLite 跨进程事务。
-- SQLite 适合单工作区/中等并发；高吞吐多租户 SaaS 建议把产品状态、事件流和任务队列迁到集中式数据库/队列。
+- 多 worker 可用：EventStore 序号写入、动作确认和同任务处理租约均使用 SQLite 跨进程事务，但该认证边界是**同一应用节点**。
+- Release Readiness 要求显式配置 `ECOMEVO_DEPLOYMENT_NODES`。当前只能声明 `1`；未声明、非法值或 `>1` 都会产生确定性 blocker。
+- `ECOMEVO_DEPLOYMENT_NODES` 是部署意图声明，不是 Kubernetes/容器副本自动发现。不要把共享持久卷上的 SQLite 当作已认证的跨节点控制平面。
+- SQLite 适合单工作区/中等并发；需要多节点/高吞吐多租户 SaaS 时，应先把产品状态、事件流和 durable job queue 迁到集中式 transactional database / durable stream，再重跑 correctness、authority、pressure 与 browser gates。
 
 ## Tencent Cloud Studio
 

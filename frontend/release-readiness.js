@@ -73,6 +73,7 @@
     const obs = src.observability || {};
     const policy = src.policy || {};
     const connection = src.connections || {};
+    const topology = src.deployment_topology || {};
     $('sourceSummary').innerHTML = [
       ['Gold Set', evaluation.available ? `${evaluation.latest?.ok ? 'PASS' : 'FAIL'} · ${evaluation.latest?.case_count || 0} cases` : '无快照'],
       ['Open feedback', `${feedback.open_sample_count || 0} sampled · action-blocking ${feedback.action_blocking || 0}`],
@@ -80,6 +81,12 @@
       ['Evidence gaps', `${obs.quality?.evidence_gap_results || 0}/${obs.quality?.assistant_results || 0}`],
       ['Connections', `${connection.count || 0} · observational catalog`],
       ['Policy inventory', `${policy.visible_versions || 0} visible versions · scope-dependent`],
+      [
+        'Deployment topology',
+        topology.declaration_valid
+          ? `${topology.storage_backend || 'unknown'} · declared ${topology.declared_nodes} node(s) · certified max ${topology.certified_max_nodes ?? '—'}`
+          : 'node count 未有效声明 · fail closed',
+      ],
     ].map(([label, value]) => `
       <article><small>${esc(label)}</small><b>${esc(value)}</b></article>
     `).join('');
