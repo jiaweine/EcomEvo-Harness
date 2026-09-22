@@ -74,9 +74,13 @@
     const policy = src.policy || {};
     const connection = src.connections || {};
     const topology = src.deployment_topology || {};
+    const openFeedbackCount = Number(feedback.open_count ?? 0);
+    const openFeedbackCountLabel = feedback.exact_count === true
+      ? `${openFeedbackCount} open · exact`
+      : `${openFeedbackCount} open · count completeness unknown`;
     $('sourceSummary').innerHTML = [
       ['Gold Set', evaluation.available ? `${evaluation.latest?.ok ? 'PASS' : 'FAIL'} · ${evaluation.latest?.case_count || 0} cases` : '无快照'],
-      ['Open feedback', `${feedback.open_sample_count || 0} sampled · action-blocking ${feedback.action_blocking || 0}`],
+      ['Open feedback', `${openFeedbackCountLabel} · action-blocking ${feedback.action_blocking || 0}`],
       ['Uncertain actions', obs.authority_workload?.current_uncertain_actions ?? 0],
       ['Evidence gaps', `${obs.quality?.evidence_gap_results || 0}/${obs.quality?.assistant_results || 0}`],
       ['Connections', `${connection.count || 0} · observational catalog`],
