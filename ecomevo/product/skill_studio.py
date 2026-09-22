@@ -661,7 +661,9 @@ class SkillStudioStore:
             raise RuntimeError("evaluation snapshot does not match immutable skill version")
 
         result = evaluation["result"]
-        result_candidate = result.get("candidate") if isinstance(result, dict) else None
+        if not isinstance(result, dict):
+            raise RuntimeError("evaluation snapshot result is invalid")
+        result_candidate = result.get("candidate")
         if not isinstance(result_candidate, dict):
             raise RuntimeError("evaluation snapshot is missing candidate provenance")
         if (
