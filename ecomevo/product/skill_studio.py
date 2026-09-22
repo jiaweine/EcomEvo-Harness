@@ -46,16 +46,18 @@ def authority_contract() -> dict[str, bool]:
         "candidate_evaluation_mutates_production": False,
         "evaluation_pass_auto_promotes": False,
         "can_promote_runtime": False,
+        "release_candidate_activates_runtime": False,
+        "studio_cross_tenant_visibility": False,
     }
 
 
 class SkillStudioStore:
-    """Immutable procedure versions with isolated candidate evaluation.
+    """Tenant-scoped immutable procedure versions with isolated candidate evaluation.
 
-    Studio state is separate from ``runtime_skills``. Candidate evaluation creates a
+    Studio state is separate from runtime_skills. Candidate evaluation creates a
     temporary EcomEvo runtime, activates the immutable candidate only inside that temporary
-    database, runs same-domain Gold Set cases twice (fresh + persisted replay), and discards
-    the runtime afterwards. No Studio API can activate a production RuntimeSkill.
+    database, runs same-domain Gold Set cases twice, and discards the runtime afterwards.
+    No Studio API can activate a production RuntimeSkill.
     """
 
     def __init__(self, db_path: str | Path, runtime_skills: Any, tools: Any):
@@ -94,6 +96,7 @@ class SkillStudioStore:
                     content_hash TEXT NOT NULL,
                     created_by TEXT NOT NULL,
                     created_at REAL NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'local',
                     UNIQUE(family_id, version)
                 );
                 CREATE INDEX IF NOT EXISTS idx_studio_skill_versions_family
@@ -121,6 +124,25 @@ class SkillStudioStore:
                 CREATE INDEX IF NOT EXISTS idx_studio_skill_eval_version
                     ON studio_skill_evaluations(version_id, created_at DESC);
                 """
+            )
+            columns = {
+                str(row["name"])
+                for row in connection.execute(
+                    "PRAGMA table_info(studio_skill_versions)"
+                ).fetchall()
+            }
+            if "tenant_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE studio_skill_versions "
+                    "ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'local'"
+                )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_studio_skill_versions_tenant "
+                "ON studio_skill_versions(tenant_id,created_at DESC)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_studio_skill_family_tenant "
+                "ON studio_skill_versions(tenant_id,family_id,version DESC)"
             )
 
     def _tool_keys(self) -> set[str]:
@@ -209,12 +231,14 @@ class SkillStudioStore:
             "created_at": float(item["created_at"]),
         }
 
-    def _events(self, version_id: str) -> list[dict[str, Any]]:
+    def _events(self, version_id: str, *, tenant_id: str) -> list[dict[str, Any]]:
         with self._conn() as connection:
             rows = connection.execute(
-                "SELECT id,event_type,actor_id,payload_json,created_at FROM studio_skill_events "
-                "WHERE version_id=? ORDER BY id ASC",
-                (str(version_id),),
+                "SELECT e.id,e.event_type,e.actor_id,e.payload_json,e.created_at "
+                "FROM studio_skill_events e "
+                "JOIN studio_skill_versions v ON v.version_id=e.version_id "
+                "WHERE e.version_id=? AND v.tenant_id=? ORDER BY e.id ASC",
+                (str(version_id), str(tenant_id)),
             ).fetchall()
         return [
             {
@@ -245,8 +269,8 @@ class SkillStudioStore:
             state = "archived"
         return {"state": state, "evaluation": evaluation, "archived": archived}
 
-    def _with_state(self, version: dict[str, Any]) -> dict[str, Any]:
-        events = self._events(version["version_id"])
+    def _with_state(self, version: dict[str, Any], *, tenant_id: str) -> dict[str, Any]:
+        events = self._events(version["version_id"], tenant_id=tenant_id)
         return {
             **version,
             **self._state(events),
@@ -260,6 +284,7 @@ class SkillStudioStore:
         family_id: str,
         version: int,
         *,
+        tenant_id: str,
         actor_id: str,
         payload: dict[str, Any],
     ) -> str:
@@ -269,7 +294,10 @@ class SkillStudioStore:
         version_id = f"{family_id}@v{version}"
         now = time.time()
         connection.execute(
-            "INSERT INTO studio_skill_versions VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO studio_skill_versions"
+            "(version_id,family_id,version,domain,name,purpose,guidance,preferred_tools_json,"
+            "trigger_terms_json,input_contract_json,output_contract_json,safety_notes,source_skill_id,"
+            "content_hash,created_by,created_at,tenant_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 version_id,
                 family_id,
@@ -287,6 +315,7 @@ class SkillStudioStore:
                 digest,
                 str(actor_id),
                 now,
+                str(tenant_id),
             ),
         )
         connection.execute(
@@ -295,24 +324,43 @@ class SkillStudioStore:
         )
         return version_id
 
-    def create_family(self, *, actor_id: str, **payload: Any) -> dict[str, Any]:
+    def create_family(
+        self,
+        *,
+        actor_id: str,
+        tenant_id: str = "local",
+        **payload: Any,
+    ) -> dict[str, Any]:
         family_id = f"procedure-{uuid.uuid4().hex[:12]}"
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             version_id = self._insert_version(
-                connection, family_id, 1, actor_id=actor_id, payload=payload
+                connection,
+                family_id,
+                1,
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                payload=payload,
             )
-        return self.get_version(version_id)  # type: ignore[return-value]
+        return self.get_version(version_id, tenant_id=tenant_id)  # type: ignore[return-value]
 
-    def create_version(self, family_id: str, *, actor_id: str, **payload: Any) -> dict[str, Any]:
+    def create_version(
+        self,
+        family_id: str,
+        *,
+        actor_id: str,
+        tenant_id: str = "local",
+        **payload: Any,
+    ) -> dict[str, Any]:
         family_id = str(family_id).strip()
         if not family_id:
             raise ValueError("family_id is required")
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT MAX(version) AS max_version FROM studio_skill_versions WHERE family_id=?",
-                (family_id,),
+                "SELECT MAX(version) AS max_version FROM studio_skill_versions "
+                "WHERE family_id=? AND tenant_id=?",
+                (family_id, str(tenant_id)),
             ).fetchone()
             if row is None or row["max_version"] is None:
                 raise KeyError(family_id)
@@ -320,30 +368,57 @@ class SkillStudioStore:
                 connection,
                 family_id,
                 int(row["max_version"]) + 1,
+                tenant_id=tenant_id,
                 actor_id=actor_id,
                 payload=payload,
             )
-        return self.get_version(version_id)  # type: ignore[return-value]
+        return self.get_version(version_id, tenant_id=tenant_id)  # type: ignore[return-value]
 
-    def get_version(self, version_id: str) -> dict[str, Any] | None:
+    def get_version(
+        self,
+        version_id: str,
+        *,
+        tenant_id: str = "local",
+    ) -> dict[str, Any] | None:
         with self._conn() as connection:
             row = connection.execute(
-                "SELECT * FROM studio_skill_versions WHERE version_id=?",
-                (str(version_id),),
+                "SELECT * FROM studio_skill_versions WHERE version_id=? AND tenant_id=?",
+                (str(version_id), str(tenant_id)),
             ).fetchone()
-        return self._with_state(self._decode_version(row)) if row else None
+        return (
+            self._with_state(self._decode_version(row), tenant_id=tenant_id)
+            if row
+            else None
+        )
 
-    def list_versions(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_versions(
+        self,
+        limit: int = 100,
+        *,
+        tenant_id: str = "local",
+    ) -> list[dict[str, Any]]:
         limit = max(1, min(200, int(limit)))
         with self._conn() as connection:
             rows = connection.execute(
-                "SELECT * FROM studio_skill_versions ORDER BY created_at DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM studio_skill_versions WHERE tenant_id=? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (str(tenant_id), limit),
             ).fetchall()
-        return [self._with_state(self._decode_version(row)) for row in rows]
+        return [
+            self._with_state(self._decode_version(row), tenant_id=tenant_id)
+            for row in rows
+        ]
 
-    def latest_families(self, limit: int = 100) -> list[dict[str, Any]]:
-        versions = self.list_versions(limit=max(200, limit * 4))
+    def latest_families(
+        self,
+        limit: int = 100,
+        *,
+        tenant_id: str = "local",
+    ) -> list[dict[str, Any]]:
+        versions = self.list_versions(
+            limit=max(200, limit * 4),
+            tenant_id=tenant_id,
+        )
         seen: set[str] = set()
         out: list[dict[str, Any]] = []
         for version in versions:
@@ -356,14 +431,27 @@ class SkillStudioStore:
                 break
         return out
 
-    def submit(self, version_id: str, *, actor_id: str, note: str = "") -> dict[str, Any]:
-        current = self.get_version(version_id)
+    def submit(
+        self,
+        version_id: str,
+        *,
+        actor_id: str,
+        note: str = "",
+        tenant_id: str = "local",
+    ) -> dict[str, Any]:
+        current = self.get_version(version_id, tenant_id=tenant_id)
         if current is None:
             raise KeyError(version_id)
         if current["state"] != "draft":
             raise ValueError("only draft versions can be submitted")
-        self._append_event(version_id, "submitted", actor_id, {"note": str(note)[:2000]})
-        return self.get_version(version_id)  # type: ignore[return-value]
+        self._append_event(
+            version_id,
+            "submitted",
+            actor_id,
+            {"note": str(note)[:2000]},
+            tenant_id=tenant_id,
+        )
+        return self.get_version(version_id, tenant_id=tenant_id)  # type: ignore[return-value]
 
     @staticmethod
     def _case_snapshot(case: dict[str, Any], summary: Any, failures: list[str]) -> dict[str, Any]:
@@ -458,8 +546,14 @@ class SkillStudioStore:
             "failures": failures,
         }
 
-    async def evaluate(self, version_id: str, *, actor_id: str) -> dict[str, Any]:
-        current = self.get_version(version_id)
+    async def evaluate(
+        self,
+        version_id: str,
+        *,
+        actor_id: str,
+        tenant_id: str = "local",
+    ) -> dict[str, Any]:
+        current = self.get_version(version_id, tenant_id=tenant_id)
         if current is None:
             raise KeyError(version_id)
         if current["state"] not in {"review", "evaluated_pass", "evaluated_fail"}:
@@ -479,15 +573,17 @@ class SkillStudioStore:
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             exists = connection.execute(
-                "SELECT content_hash FROM studio_skill_versions WHERE version_id=?",
-                (str(version_id),),
+                "SELECT content_hash FROM studio_skill_versions "
+                "WHERE version_id=? AND tenant_id=?",
+                (str(version_id), str(tenant_id)),
             ).fetchone()
             if not exists:
                 raise KeyError(version_id)
             if str(exists["content_hash"]) != current["content_hash"]:
                 raise RuntimeError("immutable skill content changed during evaluation")
             connection.execute(
-                "INSERT INTO studio_skill_evaluations(id,version_id,content_hash,result_json,created_by,created_at) VALUES(?,?,?,?,?,?)",
+                "INSERT INTO studio_skill_evaluations"
+                "(id,version_id,content_hash,result_json,created_by,created_at) VALUES(?,?,?,?,?,?)",
                 (
                     evaluation_id,
                     str(version_id),
@@ -498,7 +594,8 @@ class SkillStudioStore:
                 ),
             )
             connection.execute(
-                "INSERT INTO studio_skill_events(version_id,event_type,actor_id,payload_json,created_at) VALUES(?,?,?,?,?)",
+                "INSERT INTO studio_skill_events"
+                "(version_id,event_type,actor_id,payload_json,created_at) VALUES(?,?,?,?,?)",
                 (
                     str(version_id),
                     "candidate_evaluated",
@@ -507,14 +604,21 @@ class SkillStudioStore:
                     created_at,
                 ),
             )
-        return self.get_version(version_id)  # type: ignore[return-value]
+        return self.get_version(version_id, tenant_id=tenant_id)  # type: ignore[return-value]
 
-    def get_evaluation(self, evaluation_id: str) -> dict[str, Any] | None:
+    def get_evaluation(
+        self,
+        evaluation_id: str,
+        *,
+        tenant_id: str = "local",
+    ) -> dict[str, Any] | None:
         with self._conn() as connection:
             row = connection.execute(
-                "SELECT id,version_id,content_hash,result_json,created_by,created_at "
-                "FROM studio_skill_evaluations WHERE id=?",
-                (str(evaluation_id),),
+                "SELECT e.id,e.version_id,e.content_hash,e.result_json,e.created_by,e.created_at "
+                "FROM studio_skill_evaluations e "
+                "JOIN studio_skill_versions v ON v.version_id=e.version_id "
+                "WHERE e.id=? AND v.tenant_id=?",
+                (str(evaluation_id), str(tenant_id)),
             ).fetchone()
         if row is None:
             return None
@@ -528,28 +632,98 @@ class SkillStudioStore:
             "authority": authority_contract(),
         }
 
-    def archive(self, version_id: str, *, actor_id: str, note: str = "") -> dict[str, Any]:
-        current = self.get_version(version_id)
+    def release_candidate(
+        self,
+        version_id: str,
+        *,
+        tenant_id: str = "local",
+    ) -> dict[str, Any]:
+        current = self.get_version(version_id, tenant_id=tenant_id)
+        if current is None:
+            raise KeyError(version_id)
+        if current["state"] != "evaluated_pass" or not isinstance(current.get("evaluation"), dict):
+            raise ValueError("only evaluated_pass versions can be exported")
+        evaluation = dict(current["evaluation"])
+        candidate = {
+            "domain": current["domain"],
+            "name": current["name"],
+            "purpose": current["purpose"],
+            "guidance": current["guidance"],
+            "preferred_tools": list(current["preferred_tools"]),
+            "trigger_terms": list(current["trigger_terms"]),
+            "input_contract": dict(current["input_contract"]),
+            "output_contract": dict(current["output_contract"]),
+            "safety_notes": current["safety_notes"],
+            "source_skill_id": current["source_skill_id"],
+        }
+        payload = {
+            "schema_version": 1,
+            "source": {
+                "kind": "skill_studio",
+                "family_id": current["family_id"],
+                "version_id": current["version_id"],
+                "version": current["version"],
+                "content_hash": current["content_hash"],
+            },
+            "candidate": candidate,
+            "evaluation": {
+                "evaluation_id": evaluation.get("evaluation_id"),
+                "ok": bool(evaluation.get("ok")),
+                "case_count": int(evaluation.get("case_count") or 0),
+                "failed_case_count": int(evaluation.get("failed_case_count") or 0),
+                "drift_case_count": int(evaluation.get("drift_case_count") or 0),
+                "isolated_runtime": bool(evaluation.get("isolated_runtime")),
+            },
+            "authority": authority_contract(),
+        }
+        payload["candidate_id"] = f"studio-candidate-{_content_hash(payload)[:20]}"
+        payload["export_hash"] = _content_hash(payload)
+        return payload
+
+    def archive(
+        self,
+        version_id: str,
+        *,
+        actor_id: str,
+        note: str = "",
+        tenant_id: str = "local",
+    ) -> dict[str, Any]:
+        current = self.get_version(version_id, tenant_id=tenant_id)
         if current is None:
             raise KeyError(version_id)
         if current["state"] == "archived":
             return current
-        self._append_event(version_id, "archived", actor_id, {"note": str(note)[:2000]})
-        return self.get_version(version_id)  # type: ignore[return-value]
+        self._append_event(
+            version_id,
+            "archived",
+            actor_id,
+            {"note": str(note)[:2000]},
+            tenant_id=tenant_id,
+        )
+        return self.get_version(version_id, tenant_id=tenant_id)  # type: ignore[return-value]
 
-    def _append_event(self, version_id: str, event_type: str, actor_id: str, payload: dict[str, Any]) -> None:
+    def _append_event(
+        self,
+        version_id: str,
+        event_type: str,
+        actor_id: str,
+        payload: dict[str, Any],
+        *,
+        tenant_id: str = "local",
+    ) -> None:
         if event_type not in EVENTS:
             raise ValueError("invalid studio event")
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
             exists = connection.execute(
-                "SELECT 1 FROM studio_skill_versions WHERE version_id=?",
-                (str(version_id),),
+                "SELECT 1 FROM studio_skill_versions WHERE version_id=? AND tenant_id=?",
+                (str(version_id), str(tenant_id)),
             ).fetchone()
             if not exists:
                 raise KeyError(version_id)
             connection.execute(
-                "INSERT INTO studio_skill_events(version_id,event_type,actor_id,payload_json,created_at) VALUES(?,?,?,?,?)",
+                "INSERT INTO studio_skill_events(version_id,event_type,actor_id,payload_json,created_at) "
+                "VALUES(?,?,?,?,?)",
                 (str(version_id), event_type, str(actor_id), _stable_json(payload), time.time()),
             )
 
@@ -603,11 +777,17 @@ class SkillStudioStore:
             for row in rows
         ]
 
-    def catalog(self) -> dict[str, Any]:
+    def catalog(self, *, tenant_id: str = "local") -> dict[str, Any]:
         return {
-            "scope": "deployment",
+            "scope": "mixed",
+            "scopes": {
+                "studio_families": "tenant",
+                "runtime_skills": "deployment_read_only",
+                "evolution_policies": "deployment_read_only",
+                "registered_tools": "deployment_read_only",
+            },
             "runtime_skills": self.runtime_catalog(200),
-            "studio_families": self.latest_families(100),
+            "studio_families": self.latest_families(100, tenant_id=tenant_id),
             "evolution_policies": self.runtime_policies(),
             "registered_tools": sorted(self._tool_keys()),
             "authority": authority_contract(),
