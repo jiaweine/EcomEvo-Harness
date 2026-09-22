@@ -30,6 +30,11 @@ def install_release_readiness_routes(
         current_principal()
         return center.multi_node_readiness()
 
+    @app.get("/api/runtime/readiness/connections")
+    def readiness_connections():
+        current_principal()
+        return center.connection_readiness()
+
     @app.get("/api/runtime/readiness/preview")
     def readiness_preview(window: Window = Query(default="7d")):
         principal = current_principal()
