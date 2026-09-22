@@ -36,6 +36,14 @@ def test_release_readiness_routes_are_admin_only(monkeypatch):
         assert migration_route.json()["ready"] is False
         assert migration_route.json()["authority"]["changes_storage_backend"] is False
 
+        connection_evidence_route = client.get("/api/runtime/readiness/connections")
+        assert connection_evidence_route.status_code == 200
+        connection_evidence = connection_evidence_route.json()
+        assert connection_evidence["status"] in {"not_applicable", "blocked", "control_plane_ready"}
+        assert connection_evidence["methodology"]["probe_method"] == "tools/list"
+        assert connection_evidence["methodology"]["business_tool_execution"] is False
+        assert connection_evidence["methodology"]["provider_rate_limits_certified"] is False
+
         created = client.post("/api/runtime/readiness/snapshots", params={"window": "7d"})
         assert created.status_code == 201
         snapshot_id = created.json()["id"]
@@ -55,6 +63,7 @@ def test_release_readiness_routes_are_admin_only(monkeypatch):
         _identity(monkeypatch, role="operator", user="operator-ready")
         assert client.get("/api/runtime/readiness/preview").status_code == 403
         assert client.get("/api/runtime/readiness/multi-node").status_code == 403
+        assert client.get("/api/runtime/readiness/connections").status_code == 403
         assert client.post("/api/runtime/readiness/snapshots").status_code == 403
 
         _identity(monkeypatch, role="viewer", user="viewer-ready")
