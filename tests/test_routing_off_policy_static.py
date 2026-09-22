@@ -27,3 +27,12 @@ def test_routing_off_policy_surface_is_read_only_and_statistically_honest():
     assert '"changes_policy": False' in service
     assert '"changes_runtime_skills": False' in service
     assert '"executes_tools": False' in service
+
+
+def test_off_policy_pairing_and_exact_replay_fail_closed_on_incomplete_logs():
+    source = (ROOT / "ecomevo" / "product" / "routing_off_policy.py").read_text(encoding="utf-8")
+    assert "def _nonnegative_int" in source
+    assert "unpairable_decision_rounds" in source
+    assert "unpairable_update_events" in source
+    assert "reward_linked_rounds == decision_rounds" in source
+    assert "and not truncated" in source

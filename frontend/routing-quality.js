@@ -51,6 +51,11 @@ function render(data, offPolicy) {
     metric("Reward linkage", pct(ope.coverage?.reward_linkage_coverage)),
     metric("Propensity coverage", pct(ope.behavior_policy?.propensity_coverage), "deterministic UCB does not imply probability"),
     metric("Current behavior replay", ope.current_behavior_replay?.status || "unavailable"),
+    metric(
+      "Exact logged-behavior replay",
+      ope.readiness?.exact_behavior_replay ? "ready" : "not ready",
+      "requires complete reward linkage and an untruncated window",
+    ),
     metric("Candidate counterfactual", ope.candidate_counterfactual?.status || "unavailable"),
     metric("Doubly robust", ope.doubly_robust?.status || "unavailable", "missing prerequisites are surfaced, not estimated"),
   ].join("");

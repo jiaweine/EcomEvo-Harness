@@ -53,6 +53,13 @@ class RoutingOffPolicyReadiness:
             return None
         return int(round(number))
 
+    @classmethod
+    def _nonnegative_int(cls, value: Any) -> int | None:
+        number = cls._number(value)
+        if number is None or number < 0 or abs(number - round(number)) > 1e-9:
+            return None
+        return int(round(number))
+
     @staticmethod
     def _ratio(numerator: int | float, denominator: int | float) -> float | None:
         if denominator <= 0:
@@ -141,6 +148,8 @@ class RoutingOffPolicyReadiness:
         full_feature_rounds = 0
         linked_updates = 0
         reward_linked_rounds = 0
+        unpairable_decision_rounds = 0
+        unpairable_update_events = 0
         explicit_propensity_rows = 0
         observed_round_credits: list[float] = []
 
@@ -148,9 +157,7 @@ class RoutingOffPolicyReadiness:
             payload = event["payload"]
             event_type = str(event.get("type") or "")
             conversation_id = str(event.get("conversation_id") or "")
-            step_number = self._number(payload.get("step"))
-            step = int(step_number) if step_number is not None and step_number >= 0 else 0
-            key = (conversation_id, step)
+            step = self._nonnegative_int(payload.get("step"))
 
             if event_type == "autonomy.decided":
                 decision_rounds += 1
@@ -171,6 +178,10 @@ class RoutingOffPolicyReadiness:
                     if propensity is not None and 0.0 < propensity <= 1.0:
                         explicit_propensity_rows += 1
 
+                if step is None:
+                    unpairable_decision_rounds += 1
+                    continue
+                key = (conversation_id, step)
                 pending[key].append(
                     {
                         "event_id": int(event.get("id") or 0),
@@ -182,7 +193,11 @@ class RoutingOffPolicyReadiness:
 
             if event_type != "routing.policy.updated":
                 continue
+            if step is None:
+                unpairable_update_events += 1
+                continue
 
+            key = (conversation_id, step)
             queue = pending.get(key)
             if not queue:
                 continue
@@ -194,7 +209,10 @@ class RoutingOffPolicyReadiness:
                 reward_linked_rounds += 1
                 observed_round_credits.append(credit)
 
-        unmatched_decisions = sum(len(queue) for queue in pending.values())
+        unmatched_decisions = (
+            sum(len(queue) for queue in pending.values())
+            + unpairable_decision_rounds
+        )
         propensity_coverage = self._ratio(explicit_propensity_rows, selected_rows)
         feature_coverage = self._ratio(full_feature_rounds, decision_rounds)
         reward_coverage = self._ratio(reward_linked_rounds, decision_rounds)
@@ -209,17 +227,33 @@ class RoutingOffPolicyReadiness:
             "positivity_for_alternative_actions": False,
         }
 
+        exact_behavior_replay = (
+            decision_rounds > 0
+            and not truncated
+            and reward_linked_rounds == decision_rounds
+            and unmatched_decisions == 0
+        )
         replay_status = (
             "descriptive_current_behavior_only"
             if observed_round_credits
             else "unavailable"
         )
-        replay_reason = (
-            "Observed verifier-derived mean credit is replayable for the logged behavior only; "
-            "it is not a counterfactual candidate-policy value estimate."
-            if observed_round_credits
-            else "No decision round in the selected window has a linked routing.policy.updated reward."
-        )
+        if exact_behavior_replay:
+            replay_reason = (
+                "Every decision round in the untruncated window has a valid linked verifier-derived "
+                "reward; this reproduces observed current behavior only, not a candidate-policy "
+                "counterfactual value."
+            )
+        elif observed_round_credits:
+            replay_reason = (
+                "Some verifier-derived mean credit is observable for logged behavior, but reward "
+                "linkage is incomplete or the event window is truncated; exact window replay is "
+                "therefore unavailable."
+            )
+        else:
+            replay_reason = (
+                "No decision round in the selected window has a linked routing.policy.updated reward."
+            )
 
         return {
             "generated_at": now_ts,
@@ -241,12 +275,15 @@ class RoutingOffPolicyReadiness:
                 "reward_linkage_coverage": reward_coverage,
                 "linked_updates": linked_updates,
                 "unmatched_decisions": unmatched_decisions,
+                "unpairable_decision_rounds": unpairable_decision_rounds,
+                "unpairable_update_events": unpairable_update_events,
                 "truncated": truncated,
                 "max_rows": self.MAX_ROWS,
             },
             "behavior_policy": deterministic_behavior,
             "current_behavior_replay": {
                 "status": replay_status,
+                "window_complete": exact_behavior_replay,
                 "observed_round_credit": self._stats(observed_round_credits),
                 "reason": replay_reason,
             },
@@ -278,7 +315,7 @@ class RoutingOffPolicyReadiness:
                 ),
             },
             "readiness": {
-                "exact_behavior_replay": bool(observed_round_credits),
+                "exact_behavior_replay": exact_behavior_replay,
                 "full_feature_trace_available": full_feature_rounds > 0,
                 "candidate_counterfactual_value": False,
                 "doubly_robust": False,
@@ -293,7 +330,7 @@ class RoutingOffPolicyReadiness:
             },
             "methodology": {
                 "reward": "routing.policy.updated mean_credit derived from verifier leave-one-out harmonic credit",
-                "pairing": "decision and reward events are paired tenant-locally by conversation_id + step in durable event order",
+                "pairing": "decision and reward events are paired tenant-locally only when step is an explicit non-negative integer, using conversation_id + step in durable event order",
                 "feature_coverage": "a round is complete only when every logged candidate has a finite feature_vector, advantage, and cost",
                 "propensity": "never inferred from utility, rank, activation, or deterministic UCB scores",
                 "counterfactual_claims": "withheld when identification prerequisites are missing",

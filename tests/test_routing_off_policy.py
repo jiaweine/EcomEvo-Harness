@@ -152,6 +152,8 @@ def test_off_policy_readiness_is_tenant_scoped_and_withholds_unidentified_estima
     assert snapshot["candidate_counterfactual"]["status"] == "unavailable"
     assert snapshot["direct_method"]["status"] == "unavailable"
     assert snapshot["doubly_robust"]["status"] == "unavailable"
+    assert snapshot["readiness"]["exact_behavior_replay"] is False
+    assert snapshot["current_behavior_replay"]["window_complete"] is False
     assert snapshot["readiness"]["doubly_robust"] is False
     assert snapshot["authority"]["read_only"] is True
     assert snapshot["authority"]["changes_routing"] is False
@@ -199,3 +201,69 @@ def test_off_policy_readiness_rejects_unknown_window(tmp_path):
         assert "invalid routing off-policy window" in str(exc)
     else:
         raise AssertionError("expected invalid window to fail")
+
+
+def test_off_policy_pairing_rejects_missing_fractional_and_negative_steps(tmp_path):
+    store = _Store(tmp_path / "routing-off-policy-invalid-step.db")
+    with store._conn() as db:
+        db.executescript(
+            """
+            CREATE TABLE conversations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,scene TEXT NOT NULL);
+            CREATE TABLE task_events(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,type TEXT NOT NULL,payload TEXT NOT NULL,created_at REAL NOT NULL
+            );
+            """
+        )
+        db.execute("INSERT INTO conversations(id,tenant_id,scene) VALUES(?,?,?)", ("a1","tenant-a","aftersales"))
+        created_at = 900.0
+        for step in (None, 0.5, -1):
+            decision = {"evogain": [_trace("order.inspect")]}
+            update = {"updated_calls": 1, "mean_credit": 0.25}
+            if step is not None:
+                decision["step"] = step
+                update["step"] = step
+            _event(db, "a1", "autonomy.decided", decision, created_at)
+            _event(db, "a1", "routing.policy.updated", update, created_at + 0.1)
+            created_at += 1.0
+        _event(db, "a1", "autonomy.decided", {"step": 2, "evogain": [_trace("evidence.search")]}, created_at)
+        _event(db, "a1", "routing.policy.updated", {"step": 2, "updated_calls": 1, "mean_credit": 0.5}, created_at + 0.1)
+
+    snapshot = RoutingOffPolicyReadiness(store).snapshot(tenant_id="tenant-a", window="24h", now=1000.0)
+    assert snapshot["coverage"]["decision_rounds"] == 4
+    assert snapshot["coverage"]["reward_linked_rounds"] == 1
+    assert snapshot["coverage"]["unpairable_decision_rounds"] == 3
+    assert snapshot["coverage"]["unpairable_update_events"] == 3
+    assert snapshot["coverage"]["unmatched_decisions"] == 3
+    assert snapshot["current_behavior_replay"]["observed_round_credit"]["samples"] == 1
+    assert snapshot["readiness"]["exact_behavior_replay"] is False
+
+
+def test_exact_behavior_replay_requires_complete_untruncated_reward_linkage(tmp_path):
+    store = _Store(tmp_path / "routing-off-policy-exact.db")
+    with store._conn() as db:
+        db.executescript(
+            """
+            CREATE TABLE conversations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,scene TEXT NOT NULL);
+            CREATE TABLE task_events(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,type TEXT NOT NULL,payload TEXT NOT NULL,created_at REAL NOT NULL
+            );
+            """
+        )
+        db.execute("INSERT INTO conversations(id,tenant_id,scene) VALUES(?,?,?)", ("a1","tenant-a","aftersales"))
+        _event(db, "a1", "autonomy.decided", {"step": 0, "evogain": [_trace("order.inspect")]}, 900.0)
+        _event(db, "a1", "routing.policy.updated", {"step": 0, "updated_calls": 1, "mean_credit": 0.25}, 901.0)
+
+    service = RoutingOffPolicyReadiness(store)
+    complete = service.snapshot(tenant_id="tenant-a", window="24h", now=1000.0)
+    assert complete["coverage"]["reward_linkage_coverage"] == 1.0
+    assert complete["coverage"]["truncated"] is False
+    assert complete["readiness"]["exact_behavior_replay"] is True
+    assert complete["current_behavior_replay"]["window_complete"] is True
+
+    service.MAX_ROWS = 1
+    truncated = service.snapshot(tenant_id="tenant-a", window="24h", now=1000.0)
+    assert truncated["coverage"]["truncated"] is True
+    assert truncated["readiness"]["exact_behavior_replay"] is False
+    assert truncated["current_behavior_replay"]["window_complete"] is False
