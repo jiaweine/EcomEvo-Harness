@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ecomevo.product import ConversationStore
-from ecomevo.product.operator_activity import OperatorActivityLedger
+from ecomevo.product.operator_activity import OperatorActivityLedger, RETENTION_SECONDS
 from ecomevo.product.operator_observability import OperatorAwareQualityObservability
 
 
@@ -232,3 +232,110 @@ def test_zero_active_time_is_instrumented_but_vdph_stays_unavailable(tmp_path):
     assert snapshot["north_star"]["operator_hours"]["active_seconds"] == 0
     assert snapshot["north_star"]["verified_decisions_per_operator_hour"]["available"] is False
     assert snapshot["telemetry_availability"]["operator_active_hours"]["available"] is True
+
+
+def test_duplicate_same_bucket_suppresses_sqlite_update(tmp_path):
+    store = _store(tmp_path)
+    ledger = OperatorActivityLedger(store)
+    base = 1_800_000_000.0
+
+    first = ledger.record_heartbeat(
+        tenant_id="tenant-a",
+        user_id="operator-a",
+        now=base + 1,
+    )
+    with store._conn() as db:
+        before = db.execute(
+            """
+            SELECT active_slots,updated_at
+            FROM operator_active_blocks
+            WHERE tenant_id=? AND user_id=? AND block_start=?
+            """,
+            ("tenant-a", "operator-a", first["block_start"]),
+        ).fetchone()
+
+    duplicate = ledger.record_heartbeat(
+        tenant_id="tenant-a",
+        user_id="operator-a",
+        now=base + 8,
+    )
+    with store._conn() as db:
+        after = db.execute(
+            """
+            SELECT active_slots,updated_at
+            FROM operator_active_blocks
+            WHERE tenant_id=? AND user_id=? AND block_start=?
+            """,
+            ("tenant-a", "operator-a", first["block_start"]),
+        ).fetchone()
+
+    assert first["new_bucket"] is True
+    assert duplicate["new_bucket"] is False
+    assert int(after["active_slots"]) == int(before["active_slots"])
+    assert float(after["updated_at"]) == float(before["updated_at"])
+
+
+def test_retention_prunes_expired_slots_without_dropping_live_cutoff_block(tmp_path):
+    store = _store(tmp_path)
+    ledger = OperatorActivityLedger(store)
+    base = 1_800_000_000.0
+
+    ledger.record_heartbeat(
+        tenant_id="tenant-a",
+        user_id="operator-a",
+        now=base + 1,
+    )
+    ledger.record_heartbeat(
+        tenant_id="tenant-a",
+        user_id="operator-a",
+        now=base + 76,
+    )
+    ledger.record_heartbeat(
+        tenant_id="tenant-b",
+        user_id="operator-b",
+        now=base + 1,
+    )
+
+    current = base + RETENTION_SECONDS + 61
+    current_result = ledger.record_heartbeat(
+        tenant_id="tenant-a",
+        user_id="operator-a",
+        now=current,
+    )
+    assert current_result["new_bucket"] is True
+
+    with store._conn() as db:
+        tenant_a_cutoff = db.execute(
+            """
+            SELECT active_slots
+            FROM operator_active_blocks
+            WHERE tenant_id=? AND user_id=? AND block_start=?
+            """,
+            ("tenant-a", "operator-a", int(base)),
+        ).fetchone()
+        tenant_b_cutoff = db.execute(
+            """
+            SELECT active_slots
+            FROM operator_active_blocks
+            WHERE tenant_id=? AND user_id=? AND block_start=?
+            """,
+            ("tenant-b", "operator-b", int(base)),
+        ).fetchone()
+
+    assert tenant_a_cutoff is not None
+    assert int(tenant_a_cutoff["active_slots"]) == 1 << 5
+    assert tenant_b_cutoff is None
+
+    summary = ledger.summarize(
+        tenant_id="tenant-a",
+        since=current - 3600,
+        until=current + 60,
+    )
+    assert summary["retention"] == {
+        "days": 90,
+        "seconds": RETENTION_SECONDS,
+        "granularity_seconds": 15,
+        "server_enforced": True,
+        "client_configurable": False,
+    }
+    assert summary["duplicate_bucket_write_suppressed"] is True

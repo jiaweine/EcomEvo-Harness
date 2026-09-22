@@ -118,7 +118,7 @@ MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明�
 
 ### Operator Active Time / North Star Denominator
 
-v1 已落地服务端计时的 Operator active-time telemetry：客户端只能发送前台活跃 heartbeat，不能提交 duration 或 timestamp；服务端按 15 秒 bucket 计量并以 tenant + user + bucket 去重，多标签页不会重复放大。遥测启用时间由服务端持久化；只有当 measurement start 覆盖所选统计窗口起点时，Observability 才允许用同一窗口内的精确 active seconds 计算 Verified Decisions per Operator Hour。若遥测在窗口中途才启用，仍展示已观测 Operator Hours 与 coverage rate，但整窗 VDPH 保持 unavailable，避免完整分子除以部分分母；零工时同样不产生 VDPH。该遥测仅用于运营效率观测，不是考勤/薪资证据，也不改变 routing、Policy、approval、BusinessAction 或 tool authority。
+v1 已落地服务端计时的 Operator active-time telemetry：客户端只能发送前台活跃 heartbeat，不能提交 duration 或 timestamp；服务端按 15 秒 bucket 计量并以 tenant + user + bucket 去重，多标签页不会重复放大。同一 bucket 的重复 heartbeat 会跳过 SQLite UPDATE，降低多标签页/WAL 写放大；遥测采用服务端固定 90 天 rolling retention，客户端不能修改保留期。遥测启用时间由服务端持久化；只有当 measurement start 覆盖所选统计窗口起点时，Observability 才允许用同一窗口内的精确 active seconds 计算 Verified Decisions per Operator Hour。若遥测在窗口中途才启用，仍展示已观测 Operator Hours 与 coverage rate，但整窗 VDPH 保持 unavailable，避免完整分子除以部分分母；零工时同样不产生 VDPH。该遥测仅用于运营效率观测，不是考勤/薪资证据，也不改变 routing、Policy、approval、BusinessAction 或 tool authority。
 
 ### Routing Quality Control Tower
 
@@ -144,7 +144,7 @@ v1 已落地 tenant-safe、admin-only、read-only 控制塔，直接消费 durab
 
 成熟企业生产定位仍要求真实部署继续满足：
 
-- Operator active-hours 已有服务端 bucket 计量与 tenant/user 去重；生产部署仍应验证真实工作台覆盖率、前台交互信号质量与长期数据保留策略，且不得把该遥测当作考勤/薪资证据；
+- Operator active-hours 已有服务端 bucket 计量、tenant/user 去重、window coverage 防误读、重复 bucket 写抑制与固定 90 天 rolling retention；生产部署仍应验证真实工作台覆盖率和前台交互信号质量，且不得把该遥测当作考勤/薪资证据；
 - 企业 IdP / Gateway 接入；
 - 真实 provider/MCP auth/rate-limit/idempotency/failure matrix；
 - Safari/Edge 与目标设备；
