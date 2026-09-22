@@ -11,9 +11,11 @@ class SlowEmitStore:
     def __init__(self):
         self.job_thread: int | None = None
         self.event_thread: int | None = None
+        self.lease_fence: int | None = None
 
-    def add_job_event(self, job_id, worker_id, event_type, payload):
+    def add_job_event(self, job_id, worker_id, event_type, payload, *, lease_fence=None):
         self.job_thread = threading.get_ident()
+        self.lease_fence = lease_fence
         time.sleep(0.08)
         return {
             "id": 1,
@@ -46,6 +48,7 @@ def test_async_emit_persists_off_event_loop_for_both_event_paths(monkeypatch):
             {"detail": "pressure"},
             "job-pressure",
             "worker-pressure",
+            7,
         )
         ordinary = await application.emit(
             "conversation-pressure",
@@ -54,6 +57,7 @@ def test_async_emit_persists_off_event_loop_for_both_event_paths(monkeypatch):
         )
 
         assert durable and durable["type"] == "planning.progress"
+        assert slow.lease_fence == 7
         assert ordinary and ordinary["type"] == "notice"
         assert slow.job_thread is not None and slow.job_thread != loop_thread
         assert slow.event_thread is not None and slow.event_thread != loop_thread
