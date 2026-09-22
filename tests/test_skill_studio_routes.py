@@ -34,7 +34,9 @@ def test_skill_studio_is_admin_only_and_has_no_runtime_promotion(monkeypatch):
         catalog = client.get("/api/runtime/skills/catalog")
         assert catalog.status_code == 200
         data = catalog.json()
-        assert data["scope"] == "deployment"
+        assert data["scope"] == "mixed"
+        assert data["scopes"]["studio_families"] == "tenant"
+        assert data["scopes"]["runtime_skills"] == "deployment_read_only"
         assert data["authority"]["can_promote_runtime"] is False
         assert data["authority"]["candidate_evaluation_mutates_production"] is False
         assert data["authority"]["evaluation_pass_auto_promotes"] is False
@@ -101,3 +103,46 @@ def test_skill_studio_candidate_evaluation_requires_gold_set_coverage(monkeypatc
         assert response.status_code == 422
         assert response.json()["detail"] == "no Gold Set cases cover this skill domain"
         assert client.get("/api/runtime/skills/studio/evaluations/studio-eval-missing").status_code == 404
+
+
+def test_skill_studio_routes_are_tenant_isolated(monkeypatch):
+    with TestClient(app) as client:
+        tenant_a = f"studio-a-{uuid.uuid4().hex[:8]}"
+        tenant_b = f"studio-b-{uuid.uuid4().hex[:8]}"
+        _identity(monkeypatch, tenant=tenant_a, user="admin-a")
+        created = client.post(
+            "/api/runtime/skills/studio/families",
+            json=_payload(f"tenant-a-{uuid.uuid4().hex[:8]}"),
+        )
+        assert created.status_code == 201
+        item = created.json()
+
+        _identity(monkeypatch, tenant=tenant_b, user="admin-b")
+        catalog_b = client.get("/api/runtime/skills/catalog")
+        assert catalog_b.status_code == 200
+        assert all(
+            row["family_id"] != item["family_id"]
+            for row in catalog_b.json()["studio_families"]
+        )
+        assert client.get(
+            f"/api/runtime/skills/studio/{item['version_id']}"
+        ).status_code == 404
+        assert client.post(
+            f"/api/runtime/skills/studio/{item['version_id']}/submit",
+            json={"note": ""},
+        ).status_code == 404
+        assert client.post(
+            f"/api/runtime/skills/studio/families/{item['family_id']}/versions",
+            json=_payload("cross-tenant-version"),
+        ).status_code == 404
+        assert client.get(
+            f"/api/runtime/skills/studio/{item['version_id']}/release-candidate"
+        ).status_code == 404
+
+        _identity(monkeypatch, tenant=tenant_a, user="admin-a")
+        assert client.get(
+            f"/api/runtime/skills/studio/{item['version_id']}"
+        ).status_code == 200
+        assert client.get(
+            f"/api/runtime/skills/studio/{item['version_id']}/release-candidate"
+        ).status_code == 409
