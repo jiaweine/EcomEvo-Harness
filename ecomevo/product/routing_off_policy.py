@@ -150,6 +150,7 @@ class RoutingOffPolicyReadiness:
         reward_linked_rounds = 0
         unpairable_decision_rounds = 0
         unpairable_update_events = 0
+        unmatched_update_events = 0
         explicit_propensity_rows = 0
         observed_round_credits: list[float] = []
 
@@ -200,6 +201,7 @@ class RoutingOffPolicyReadiness:
             key = (conversation_id, step)
             queue = pending.get(key)
             if not queue:
+                unmatched_update_events += 1
                 continue
             queue.popleft()
             linked_updates += 1
@@ -232,6 +234,8 @@ class RoutingOffPolicyReadiness:
             and not truncated
             and reward_linked_rounds == decision_rounds
             and unmatched_decisions == 0
+            and unmatched_update_events == 0
+            and unpairable_update_events == 0
         )
         replay_status = (
             "descriptive_current_behavior_only"
@@ -247,8 +251,8 @@ class RoutingOffPolicyReadiness:
         elif observed_round_credits:
             replay_reason = (
                 "Some verifier-derived mean credit is observable for logged behavior, but reward "
-                "linkage is incomplete or the event window is truncated; exact window replay is "
-                "therefore unavailable."
+                "linkage is incomplete, a reward update is unpaired or invalid, or the event window "
+                "is truncated; exact window replay is therefore unavailable."
             )
         else:
             replay_reason = (
@@ -277,6 +281,7 @@ class RoutingOffPolicyReadiness:
                 "unmatched_decisions": unmatched_decisions,
                 "unpairable_decision_rounds": unpairable_decision_rounds,
                 "unpairable_update_events": unpairable_update_events,
+                "unmatched_update_events": unmatched_update_events,
                 "truncated": truncated,
                 "max_rows": self.MAX_ROWS,
             },
@@ -330,7 +335,7 @@ class RoutingOffPolicyReadiness:
             },
             "methodology": {
                 "reward": "routing.policy.updated mean_credit derived from verifier leave-one-out harmonic credit",
-                "pairing": "decision and reward events are paired tenant-locally only when step is an explicit non-negative integer, using conversation_id + step in durable event order",
+                "pairing": "decision and reward events are paired tenant-locally only when step is an explicit non-negative integer, using conversation_id + step in durable event order; malformed, orphan, duplicate, or window-boundary reward updates prevent exact replay",
                 "feature_coverage": "a round is complete only when every logged candidate has a finite feature_vector, advantage, and cost",
                 "propensity": "never inferred from utility, rank, activation, or deterministic UCB scores",
                 "counterfactual_claims": "withheld when identification prerequisites are missing",

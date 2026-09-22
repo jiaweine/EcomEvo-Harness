@@ -267,3 +267,110 @@ def test_exact_behavior_replay_requires_complete_untruncated_reward_linkage(tmp_
     assert truncated["coverage"]["truncated"] is True
     assert truncated["readiness"]["exact_behavior_replay"] is False
     assert truncated["current_behavior_replay"]["window_complete"] is False
+
+
+def test_exact_behavior_replay_rejects_orphan_reward_update(tmp_path):
+    store = _Store(tmp_path / "routing-off-policy-orphan-update.db")
+    with store._conn() as db:
+        db.executescript(
+            """
+            CREATE TABLE conversations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,scene TEXT NOT NULL);
+            CREATE TABLE task_events(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,type TEXT NOT NULL,payload TEXT NOT NULL,created_at REAL NOT NULL
+            );
+            """
+        )
+        db.execute(
+            "INSERT INTO conversations(id,tenant_id,scene) VALUES(?,?,?)",
+            ("a1", "tenant-a", "aftersales"),
+        )
+        # This valid-step update has no in-window decision. It can represent a
+        # decision just before the window boundary or an unexpected duplicate.
+        _event(
+            db,
+            "a1",
+            "routing.policy.updated",
+            {"step": 99, "updated_calls": 1, "mean_credit": 0.9},
+            899.0,
+        )
+        _event(
+            db,
+            "a1",
+            "autonomy.decided",
+            {"step": 0, "evogain": [_trace("order.inspect")]},
+            900.0,
+        )
+        _event(
+            db,
+            "a1",
+            "routing.policy.updated",
+            {"step": 0, "updated_calls": 1, "mean_credit": 0.25},
+            901.0,
+        )
+
+    snapshot = RoutingOffPolicyReadiness(store).snapshot(
+        tenant_id="tenant-a",
+        window="24h",
+        now=1000.0,
+    )
+    assert snapshot["coverage"]["decision_rounds"] == 1
+    assert snapshot["coverage"]["reward_linked_rounds"] == 1
+    assert snapshot["coverage"]["unmatched_decisions"] == 0
+    assert snapshot["coverage"]["unmatched_update_events"] == 1
+    assert snapshot["coverage"]["unpairable_update_events"] == 0
+    assert snapshot["current_behavior_replay"]["observed_round_credit"]["samples"] == 1
+    assert snapshot["readiness"]["exact_behavior_replay"] is False
+    assert snapshot["current_behavior_replay"]["window_complete"] is False
+
+
+def test_exact_behavior_replay_rejects_invalid_step_reward_update(tmp_path):
+    store = _Store(tmp_path / "routing-off-policy-invalid-update.db")
+    with store._conn() as db:
+        db.executescript(
+            """
+            CREATE TABLE conversations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,scene TEXT NOT NULL);
+            CREATE TABLE task_events(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              conversation_id TEXT NOT NULL,type TEXT NOT NULL,payload TEXT NOT NULL,created_at REAL NOT NULL
+            );
+            """
+        )
+        db.execute(
+            "INSERT INTO conversations(id,tenant_id,scene) VALUES(?,?,?)",
+            ("a1", "tenant-a", "aftersales"),
+        )
+        _event(
+            db,
+            "a1",
+            "autonomy.decided",
+            {"step": 0, "evogain": [_trace("order.inspect")]},
+            900.0,
+        )
+        _event(
+            db,
+            "a1",
+            "routing.policy.updated",
+            {"step": 0, "updated_calls": 1, "mean_credit": 0.25},
+            901.0,
+        )
+        _event(
+            db,
+            "a1",
+            "routing.policy.updated",
+            {"step": 0.5, "updated_calls": 1, "mean_credit": 0.8},
+            902.0,
+        )
+
+    snapshot = RoutingOffPolicyReadiness(store).snapshot(
+        tenant_id="tenant-a",
+        window="24h",
+        now=1000.0,
+    )
+    assert snapshot["coverage"]["decision_rounds"] == 1
+    assert snapshot["coverage"]["reward_linked_rounds"] == 1
+    assert snapshot["coverage"]["unmatched_decisions"] == 0
+    assert snapshot["coverage"]["unmatched_update_events"] == 0
+    assert snapshot["coverage"]["unpairable_update_events"] == 1
+    assert snapshot["readiness"]["exact_behavior_replay"] is False
+    assert snapshot["current_behavior_replay"]["window_complete"] is False

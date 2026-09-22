@@ -126,7 +126,7 @@ v1 已落地 tenant-safe、admin-only、read-only 控制塔，直接消费 durab
 
 ### Off-policy Evaluation
 
-v0 readiness audit 已落地到 Routing Quality Control Tower：它只读 tenant-scoped durable `autonomy.decided` 与 `routing.policy.updated`，量化完整 candidate feature trace、verifier-derived reward linkage 与显式 behavior propensity coverage。只有明确的非负整数 `step` 才允许按 conversation + step 配对，缺失、负数或小数 step 不会被默认为 0。当前生产 routing 是 deterministic UCB，没有随机行为 propensity，也没有经独立验证的 candidate-action outcome model，因此系统只允许展示 logged current-behavior 的描述性 replay；只有事件窗口未截断且每个 decision 都有有效 reward linkage 时，才标记 exact logged-behavior replay。candidate counterfactual、direct-method value 与 doubly-robust estimate 都明确保持 unavailable。系统不会把 utility / rank / activation 伪装成 propensity，也不会因为离线分析结果自动修改 routing、Policy、Runtime Skill、BusinessAction 或 tool authority。
+v0 readiness audit 已落地到 Routing Quality Control Tower：它只读 tenant-scoped durable `autonomy.decided` 与 `routing.policy.updated`，量化完整 candidate feature trace、verifier-derived reward linkage 与显式 behavior propensity coverage。只有明确的非负整数 `step` 才允许按 conversation + step 配对，缺失、负数或小数 step 不会被默认为 0。当前生产 routing 是 deterministic UCB，没有随机行为 propensity，也没有经独立验证的 candidate-action outcome model，因此系统只允许展示 logged current-behavior 的描述性 replay；只有事件窗口未截断、每个 decision 都有有效 reward linkage、且窗口内不存在 orphan/duplicate 或 step 无效的 reward update 时，才标记 exact logged-behavior replay。candidate counterfactual、direct-method value 与 doubly-robust estimate 都明确保持 unavailable。系统不会把 utility / rank / activation 伪装成 propensity，也不会因为离线分析结果自动修改 routing、Policy、Runtime Skill、BusinessAction 或 tool authority。
 
 下一步若要真正给候选 policy 做离线价值评估，必须先引入可审计且满足 support/positivity 的行为日志，或单独验证 direct outcome model；任何 adaptive activation 放大仍继续走既有 deterministic authority / promotion gate。
 
