@@ -9,7 +9,7 @@
 - 默认同源；前后端分离时配置 `ECOMEVO_CORS_ORIGINS`。
 - 外部模型和 MCP 均通过环境变量配置，不要把 Key 写进前端或仓库。
 - 正式环境建议由企业反向代理/SSO 保护整个工作区服务。
-- 多 worker 可用：EventStore 序号写入、动作确认和同任务处理租约均使用 SQLite 跨进程事务，但该认证边界是**同一应用节点**。
+- 多 worker 可用：EventStore 序号写入、动作确认和同任务处理租约均使用 SQLite 跨进程事务；Operator active-time retention 也通过同一数据库中的 durable maintenance timestamp 协调全局 prune interval，避免每个 worker 重复执行清理。该认证边界仍是**同一应用节点**。
 - Release Readiness 要求显式配置 `ECOMEVO_DEPLOYMENT_NODES`。当前只能声明 `1`；未声明、非法值或 `>1` 都会产生确定性 blocker。
 - 为兼容本地开发，完全未声明时 Runtime 仍可启动，但保持 release-unattested；一旦显式给出空值、非法值或 `>1`，应用会在打开 runtime 数据库/启动 durable worker 前 fail fast。
 - `ECOMEVO_DEPLOYMENT_NODES` 是部署意图声明，不是 Kubernetes/容器副本自动发现。不要把共享持久卷上的 SQLite 当作已认证的跨节点控制平面。
