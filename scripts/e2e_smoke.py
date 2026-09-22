@@ -480,6 +480,8 @@ def main() -> None:
             assert shadow_catalog.json()["tenant_scope"] == "local"
             assert shadow_catalog.json()["authority"]["executes_real_tools"] is False
             assert shadow_catalog.json()["authority"]["changes_business_action_state"] is False
+            assert shadow_catalog.json()["corpus_import"]["accepts_raw_payload"] is False
+            assert shadow_catalog.json()["corpus_import"]["upstream_digest_verified_by_shadow"] is False
             shadow_action_before = [
                 (row["id"], row["status"], row["payload"])
                 for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
@@ -508,6 +510,47 @@ def main() -> None:
                 for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
             ]
             assert shadow_action_after == shadow_action_before
+
+            shadow_import_response = client.post(
+                "/api/runtime/shadow/import-fixture",
+                json={
+                    "surface": "mcp",
+                    "operation": "governed_action",
+                    "mutation": "timeout_after_dispatch",
+                    "target": "refund.execute",
+                    "context_labels": ["aftersales", "refund"],
+                    "provenance": {
+                        "source_system": "mcp.gateway",
+                        "source_event_id": "smoke-incident-001",
+                        "observed_at": "2026-09-22T12:34:56+08:00",
+                        "source_record_sha256": "a" * 64,
+                        "redaction_profile": "ecomevo-shadow-v1",
+                        "redaction_attested": True,
+                    },
+                    "observation": {
+                        "phase": "post_dispatch",
+                        "status_code": 504,
+                        "error_code": "UPSTREAM_TIMEOUT",
+                        "error_class": "GatewayTimeout",
+                        "latency_ms": 8120,
+                    },
+                },
+            )
+            assert shadow_import_response.status_code == 200
+            shadow_fixture = shadow_import_response.json()
+            assert shadow_fixture["expected_control"]["runtime_outcome"] == "uncertain"
+            assert shadow_fixture["replay_fixture"]["provenance_bound"] is True
+            assert shadow_fixture["replay_fixture"]["pre_redacted_metadata_only"] is True
+            assert shadow_fixture["replay_fixture"]["raw_payload_accepted"] is False
+            assert shadow_fixture["replay_fixture"]["persisted_by_importer"] is False
+            assert shadow_fixture["replay_fixture"]["invokes_real_system"] is False
+            assert shadow_fixture["replay_fixture"]["production_evidence"] is False
+            assert shadow_fixture["provenance"]["source_digest_verified_by_shadow"] is False
+            shadow_action_after_import = [
+                (row["id"], row["status"], row["payload"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            assert shadow_action_after_import == shadow_action_before
             assert client.get("/api/runtime/shadow/ui").status_code == 200
             assert client.get("/assets/shadow-environment.js").status_code == 200
             assert client.get("/assets/shadow-environment.css").status_code == 200
@@ -596,6 +639,9 @@ def main() -> None:
                 "shadow_runtime_outcome": shadow["expected_control"]["runtime_outcome"],
                 "shadow_invokes_real_system": shadow["replay_candidate"]["invokes_real_system"],
                 "shadow_changes_action_state": shadow["authority"]["changes_business_action_state"],
+                "shadow_fixture_provenance_bound": shadow_fixture["replay_fixture"]["provenance_bound"],
+                "shadow_fixture_raw_payload_accepted": shadow_fixture["replay_fixture"]["raw_payload_accepted"],
+                "shadow_fixture_source_digest_verified": shadow_fixture["provenance"]["source_digest_verified_by_shadow"],
                 "release_readiness_status": readiness["status"],
                 "deployment_topology_status": readiness_checks["deployment_topology"]["status"],
                 "deployment_topology_nodes": readiness["sources"]["deployment_topology"]["declared_nodes"],

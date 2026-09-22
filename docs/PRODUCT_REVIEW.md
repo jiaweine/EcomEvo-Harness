@@ -138,7 +138,9 @@ v0 readiness audit 已落地到 Routing Quality Control Tower：它只读 tenant
 
 v0 已落地 deterministic Shadow Enterprise Simulator，覆盖 MCP / browser / terminal / structured-data 四类 surface 的受限 failure / schema mutation 场景。模拟器只生成 tenant-scoped、内容哈希稳定的 offline replay / training candidate，不连接真实 MCP、Browser、Terminal、Provider 或业务系统，也不持久化 runtime state。对于 governed action 的 post-dispatch timeout / reset / 5xx / malformed response 等不确定故障，候选明确要求 `uncertain`、禁止自动重试并要求先核对业务状态；显式 permission rejection 不会被误标成 uncertain。Schema mutation 必须提供真实发生变化的 before / after fingerprint，否则 fail closed。
 
-Shadow 输出不是生产证据，不能替代真实集成测试、Verifier、Governance 或业务 Approval，也不能修改 routing、Policy、Runtime Skill、BusinessAction 或 tool authority。下一步可在保持这一非执行边界的前提下，把真实 provider/MCP/browser/terminal failure corpus 导入为经过脱敏和 provenance 绑定的 replay fixture。
+v1 进一步增加 fail-closed corpus fixture import：只接受 bounded、预脱敏的结构化故障元数据，以及由上游提供的 source-record SHA-256；API 明确拒绝 raw payload、headers、body 与自由文本 incident 内容。生成的 fixture hash 绑定 tenant、Shadow 场景语义、sanitized observation、source system/event/time 与上游 digest，并保持 deterministic。系统不会伪装成已经独立验证该上游 digest：`source_digest_verified_by_shadow=false`，真实性仍需由真实 provider/MCP/browser/terminal 采集链负责。
+
+Shadow 输出和 corpus fixture 都不是生产证据，不能替代真实集成测试、Verifier、Governance 或业务 Approval，也不能修改 routing、Policy、Runtime Skill、BusinessAction 或 tool authority。真实 failure corpus 接入仍应在外部采集层完成脱敏、digest 生成与保留策略，并通过这一窄接口导入，而不是把原始生产日志复制进 EcomEvo。
 
 ---
 
