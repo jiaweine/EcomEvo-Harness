@@ -35,4 +35,6 @@ def test_off_policy_pairing_and_exact_replay_fail_closed_on_incomplete_logs():
     assert "unpairable_decision_rounds" in source
     assert "unpairable_update_events" in source
     assert "reward_linked_rounds == decision_rounds" in source
+    assert "and unmatched_update_events == 0" in source
+    assert "and unpairable_update_events == 0" in source
     assert "and not truncated" in source

@@ -461,6 +461,8 @@ def main() -> None:
             assert off_policy["behavior_policy"]["family"] == "deterministic_ucb"
             assert off_policy["behavior_policy"]["randomized_action_assignment"] is False
             assert off_policy["behavior_policy"]["positivity_for_alternative_actions"] is False
+            assert isinstance(off_policy["coverage"]["unmatched_update_events"], int)
+            assert isinstance(off_policy["coverage"]["unpairable_update_events"], int)
             assert off_policy["candidate_counterfactual"]["status"] == "unavailable"
             assert off_policy["direct_method"]["status"] == "unavailable"
             assert off_policy["doubly_robust"]["status"] == "unavailable"
