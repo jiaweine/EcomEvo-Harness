@@ -98,7 +98,11 @@ MCP timeout、断线、5xx/408、协议损坏、internal error 等无法证明�
 
 ### Enterprise MCP Control Plane
 
-已落地 declared/effective read-write scope、credential owner、evidence tags、idempotency 冲突检测、probe health / latency / failure rate / schema drift 与服务端 schema fingerprint。浏览器不接收 endpoint、token env、secret 或完整 schema；probe 只调用 tools/list，不触发 tools/call。真实企业 deployment 仍需接入具体 IdP、secret manager 与 provider auth/rate-limit matrix。
+已落地 declared/effective read-write scope、credential owner、evidence tags、idempotency 冲突检测、probe health / latency / failure rate / schema drift 与服务端 schema fingerprint。浏览器不接收 endpoint、token env、secret 或完整 schema；probe 只调用 tools/list，不触发 tools/call。
+
+Release Readiness 现在进一步复用同一 durable probe history，而不是只检查“控制面不会执行工具”。对每个 enabled connection，发布前证据会 fail closed：治理声明存在确定性 warning、没有 durable probe、最新 probe 非 healthy、只有第一次 schema baseline 而尚未用后续相同 fingerprint 确认、或最新健康 probe 发现 schema changed 但尚未再次确认时，都会阻断进入人工发布评审。这里没有任意 success-rate / latency 阈值；历史 failure rate 和 latency 只作为描述性证据。
+
+这一收紧仍不等于真实 provider 集成认证：tools/list 不执行业务工具，因此不能证明真实 action auth、rate-limit 行为或 side-effect idempotency 语义；这些仍需要部署方的真实 provider/MCP auth/rate-limit/idempotency/failure matrix。
 
 ### Collaboration / Decision Export
 
@@ -154,7 +158,7 @@ Shadow 输出和 corpus fixture 都不是生产证据，不能替代真实集成
 
 - Operator active-hours 已有服务端 bucket 计量、tenant/user 去重、window coverage 防误读、重复 bucket 写抑制、固定 90 天 rolling retention 与数据库级跨 worker prune 协调；生产部署仍应验证真实工作台覆盖率和前台交互信号质量，且不得把该遥测当作考勤/薪资证据；
 - 企业 IdP / Gateway 接入；
-- 真实 provider/MCP auth/rate-limit/idempotency/failure matrix；
+- 真实 provider/MCP auth/rate-limit/idempotency/failure matrix；当前 Release Readiness 已要求 enabled connection 具有无治理冲突的声明、durable healthy probe 与二次确认后的稳定 schema，但不会把 tools/list 误称为真实业务工具认证；
 - Safari/Edge 与目标设备；
 - 真实大媒体和真实业务 Gold Set；
 - 目标规模下的生产数据库/队列拓扑；当前 Release Readiness 会阻断未声明或 >1 节点的 SQLite 部署意图，但不会把声明值误称为实际副本发现。
