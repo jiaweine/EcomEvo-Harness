@@ -66,3 +66,21 @@ def test_readiness_frontend_uses_exact_feedback_count_contract():
     assert "open_sample_count" not in js
     assert '"open_count": open_count' in service
     assert '"exact_count": True' in service
+
+
+def test_connection_readiness_is_get_only_and_never_executes_business_tools():
+    routes = (ROOT / "ecomevo" / "api" / "release_readiness_routes.py").read_text(encoding="utf-8")
+    readiness = (ROOT / "ecomevo" / "product" / "release_readiness.py").read_text(encoding="utf-8")
+    catalog = (ROOT / "ecomevo" / "product" / "connection_catalog.py").read_text(encoding="utf-8")
+    combined = routes + readiness + catalog
+
+    assert '@app.get("/api/runtime/readiness/connections")' in routes
+    assert '@app.post("/api/runtime/readiness/connections")' not in routes
+    assert '@app.patch("/api/runtime/readiness/connections")' not in routes
+    assert '@app.delete("/api/runtime/readiness/connections")' not in routes
+    assert '"business_tool_execution": False' in catalog
+    assert '"provider_rate_limits_certified": False' in catalog
+    assert '"side_effect_idempotency_behavior_certified": False' in catalog
+    assert '"connection_success_rate_threshold": None' in readiness
+    assert '"connection_latency_threshold_ms": None' in readiness
+    assert "tools/call" not in combined
