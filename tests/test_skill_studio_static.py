@@ -17,6 +17,7 @@ def test_skill_studio_has_no_production_promotion_or_action_execution_route():
 
 
 def test_skill_studio_ui_explains_evaluation_is_not_production_authority():
+    routes = (ROOT / "ecomevo/api/skill_studio_routes.py").read_text(encoding="utf-8")
     html = (ROOT / "frontend/skill-studio.html").read_text(encoding="utf-8")
     js = (ROOT / "frontend/skill-studio.js").read_text(encoding="utf-8")
     css = (ROOT / "frontend/skill-studio.css").read_text(encoding="utf-8")
