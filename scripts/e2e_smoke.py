@@ -78,6 +78,9 @@ def main() -> None:
             studio_before = client.get("/api/runtime/skills/catalog")
             assert studio_before.status_code == 200
             studio_catalog_before = studio_before.json()
+            assert studio_catalog_before["scope"] == "mixed"
+            assert studio_catalog_before["scopes"]["studio_families"] == "tenant"
+            assert studio_catalog_before["scopes"]["runtime_skills"] == "deployment_read_only"
             runtime_skills_before = studio_catalog_before["runtime_skills"]
             studio_payload = {
                 "domain": "aftersales",
@@ -107,6 +110,10 @@ def main() -> None:
             )
             assert submitted.status_code == 200
             assert submitted.json()["state"] == "review"
+            blocked_export = client.get(
+                f"/api/runtime/skills/studio/{studio_v2.json()[\'version_id\']}/release-candidate"
+            )
+            assert blocked_export.status_code == 409
             studio_after = client.get("/api/runtime/skills/catalog").json()
             assert studio_after["runtime_skills"] == runtime_skills_before
             assert studio_after["authority"]["candidate_evaluation_mutates_production"] is False
