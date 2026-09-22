@@ -434,7 +434,7 @@ def test_release_evidence_fails_closed_until_probe_and_schema_are_confirmed(tmp_
             "type": "object",
             "properties": {"order_id": {"type": "string"}},
         }
-        if calls == 3:
+        if calls >= 3:
             schema["properties"]["market"] = {"type": "string"}
         return httpx.Response(200, request=request, json={
             "jsonrpc": "2.0",
