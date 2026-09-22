@@ -55,3 +55,14 @@ def test_deployment_topology_guard_fails_closed_without_claiming_replica_discove
     assert '"cross_node_supported": False' in service
     assert '"actual_replica_discovery": False' in service
     assert '"requires_central_transactional_backend_for_multi_node": True' in service
+
+
+def test_readiness_frontend_uses_exact_feedback_count_contract():
+    js = (ROOT / "frontend" / "release-readiness.js").read_text(encoding="utf-8")
+    service = (ROOT / "ecomevo" / "product" / "release_readiness.py").read_text(encoding="utf-8")
+
+    assert "feedback.open_count" in js
+    assert "feedback.exact_count" in js
+    assert "open_sample_count" not in js
+    assert '"open_count": open_count' in service
+    assert '"exact_count": True' in service
