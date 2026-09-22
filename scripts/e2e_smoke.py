@@ -475,6 +475,43 @@ def main() -> None:
                 "executes_tools": False,
             }
 
+            shadow_catalog = client.get("/api/runtime/shadow/catalog")
+            assert shadow_catalog.status_code == 200
+            assert shadow_catalog.json()["tenant_scope"] == "local"
+            assert shadow_catalog.json()["authority"]["executes_real_tools"] is False
+            assert shadow_catalog.json()["authority"]["changes_business_action_state"] is False
+            shadow_action_before = [
+                (row["id"], row["status"], row["payload"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            shadow_response = client.post(
+                "/api/runtime/shadow/simulate",
+                json={
+                    "surface": "mcp",
+                    "operation": "governed_action",
+                    "mutation": "timeout_after_dispatch",
+                    "target": "refund.execute",
+                    "context_labels": ["aftersales", "refund"],
+                },
+            )
+            assert shadow_response.status_code == 200
+            shadow = shadow_response.json()
+            assert shadow["expected_control"]["runtime_outcome"] == "uncertain"
+            assert shadow["expected_control"]["automatic_retry_allowed"] is False
+            assert shadow["expected_control"]["requires_business_state_check"] is True
+            assert shadow["replay_candidate"]["executable"] is False
+            assert shadow["replay_candidate"]["persisted_by_simulator"] is False
+            assert shadow["replay_candidate"]["invokes_real_system"] is False
+            assert shadow["replay_candidate"]["production_evidence"] is False
+            shadow_action_after = [
+                (row["id"], row["status"], row["payload"])
+                for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
+            ]
+            assert shadow_action_after == shadow_action_before
+            assert client.get("/api/runtime/shadow/ui").status_code == 200
+            assert client.get("/assets/shadow-environment.js").status_code == 200
+            assert client.get("/assets/shadow-environment.css").status_code == 200
+
             readiness_action_before = [
                 (row["id"], row["status"])
                 for row in client.get(f"/api/conversations/{conv['id']}").json()["actions"]
@@ -555,6 +592,10 @@ def main() -> None:
                 "routing_off_policy_behavior": off_policy["behavior_policy"]["family"],
                 "routing_off_policy_candidate_counterfactual": off_policy["candidate_counterfactual"]["status"],
                 "routing_off_policy_doubly_robust": off_policy["doubly_robust"]["status"],
+                "shadow_candidate": shadow["candidate_id"],
+                "shadow_runtime_outcome": shadow["expected_control"]["runtime_outcome"],
+                "shadow_invokes_real_system": shadow["replay_candidate"]["invokes_real_system"],
+                "shadow_changes_action_state": shadow["authority"]["changes_business_action_state"],
                 "release_readiness_status": readiness["status"],
                 "deployment_topology_status": readiness_checks["deployment_topology"]["status"],
                 "deployment_topology_nodes": readiness["sources"]["deployment_topology"]["declared_nodes"],
