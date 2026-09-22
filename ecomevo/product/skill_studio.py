@@ -559,6 +559,7 @@ class SkillStudioStore:
         if current["state"] not in {"review", "evaluated_pass", "evaluated_fail"}:
             raise ValueError("submit the version before evaluation")
         result = await self._run_candidate_evaluation(current)
+        result_hash = _content_hash(result)
         evaluation_id = f"studio-eval-{uuid.uuid4().hex[:16]}"
         created_at = time.time()
         event_payload = {
@@ -569,6 +570,7 @@ class SkillStudioStore:
             "failed_case_count": int(result["failed_case_count"]),
             "drift_case_count": int(result["drift_case_count"]),
             "isolated_runtime": True,
+            "result_hash": result_hash,
         }
         with self._lock, self._conn() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -622,11 +624,13 @@ class SkillStudioStore:
             ).fetchone()
         if row is None:
             return None
+        result = json.loads(str(row["result_json"]))
         return {
             "id": str(row["id"]),
             "version_id": str(row["version_id"]),
             "content_hash": str(row["content_hash"]),
-            "result": json.loads(str(row["result_json"])),
+            "result": result,
+            "result_hash": _content_hash(result),
             "created_by": str(row["created_by"]),
             "created_at": float(row["created_at"]),
             "authority": authority_contract(),
@@ -643,7 +647,52 @@ class SkillStudioStore:
             raise KeyError(version_id)
         if current["state"] != "evaluated_pass" or not isinstance(current.get("evaluation"), dict):
             raise ValueError("only evaluated_pass versions can be exported")
-        evaluation = dict(current["evaluation"])
+        evaluation_event = dict(current["evaluation"])
+        evaluation_id = str(evaluation_event.get("evaluation_id") or "").strip()
+        if not evaluation_id:
+            raise RuntimeError("evaluated version is missing its evaluation snapshot id")
+        evaluation = self.get_evaluation(evaluation_id, tenant_id=tenant_id)
+        if evaluation is None:
+            raise RuntimeError("evaluation snapshot is missing")
+        if (
+            evaluation["version_id"] != current["version_id"]
+            or evaluation["content_hash"] != current["content_hash"]
+        ):
+            raise RuntimeError("evaluation snapshot does not match immutable skill version")
+
+        result = evaluation["result"]
+        result_candidate = result.get("candidate") if isinstance(result, dict) else None
+        if not isinstance(result_candidate, dict):
+            raise RuntimeError("evaluation snapshot is missing candidate provenance")
+        if (
+            str(result_candidate.get("version_id") or "") != current["version_id"]
+            or str(result_candidate.get("content_hash") or "") != current["content_hash"]
+        ):
+            raise RuntimeError("evaluation candidate provenance does not match immutable skill version")
+
+        isolation = result.get("isolation") if isinstance(result.get("isolation"), dict) else {}
+        durable_summary = {
+            "ok": bool(result.get("ok")),
+            "case_count": int(result.get("case_count") or 0),
+            "failed_case_count": int(result.get("failed_case_count") or 0),
+            "drift_case_count": int(result.get("drift_case_count") or 0),
+            "isolated_runtime": bool(isolation.get("temporary_runtime")),
+        }
+        event_summary = {
+            "ok": bool(evaluation_event.get("ok")),
+            "case_count": int(evaluation_event.get("case_count") or 0),
+            "failed_case_count": int(evaluation_event.get("failed_case_count") or 0),
+            "drift_case_count": int(evaluation_event.get("drift_case_count") or 0),
+            "isolated_runtime": bool(evaluation_event.get("isolated_runtime")),
+        }
+        if event_summary != durable_summary:
+            raise RuntimeError("evaluation summary does not match durable snapshot")
+
+        result_hash = str(evaluation["result_hash"])
+        bound_hash = str(evaluation_event.get("result_hash") or "").strip()
+        if bound_hash and bound_hash != result_hash:
+            raise RuntimeError("evaluation snapshot hash mismatch")
+
         candidate = {
             "domain": current["domain"],
             "name": current["name"],
@@ -657,7 +706,7 @@ class SkillStudioStore:
             "source_skill_id": current["source_skill_id"],
         }
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "source": {
                 "kind": "skill_studio",
                 "family_id": current["family_id"],
@@ -667,12 +716,10 @@ class SkillStudioStore:
             },
             "candidate": candidate,
             "evaluation": {
-                "evaluation_id": evaluation.get("evaluation_id"),
-                "ok": bool(evaluation.get("ok")),
-                "case_count": int(evaluation.get("case_count") or 0),
-                "failed_case_count": int(evaluation.get("failed_case_count") or 0),
-                "drift_case_count": int(evaluation.get("drift_case_count") or 0),
-                "isolated_runtime": bool(evaluation.get("isolated_runtime")),
+                "evaluation_id": evaluation_id,
+                **durable_summary,
+                "result_hash": result_hash,
+                "result_hash_bound_at_evaluation": bool(bound_hash),
             },
             "authority": authority_contract(),
         }

@@ -52,6 +52,9 @@ def test_studio_store_has_separate_immutable_tables_and_false_authority_contract
     assert '"release_candidate_activates_runtime": False' in source
     assert "tenant_id" in source
     assert "def release_candidate(" in source
+    assert '"result_hash": result_hash' in source
+    assert '"result_hash_bound_at_evaluation": bool(bound_hash)' in source
+    assert 'raise RuntimeError("evaluation snapshot hash mismatch")' in source
     assert "TemporaryDirectory" in source
     assert '"production_runtime_mutated": False' in source
     assert '"production_skill_promoted": False' in source
