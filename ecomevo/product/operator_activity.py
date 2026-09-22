@@ -24,8 +24,10 @@ class OperatorActivityLedger:
     long-running telemetry does not create one row per heartbeat.
 
     Duplicate heartbeats for an already-recorded slot are write-suppressed. A rolling
-    90-day server retention policy prunes expired telemetry at most once per process
-    day; the retention decision is maintenance-only and never depends on client time.
+    90-day server retention policy prunes expired telemetry through a durable
+    database-wide interval claim, so same-node worker processes do not each run a full
+    cleanup cycle. The retention decision is maintenance-only and never depends on
+    client time.
 
     This is operational activity telemetry, not payroll/timekeeping evidence. The
     server rejects client-supplied duration, but an authenticated client signal cannot
@@ -34,7 +36,6 @@ class OperatorActivityLedger:
 
     def __init__(self, store, *, ensure_schema: bool = True):
         self.store = store
-        self._last_prune_at: float | None = None
         if ensure_schema:
             self._init_schema()
 
@@ -46,6 +47,10 @@ class OperatorActivityLedger:
                     singleton INTEGER PRIMARY KEY CHECK(singleton=1),
                     measurement_started_at REAL NOT NULL,
                     bucket_seconds INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS operator_activity_maintenance(
+                    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                    retention_pruned_at REAL
                 );
                 CREATE TABLE IF NOT EXISTS operator_active_blocks(
                     tenant_id TEXT NOT NULL,
@@ -69,6 +74,13 @@ class OperatorActivityLedger:
                 ) VALUES(1,?,?)
                 """,
                 (float(time.time()), BUCKET_SECONDS),
+            )
+            db.execute(
+                """
+                INSERT OR IGNORE INTO operator_activity_maintenance(
+                    singleton,retention_pruned_at
+                ) VALUES(1,NULL)
+                """
             )
 
     def instrumented(self) -> bool:
@@ -137,13 +149,30 @@ class OperatorActivityLedger:
         slot_mask = 1 << slot_index
         return block_start, slot_index, slot_mask
 
-    def _should_prune(self, observed_at: float) -> bool:
-        previous = self._last_prune_at
-        if previous is None:
-            return True
-        if observed_at <= previous:
-            return False
-        return observed_at - previous >= PRUNE_INTERVAL_SECONDS
+    @staticmethod
+    def _claim_prune(db, *, observed_at: float) -> bool:
+        """Atomically claim the global retention interval inside the write transaction."""
+        cursor = db.execute(
+            """
+            UPDATE operator_activity_maintenance
+            SET retention_pruned_at=?
+            WHERE singleton=1
+              AND (
+                    retention_pruned_at IS NULL
+                    OR (
+                        ? > retention_pruned_at
+                        AND ? - retention_pruned_at >= ?
+                    )
+                  )
+            """,
+            (
+                observed_at,
+                observed_at,
+                observed_at,
+                PRUNE_INTERVAL_SECONDS,
+            ),
+        )
+        return int(cursor.rowcount or 0) > 0
 
     @staticmethod
     def _prune_expired(db, *, observed_at: float) -> None:
@@ -192,10 +221,10 @@ class OperatorActivityLedger:
         observed_at = float(time.time() if now is None else now)
         block_start, slot_index, slot_mask = self._slot(observed_at)
         clean_surface = self._surface(surface)
-        should_prune = self._should_prune(observed_at)
 
         with self.store._conn() as db:
-            if should_prune:
+            prune_claimed = self._claim_prune(db, observed_at=observed_at)
+            if prune_claimed:
                 self._prune_expired(db, observed_at=observed_at)
             cursor = db.execute(
                 """
@@ -211,8 +240,6 @@ class OperatorActivityLedger:
                 (tenant, user, block_start, slot_mask, clean_surface, observed_at),
             )
 
-        if should_prune:
-            self._last_prune_at = observed_at
         new_bucket = int(cursor.rowcount or 0) > 0
         return {
             "recorded": True,
@@ -254,6 +281,9 @@ class OperatorActivityLedger:
             "granularity_seconds": BUCKET_SECONDS,
             "server_enforced": True,
             "client_configurable": False,
+            "prune_interval_seconds": PRUNE_INTERVAL_SECONDS,
+            "prune_coordination": "durable_database_global",
+            "prune_scope": "shared_operator_activity_database",
         }
         requested_window_seconds = max(0.0, end - start)
         measurement_started_at = self.measurement_started_at()
