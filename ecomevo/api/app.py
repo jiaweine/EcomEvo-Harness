@@ -25,6 +25,7 @@ from .policy_workflow_routes import install_policy_workflow_routes
 from .policy_worker import PolicyAwareDurableConversationWorker
 from .release_readiness_routes import install_release_readiness_routes
 from .routing_quality_routes import install_routing_quality_routes
+from .runtime_authority_routes import install_runtime_authority_routes
 from .shadow_environment_routes import install_shadow_environment_routes
 from .skill_studio_routes import install_skill_studio_routes
 from .upload_security import validate_raster as _validate_raster
@@ -136,6 +137,13 @@ if not getattr(_application.app.state, "release_readiness_routes_installed", Fal
         frontend=_application.FRONTEND,
     )
     _application.app.state.release_readiness_routes_installed = True
+
+if not getattr(_application.app.state, "runtime_authority_routes_installed", False):
+    _application.runtime_authority_snapshot = install_runtime_authority_routes(
+        _application.app,
+        db_path=_application.engine.policies.db_path,
+    )
+    _application.app.state.runtime_authority_routes_installed = True
 
 if not getattr(_application.app.state, "skill_studio_routes_installed", False):
     _application.skill_studio = install_skill_studio_routes(
