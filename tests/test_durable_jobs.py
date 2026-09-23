@@ -155,9 +155,23 @@ class NoopMCP:
         return None
 
 
-async def fenced_emit(store, cid, event_type, payload, job_id=None, worker_id=None):
+async def fenced_emit(
+    store,
+    cid,
+    event_type,
+    payload,
+    job_id=None,
+    worker_id=None,
+    lease_fence=None,
+):
     if job_id and worker_id:
-        return store.add_job_event(job_id, worker_id, event_type, payload)
+        return store.add_job_event(
+            job_id,
+            worker_id,
+            event_type,
+            payload,
+            lease_fence=lease_fence,
+        )
     return store.add_event(cid, event_type, payload)
 
 
@@ -179,7 +193,7 @@ def force_job_handoff(store, job_id, new_worker_id):
     with store._conn() as c:
         c.execute("BEGIN IMMEDIATE")
         cur = c.execute(
-            "UPDATE conversation_jobs SET worker_id=?,lease_until=?,attempts=attempts+1 "
+            "UPDATE conversation_jobs SET worker_id=?,lease_until=?,lease_fence=lease_fence+1,attempts=attempts+1 "
             "WHERE id=? AND status='running'",
             (new_worker_id, time.time() + 60, job_id),
         )
@@ -195,8 +209,8 @@ async def test_stale_worker_cannot_emit_progress_or_release_turn_after_handoff(t
     analyzer = HandoffAnalyzer()
     worker = DurableConversationWorker(
         store, analyzer, NoopMCP(),
-        emit=lambda cid, event_type, payload, job_id=None, worker_id=None: fenced_emit(
-            store, cid, event_type, payload, job_id, worker_id
+        emit=lambda cid, event_type, payload, job_id=None, worker_id=None, lease_fence=None: fenced_emit(
+            store, cid, event_type, payload, job_id, worker_id, lease_fence
         ),
         wake=lambda _cid: None,
     )
@@ -223,8 +237,8 @@ async def test_worker_cancels_analysis_when_renewal_detects_lease_loss(tmp_path)
     analyzer = CancellableAnalyzer()
     worker = DurableConversationWorker(
         store, analyzer, NoopMCP(),
-        emit=lambda cid, event_type, payload, job_id=None, worker_id=None: fenced_emit(
-            store, cid, event_type, payload, job_id, worker_id
+        emit=lambda cid, event_type, payload, job_id=None, worker_id=None, lease_fence=None: fenced_emit(
+            store, cid, event_type, payload, job_id, worker_id, lease_fence
         ),
         wake=lambda _cid: None,
     )
@@ -251,8 +265,8 @@ async def test_worker_cancels_analysis_when_lease_renewal_errors(tmp_path, monke
     analyzer = CancellableAnalyzer()
     worker = DurableConversationWorker(
         store, analyzer, NoopMCP(),
-        emit=lambda cid, event_type, payload, job_id=None, worker_id=None: fenced_emit(
-            store, cid, event_type, payload, job_id, worker_id
+        emit=lambda cid, event_type, payload, job_id=None, worker_id=None, lease_fence=None: fenced_emit(
+            store, cid, event_type, payload, job_id, worker_id, lease_fence
         ),
         wake=lambda _cid: None,
     )

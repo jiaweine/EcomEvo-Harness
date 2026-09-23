@@ -17,10 +17,7 @@ from ecomevo.providers.telemetry import (
     summarize_provider_usage,
 )
 
-EmitFn = Callable[
-    [str, str, dict[str, Any], str | None, str | None],
-    Awaitable[dict[str, Any] | None],
-]
+EmitFn = Callable[..., Awaitable[dict[str, Any] | None]]
 WakeFn = Callable[[str], None]
 
 
@@ -94,7 +91,10 @@ class DurableConversationWorker:
         lease_lost: asyncio.Event,
     ) -> None:
         cid = str(job["conversation_id"])
-        token = str((job.get("payload") or {}).get("lease_token") or "")
+        payload = job.get("payload") or {}
+        token = str(payload.get("lease_token") or "")
+        turn_fence = payload.get("turn_fence")
+        lease_fence = int(job.get("lease_fence") or 0)
         while not stop.is_set():
             try:
                 await asyncio.wait_for(stop.wait(), timeout=self.renew_interval_seconds)
@@ -107,6 +107,7 @@ class DurableConversationWorker:
                     job["id"],
                     self.worker_id,
                     self.lease_seconds,
+                    lease_fence=lease_fence,
                 )
                 if not job_ok:
                     lease_lost.set()
@@ -116,6 +117,7 @@ class DurableConversationWorker:
                     cid,
                     token,
                     self.lease_seconds,
+                    fence=turn_fence,
                 )
                 if not turn_ok:
                     lease_lost.set()
@@ -133,6 +135,8 @@ class DurableConversationWorker:
         payload = job.get("payload") or {}
         cid = str(job["conversation_id"])
         token = str(payload.get("lease_token") or "")
+        turn_fence = payload.get("turn_fence")
+        lease_fence = int(job.get("lease_fence") or 0)
         # Fence a stale in-memory claim before doing provider or tool work.
         try:
             job_owned = await asyncio.to_thread(
@@ -140,6 +144,7 @@ class DurableConversationWorker:
                 job["id"],
                 self.worker_id,
                 self.lease_seconds,
+                lease_fence=lease_fence,
             )
         except Exception:
             self.logger.exception(
@@ -155,6 +160,7 @@ class DurableConversationWorker:
                 cid,
                 token,
                 self.lease_seconds,
+                fence=turn_fence,
             )
         except Exception:
             self.logger.exception(
@@ -166,6 +172,7 @@ class DurableConversationWorker:
                 self.store.finish_job_failure,
                 job["id"],
                 worker_id=self.worker_id,
+                lease_fence=lease_fence,
                 message="本次处理没有完成",
                 detail="任务执行权已发生变化，系统已停止旧任务以避免重复处理。",
             )
@@ -185,7 +192,12 @@ class DurableConversationWorker:
                 if lease_lost.is_set():
                     raise _JobLeaseLost(job["id"])
                 event = await self.emit(
-                    cid, event_type, event_payload, job["id"], self.worker_id
+                    cid,
+                    event_type,
+                    event_payload,
+                    job["id"],
+                    self.worker_id,
+                    lease_fence,
                 )
                 if not event:
                     lease_lost.set()
@@ -251,6 +263,7 @@ class DurableConversationWorker:
                 self.store.finish_job_success,
                 job["id"],
                 worker_id=self.worker_id,
+                lease_fence=lease_fence,
                 session_id=result["session_id"],
                 actions=actions,
                 answer=result["answer"],
@@ -268,6 +281,7 @@ class DurableConversationWorker:
                 self.store.finish_job_failure,
                 job["id"],
                 worker_id=self.worker_id,
+                lease_fence=lease_fence,
                 message="本次处理没有完成",
                 detail="服务执行异常，任务资料仍然保留；请重试，如持续失败请联系管理员。",
             )

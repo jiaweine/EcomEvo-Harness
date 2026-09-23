@@ -138,7 +138,9 @@ v0 readiness audit 已落地到 Routing Quality Control Tower：它只读 tenant
 
 当前 durable control plane 基于 SQLite WAL，已经能跨进程 reclaim，但仍有单节点/single-writer 边界。v0 部署拓扑前置闸门已落地：Release Readiness 要求部署方显式声明 `ECOMEVO_DEPLOYMENT_NODES`，当前只有 `1` 能通过；未声明、非法值或多节点声明都会 fail closed，并明确说明这不是实际副本自动发现。Runtime 进一步 fail fast：完全未声明时仅允许兼容启动且保持 release-unattested；一旦显式声明为空、非法或 `>1`，会在打开 runtime 数据库和启动 durable worker 前拒绝启动。
 
-v1 已新增机器可读的 multi-node migration readiness contract，但仍不宣称多节点支持。它把迁移拆成 5 个当前明确未满足的前置条件：共享 product transaction/CAS + monotonic event domain、跨节点 authoritative lease clock + fencing、共享 immutable asset storage、共享 runtime authority state、共享 admin/release evidence state；同时要求未来目标后端重新通过 cross-node job lease handoff、BusinessAction CAS、event reconnect、asset snapshot integrity、authority consistency 与 failure recovery 六类认证 gate。当前 lease 仍依赖 application wall clock，durable asset 仍通过 node-local filesystem path 重开，因此仅替换 database URL 不能被当成多节点完成证据。该 readiness 只读、不能改拓扑或存储后端，也不接受 deployment 自报“已共享”作为解锁条件。真正完成多节点仍需要先实现这些共享能力，再在真实多节点拓扑上重跑 correctness / authority / side-effect uncertainty gates。
+v1 已新增机器可读的 multi-node migration readiness contract，但仍不宣称多节点支持。它把迁移拆成 5 个当前明确未满足的前置条件：共享 product transaction/CAS + monotonic event domain、跨节点 authoritative lease clock + fencing、共享 immutable asset storage、共享 runtime authority state、共享 admin/release evidence state；同时要求未来目标后端重新通过 cross-node job lease handoff、BusinessAction CAS、event reconnect、asset snapshot integrity、authority consistency 与 failure recovery 六类认证 gate。
+
+当前本地 durable ownership 已进一步强化：turn lease 与 job lease 都有持久化、单调递增的 fencing generation；worker 的 renew、progress event 与 terminal success/failure commit 都绑定 exact generation，旧 generation 即使复用相同 worker identity 也不能继续写。Lease 过期判断也从 application wall clock 切到持有 lease row 的 SQLite transaction-domain clock，避免应用进程时钟直接决定 ownership。这个改动只增强单节点/多进程 correctness：SQLite transaction domain 仍是 node-local，不能被称为跨节点 authoritative clock；durable asset 仍通过 node-local filesystem path 重开。因此仅替换 database URL、仅拥有本地 fencing、或 deployment 自报“已共享”都不能解锁多节点。真正完成多节点仍需要实现其余共享能力，并在真实多节点拓扑上重跑 correctness / authority / side-effect uncertainty gates。
 
 ### Shadow Environment
 

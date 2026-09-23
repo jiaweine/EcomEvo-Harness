@@ -18,12 +18,13 @@ MULTI_NODE_REQUIREMENTS: tuple[dict[str, Any], ...] = (
     {
         "id": "cross_node_lease_fencing_clock",
         "surface": "lease_coordination",
-        "current_backend": "application_wall_clock_plus_sqlite_rows",
+        "current_backend": "sqlite_transaction_clock_with_monotonic_fencing",
         "required_capability": "shared_authoritative_lease_clock_and_fencing_tokens",
         "current_satisfied": False,
         "reason": (
-            "turn/job lease expiry currently uses application process time; a multi-node backend "
-            "must not rely on unsynchronized node wall clocks for ownership safety"
+            "turn/job lease expiry now uses the SQLite transaction-domain clock and monotonic "
+            "fencing generations, removing application wall-clock ownership decisions; the "
+            "transaction domain is still node-local and therefore not cross-node authoritative"
         ),
     },
     {
@@ -133,7 +134,10 @@ def multi_node_migration_readiness(
             "product_state": "sqlite_wal_local_file",
             "runtime_authority": "sqlite_wal_local_runtime_db",
             "asset_storage": "node_local_filesystem_paths",
-            "lease_clock": "application_wall_clock",
+            "lease_clock": "sqlite_transaction_domain",
+            "turn_lease_fencing_generation": True,
+            "job_lease_fencing_generation": True,
+            "cross_node_lease_authority": False,
             "admin_control_state": "multiple_node_local_sqlite_databases",
         },
         "requirements": requirements,
@@ -151,6 +155,7 @@ def multi_node_migration_readiness(
             "replica_discovery": False,
             "self_attested_backend_capabilities_accepted": False,
             "database_url_swap_is_sufficient": False,
+            "local_lease_fencing_is_cross_node_certification": False,
             "all_requirements_must_be_verified": True,
             "all_certification_gates_must_pass": True,
             "release_authority_granted": False,

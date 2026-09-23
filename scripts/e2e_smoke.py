@@ -22,7 +22,15 @@ def main() -> None:
         with TestClient(app) as client:
             runtime_response = client.get("/api/runtime")
             assert runtime_response.status_code == 200
-            runtime_topology = runtime_response.json()["deployment_topology"]
+            runtime = runtime_response.json()
+            runtime_topology = runtime["deployment_topology"]
+            coordination = runtime["execution"]["coordination"]
+            assert coordination["lease_clock"] == "sqlite_transaction_domain"
+            assert coordination["turn_lease_fencing_generation"] is True
+            assert coordination["job_lease_fencing_generation"] is True
+            assert coordination["stale_generation_terminal_commit_blocked"] is True
+            assert coordination["cross_node_shared_transaction_domain"] is False
+            assert coordination["cross_node_supported"] is False
             assert runtime_topology["declared_nodes"] == 1
             assert runtime_topology["runtime_start_allowed"] is True
             assert runtime_topology["release_supported"] is True
@@ -580,6 +588,11 @@ def main() -> None:
             assert "shared_immutable_asset_storage" in migration["blocker_ids"]
             assert migration["methodology"]["self_attested_backend_capabilities_accepted"] is False
             assert migration["methodology"]["database_url_swap_is_sufficient"] is False
+            assert migration["methodology"]["local_lease_fencing_is_cross_node_certification"] is False
+            assert migration["current_architecture"]["lease_clock"] == "sqlite_transaction_domain"
+            assert migration["current_architecture"]["turn_lease_fencing_generation"] is True
+            assert migration["current_architecture"]["job_lease_fencing_generation"] is True
+            assert migration["current_architecture"]["cross_node_lease_authority"] is False
             migration_route = client.get("/api/runtime/readiness/multi-node")
             assert migration_route.status_code == 200
             assert migration_route.json()["ready"] is False
@@ -680,6 +693,10 @@ def main() -> None:
                 "connection_release_full_provider_certification": connection_release["methodology"]["provider_auth_behavior_fully_certified"],
                 "runtime_topology_start_allowed": runtime_topology["runtime_start_allowed"],
                 "runtime_topology_actual_replica_discovery": runtime_topology["actual_replica_discovery"],
+                "runtime_lease_clock": coordination["lease_clock"],
+                "runtime_turn_fencing": coordination["turn_lease_fencing_generation"],
+                "runtime_job_fencing": coordination["job_lease_fencing_generation"],
+                "runtime_cross_node_shared_transaction_domain": coordination["cross_node_shared_transaction_domain"],
                 "release_readiness_snapshot": readiness_snapshot_id,
                 "release_readiness_authority_changed": False,
                 "event_chain_valid": True,
