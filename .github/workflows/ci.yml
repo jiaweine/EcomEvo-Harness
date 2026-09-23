@@ -83,6 +83,7 @@ jobs:
         run: |
           python scripts/e2e_smoke.py
           python scripts/runtime_authority_smoke.py
+          python scripts/admin_control_state_smoke.py
 
   compatibility:
     name: Python 3.14 compatibility

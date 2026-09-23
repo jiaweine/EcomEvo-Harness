@@ -12,6 +12,7 @@ from ecomevo.evaluation import EvaluationCenter
 from ecomevo.identity import IdentityMiddleware
 from ecomevo.product.release_readiness import ReleaseReadinessCenter
 from . import application as _application
+from .admin_control_state_routes import install_admin_control_state_routes
 from .connection_routes import install_connection_routes
 from .decision_export_routes import install_decision_export_routes
 from .evaluation_api import build_evaluation_router
@@ -153,6 +154,13 @@ if not getattr(_application.app.state, "skill_studio_routes_installed", False):
         frontend=_application.FRONTEND,
     )
     _application.app.state.skill_studio_routes_installed = True
+
+if not getattr(_application.app.state, "admin_control_state_routes_installed", False):
+    _application.admin_control_state_manifest = install_admin_control_state_routes(
+        _application.app,
+        data_dir=_application.DATA_DIR,
+    )
+    _application.app.state.admin_control_state_routes_installed = True
 
 if not getattr(_application.app.state, "identity_middleware_installed", False):
     _application.app.add_middleware(IdentityMiddleware, store=_application.store)
