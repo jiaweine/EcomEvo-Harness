@@ -48,7 +48,13 @@ def test_multi_node_intent_remains_blocked_by_real_architecture_gaps():
     assert result["current_architecture"] == {
         "product_state": "sqlite_wal_local_file",
         "runtime_authority": "sqlite_wal_local_runtime_db",
-        "asset_storage": "node_local_filesystem_paths",
+        "asset_storage": "tenant_scoped_hash_addressed_node_local_filesystem",
+        "asset_identity": "tenant_namespace_plus_sha256_plus_object_id",
+        "asset_hash_verified_on_commit": True,
+        "asset_physical_deduplication": False,
+        "asset_shared_reference_protocol": False,
+        "safe_immediate_asset_physical_delete": True,
+        "cross_node_asset_visibility": False,
         "lease_clock": "sqlite_transaction_domain",
         "turn_lease_fencing_generation": True,
         "job_lease_fencing_generation": True,
@@ -70,9 +76,32 @@ def test_contract_rejects_self_attestation_as_evidence():
     assert methodology["self_attested_backend_capabilities_accepted"] is False
     assert methodology["database_url_swap_is_sufficient"] is False
     assert methodology["local_lease_fencing_is_cross_node_certification"] is False
+    assert methodology["local_hash_addressing_is_cross_node_certification"] is False
+    assert methodology["physical_deduplication_without_reference_protocol_allowed"] is False
     assert methodology["all_requirements_must_be_verified"] is True
     assert methodology["all_certification_gates_must_pass"] is True
     assert methodology["release_authority_granted"] is False
+
+
+def test_local_hash_addressing_does_not_satisfy_shared_asset_storage():
+    result = multi_node_migration_readiness(
+        declared_nodes=2,
+        declaration_valid=True,
+    )
+    asset_requirement = next(
+        row for row in result["requirements"]
+        if row["id"] == "shared_immutable_asset_storage"
+    )
+
+    assert asset_requirement["current_backend"] == "tenant_scoped_hash_addressed_node_local_filesystem"
+    assert asset_requirement["current_satisfied"] is False
+    assert result["current_architecture"]["asset_identity"] == "tenant_namespace_plus_sha256_plus_object_id"
+    assert result["current_architecture"]["asset_hash_verified_on_commit"] is True
+    assert result["current_architecture"]["asset_physical_deduplication"] is False
+    assert result["current_architecture"]["asset_shared_reference_protocol"] is False
+    assert result["current_architecture"]["safe_immediate_asset_physical_delete"] is True
+    assert result["current_architecture"]["cross_node_asset_visibility"] is False
+    assert result["ready"] is False
 
 
 def test_contract_covers_fencing_assets_authority_and_failure_recovery():

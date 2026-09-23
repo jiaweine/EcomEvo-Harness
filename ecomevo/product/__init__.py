@@ -11,6 +11,7 @@ else:
 
         pass
 
+from . import content_addressed_assets as _content_addressed_assets  # install asset object identity after store classes load
 from .media import probe_media, extract_video_frames
 
 try:

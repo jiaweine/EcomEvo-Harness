@@ -14,6 +14,9 @@ def test_multi_node_contract_has_no_self_attested_unlock_surface():
     assert '"ready": False' in service
     assert '"self_attested_backend_capabilities_accepted": False' in service
     assert '"database_url_swap_is_sufficient": False' in service
+    assert '"local_lease_fencing_is_cross_node_certification": False' in service
+    assert '"local_hash_addressing_is_cross_node_certification": False' in service
+    assert '"physical_deduplication_without_reference_protocol_allowed": False' in service
     assert '@app.get("/api/runtime/readiness/multi-node")' in routes
     assert '@app.post("/api/runtime/readiness/multi-node")' not in routes
     assert '@app.patch("/api/runtime/readiness/multi-node")' not in routes
@@ -26,7 +29,11 @@ def test_multi_node_contract_names_current_local_state_boundaries():
     for token in (
         "sqlite_wal_local_file",
         "sqlite_transaction_clock_with_monotonic_fencing",
-        "node_local_filesystem_paths",
+        "tenant_scoped_hash_addressed_node_local_filesystem",
+        "tenant_namespace_plus_sha256_plus_object_id",
+        "asset_physical_deduplication",
+        "asset_shared_reference_protocol",
+        "cross_node_asset_visibility",
         "sqlite_wal_local_runtime_db",
         "multiple_node_local_sqlite_databases",
         "shared_authoritative_lease_clock_and_fencing_tokens",

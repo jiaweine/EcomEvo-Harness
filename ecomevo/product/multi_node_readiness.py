@@ -30,12 +30,14 @@ MULTI_NODE_REQUIREMENTS: tuple[dict[str, Any], ...] = (
     {
         "id": "shared_immutable_asset_storage",
         "surface": "asset_storage",
-        "current_backend": "node_local_filesystem_paths",
+        "current_backend": "tenant_scoped_hash_addressed_node_local_filesystem",
         "required_capability": "shared_content_addressed_or_object_storage_with_hash_verification",
         "current_satisfied": False,
         "reason": (
-            "durable workers reopen asset snapshots from server-local filesystem paths; another "
-            "application node is not guaranteed to see identical bytes"
+            "uploaded assets and derived keyframes now receive tenant-scoped immutable object identities "
+            "bound to SHA-256 with hash verification, while separate object instances preserve safe physical "
+            "delete semantics without a shared-reference protocol; the backend remains node-local, so another "
+            "application node is not guaranteed to resolve an object key to the same bytes"
         ),
     },
     {
@@ -133,7 +135,13 @@ def multi_node_migration_readiness(
         "current_architecture": {
             "product_state": "sqlite_wal_local_file",
             "runtime_authority": "sqlite_wal_local_runtime_db",
-            "asset_storage": "node_local_filesystem_paths",
+            "asset_storage": "tenant_scoped_hash_addressed_node_local_filesystem",
+            "asset_identity": "tenant_namespace_plus_sha256_plus_object_id",
+            "asset_hash_verified_on_commit": True,
+            "asset_physical_deduplication": False,
+            "asset_shared_reference_protocol": False,
+            "safe_immediate_asset_physical_delete": True,
+            "cross_node_asset_visibility": False,
             "lease_clock": "sqlite_transaction_domain",
             "turn_lease_fencing_generation": True,
             "job_lease_fencing_generation": True,
@@ -156,6 +164,8 @@ def multi_node_migration_readiness(
             "self_attested_backend_capabilities_accepted": False,
             "database_url_swap_is_sufficient": False,
             "local_lease_fencing_is_cross_node_certification": False,
+            "local_hash_addressing_is_cross_node_certification": False,
+            "physical_deduplication_without_reference_protocol_allowed": False,
             "all_requirements_must_be_verified": True,
             "all_certification_gates_must_pass": True,
             "release_authority_granted": False,
