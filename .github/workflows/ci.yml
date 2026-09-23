@@ -80,7 +80,9 @@ jobs:
           print('frontend static checks ok')
           PY
       - name: Product smoke
-        run: python scripts/e2e_smoke.py
+        run: |
+          python scripts/e2e_smoke.py
+          python scripts/runtime_authority_smoke.py
 
   compatibility:
     name: Python 3.14 compatibility

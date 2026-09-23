@@ -122,13 +122,16 @@ class DurableConversationWorker:
                 if not turn_ok:
                     lease_lost.set()
                     return
-            except Exception:
-                # If ownership cannot be re-established, continuing provider/tool work
-                # would be unsafe even when the database failure is transient.
-                self.logger.exception(
-                    "durable conversation job lease renewal failed: %s", job.get("id")
-                )
+            except Exception as exc:
+                # Publish lease loss before potentially slow log I/O. Safety cancellation
+                # must not wait for a synchronous logging handler under runner/load pressure.
                 lease_lost.set()
+                await asyncio.to_thread(
+                    self.logger.error,
+                    "durable conversation job lease renewal failed: %s",
+                    job.get("id"),
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
                 return
 
     async def _execute(self, job: dict[str, Any]) -> None:
