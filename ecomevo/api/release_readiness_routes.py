@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from ecomevo.identity import current_principal
+from ecomevo.product.multi_node_certification import certification_contract
 from ecomevo.product.release_readiness import ReleaseReadinessCenter
 
 
@@ -29,6 +30,11 @@ def install_release_readiness_routes(
     def readiness_multi_node():
         current_principal()
         return center.multi_node_readiness()
+
+    @app.get("/api/runtime/readiness/multi-node/certification-contract")
+    def readiness_multi_node_certification_contract():
+        current_principal()
+        return certification_contract()
 
     @app.get("/api/runtime/readiness/connections")
     def readiness_connections():
