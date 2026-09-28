@@ -49,7 +49,7 @@ include = ["ecomevo*", "frontend"]
 exclude = ["tests*", "outputs*", "docs*", "scripts*"]
 
 [tool.setuptools.package-data]
-frontend = ["*.html", "*.css", "*.js"]
+frontend = ["*.html", "*.css", "*.js", "*.webmanifest", "*.svg"]
 "ecomevo.evals" = ["*.jsonl"]
 
 [tool.pytest.ini_options]
