@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <meta name="description" content="GrowthEvo — AI 原生因果增长决策与执行平台" />
+  <title>GrowthEvo · 增长驾驶舱</title>
+  <link rel="manifest" href="/assets/growth-manifest.webmanifest" />
+  <link rel="stylesheet" href="/assets/growth.css" />
+  <script defer src="/assets/growth.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">G</div>
+        <div>
+          <strong>GrowthEvo</strong>
+          <span>因果驱动的增长操作系统</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item active" data-view="dashboard"><span class="nav-icon">⌂</span><span>增长驾驶舱</span></button>
+        <button class="nav-item" data-view="strategy"><span class="nav-icon">⌘</span><span>策略与执行</span></button>
+        <button class="nav-item" data-view="agent"><span class="nav-icon">◈</span><span>Growth Agent</span></button>
+        <button class="nav-item" data-view="evidence"><span class="nav-icon">◎</span><span>智能与证据</span></button>
+        <button class="nav-item" data-view="runtime"><span class="nav-icon">⌁</span><span>Agent Runtime</span></button>
+        <button class="nav-item" data-view="data"><span class="nav-icon">◇</span><span>数据中心</span></button>
+        <button class="nav-item" data-view="integrations"><span class="nav-icon">⇄</span><span>集成与渠道</span></button>
+        <button class="nav-item" data-view="settings"><span class="nav-icon">⚙</span><span>设置</span></button>
+      </nav>
+
+      <div class="sidebar-spacer"></div>
+      <div class="workspace-card">
+        <div class="workspace-avatar">A</div>
+        <div class="workspace-copy"><strong>Acme 电商</strong><span>Enterprise Plan</span></div>
+        <span>⌄</span>
+      </div>
+      <div class="profile-card">
+        <div class="profile-avatar">李</div>
+        <div><strong>李明</strong><span>增长负责人</span></div>
+      </div>
+      <button class="collapse-control" type="button">‹ <span>收起</span></button>
+    </aside>
+
+    <main class="main-column">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="打开导航">☰</button>
+        <button class="search-trigger" id="commandTrigger" aria-haspopup="dialog">
+          <span class="search-icon">⌕</span>
+          <span>搜索用户、活动、实验、创意或向 AI 提问…</span>
+          <kbd>⌘ K</kbd>
+        </button>
+        <div class="top-actions">
+          <select id="periodSelect" aria-label="时间范围">
+            <option value="7">近 7 天</option>
+            <option value="30" selected>近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+          <select aria-label="渠道筛选"><option>全部渠道</option><option>App Push</option><option>Email</option><option>短信</option></select>
+          <button class="icon-btn" aria-label="通知">●</button>
+          <div class="top-avatar">L</div>
+        </div>
+      </header>
+
+      <div class="page-layout">
+        <section class="content-column" id="mainContent">
+          <div class="hero-row">
+            <div>
+              <p class="eyebrow">GROWTH CONTROL PLANE</p>
+              <h1>早上好，李明</h1>
+              <p class="hero-subtitle">今天有 <strong id="urgentCount">3</strong> 个关键事项需要关注。系统正在优化 <strong id="runningCount">—</strong> 个活动，优先最大化真实增量价值。</p>
+            </div>
+            <div class="hero-actions">
+              <button class="btn primary" id="newCampaignBtn"><span>＋</span> 新建活动</button>
+              <button class="btn secondary" id="agentOpenBtn"><span>◈</span> 与 Agent 对话</button>
+              <button class="btn ghost icon-only" aria-label="更多操作">•••</button>
+            </div>
+          </div>
+
+          <div class="reference-banner" id="referenceBanner">
+            <span class="status-dot"></span>
+            <span>当前工作区使用 reference seed 数据验证产品闭环；接入数据源后 KPI 将自动切换为真实业务数据。</span>
+          </div>
+
+          <section class="kpi-grid" aria-label="核心 KPI">
+            <article class="kpi-card">
+              <div class="kpi-label">增量收入 <button class="info" title="相较 NO_TREATMENT 的归因增量">i</button></div>
+              <div class="kpi-value" id="kpiRevenue">—</div>
+              <div class="kpi-foot"><span class="positive">↑ 23.4%</span><span>较上期</span><span class="spark" id="sparkRevenue"></span></div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">增量利润</div>
+              <div class="kpi-value" id="kpiProfit">—</div>
+              <div class="kpi-foot"><span class="positive">↑ 26.1%</span><span>较上期</span><span class="spark" id="sparkProfit"></span></div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">Incremental ROI</div>
+              <div class="kpi-value" id="kpiRoi">—</div>
+              <div class="kpi-foot"><span class="positive">↑ 0.8x</span><span>净增量</span><span class="spark" id="sparkRoi"></span></div>
+            </article>
+            <article class="kpi-card">
+              <div class="kpi-label">无效触达节省</div>
+              <div class="kpi-value" id="kpiAvoided">—</div>
+              <div class="kpi-foot"><span class="positive">↑ 31.8%</span><span>NO_TREATMENT</span><span class="spark" id="sparkAvoided"></span></div>
+            </article>
+          </section>
+
+          <section class="analytics-grid">
+            <article class="panel trend-panel">
+              <div class="panel-head">
+                <div><h2>增量效果趋势</h2><p>决策收益只展示可归因增量，不用普通 GMV 替代。</p></div>
+                <div class="segmented" role="tablist">
+                  <button class="seg active" data-metric="incremental_revenue">增量收入</button>
+                  <button class="seg" data-metric="incremental_profit">增量利润</button>
+                  <button class="seg" data-metric="avoided_cost">节省成本</button>
+                </div>
+              </div>
+              <div class="legend"><span><i class="legend-dot actual"></i>实际值</span><span><i class="legend-dot forecast"></i>预测区间</span><span><i class="legend-line"></i>趋势</span></div>
+              <div class="chart-shell"><svg id="trendChart" viewBox="0 0 760 270" preserveAspectRatio="none" role="img" aria-label="增量效果趋势图"></svg><div class="chart-tooltip" id="chartTooltip"></div></div>
+            </article>
+
+            <article class="panel channel-panel">
+              <div class="panel-head compact"><div><h2>渠道贡献</h2><p>按增量收入归因</p></div><button class="text-link">查看详情 →</button></div>
+              <div class="channel-body">
+                <div class="donut-wrap"><div class="donut" id="channelDonut"><div><strong id="donutTotal">—</strong><span>增量收入</span></div></div></div>
+                <div class="channel-list" id="channelList"></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="operations-grid">
+            <article class="panel running-panel">
+              <div class="panel-head compact"><div><h2>当前运行的策略与实验</h2><p>Campaign / Experiment / Canary</p></div><button class="text-link" id="viewCampaignsBtn">查看全部 →</button></div>
+              <div class="tabs"><button class="tab active">全部 <span id="campaignCount">—</span></button><button class="tab">Campaign</button><button class="tab">Experiment</button><button class="tab">实时策略</button></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>名称</th><th>类型</th><th>状态</th><th>目标</th><th>人群规模</th><th>开始时间</th><th>预期提升</th><th></th></tr></thead>
+                  <tbody id="campaignRows"><tr><td colspan="8" class="loading-cell">正在加载…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+
+            <article class="panel todo-panel">
+              <div class="panel-head compact"><div><h2>待处理事项</h2><p>审批、数据与执行风险</p></div><button class="text-link" id="viewApprovalsBtn">查看全部 →</button></div>
+              <div class="todo-list" id="todoList"></div>
+            </article>
+          </section>
+
+          <section class="panel opportunity-panel">
+            <div class="panel-head compact"><div><h2>增长机会</h2><p>Evidence-first：Support、Uncertainty 与证据等级共同决定是否值得行动。</p></div><button class="text-link">打开 Opportunity Map →</button></div>
+            <div class="opportunity-grid" id="opportunityGrid"></div>
+          </section>
+
+          <section class="quick-grid" aria-label="快速开始">
+            <button class="quick-card" id="quickCampaign"><span class="quick-icon red">＋</span><span><strong>创建一个新活动</strong><small>从目标到执行，AI 全程辅助</small></span></button>
+            <button class="quick-card" id="quickOpportunity"><span class="quick-icon blue">▥</span><span><strong>分析增长机会</strong><small>基于真实因果效果</small></span></button>
+            <button class="quick-card" id="quickCreative"><span class="quick-icon purple">◇</span><span><strong>生成创意内容</strong><small>图文 / 视频 / 文案</small></span></button>
+            <button class="quick-card" id="quickData"><span class="quick-icon cyan">⌘</span><span><strong>接入新的数据源</strong><small>连接数仓或业务系统</small></span></button>
+          </section>
+        </section>
+
+        <aside class="agent-sidecar" id="agentSidecar" aria-label="Growth Agent">
+          <div class="agent-head">
+            <div class="agent-title"><span class="agent-logo">◈</span><strong>Growth Agent</strong><span class="online"><i></i> 在线</span></div>
+            <button class="mode-btn">切换模式⌄</button>
+          </div>
+          <div class="agent-scroll" id="agentScroll">
+            <div class="agent-message user-message">
+              <div class="avatar small">L</div>
+              <div><span class="message-time">今天 10:24</span><p>我想在春节前提升新用户的首购率，预算 50 万，但不希望过度打扰用户。你帮我设计一个完整的活动方案吧。</p></div>
+            </div>
+            <div class="agent-message system-message">
+              <div class="agent-logo large">◈</div>
+              <div class="agent-run-card">
+                <div class="thinking"><span class="pulse"></span> 受治理执行中</div>
+                <div class="run-steps" id="agentSteps"><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+                <div class="artifact-row" id="agentArtifacts"></div>
+              </div>
+            </div>
+          </div>
+          <form class="agent-compose" id="agentForm">
+            <textarea id="agentPrompt" rows="2" placeholder="继续提问，或输入指令…" aria-label="向 Growth Agent 输入指令"></textarea>
+            <div class="compose-actions"><div><button type="button" class="compose-icon" aria-label="添加附件">⌕</button><button type="button" class="compose-icon" aria-label="语音输入">⌁</button></div><button class="send-btn" type="submit" aria-label="发送">↑</button></div>
+          </form>
+          <section class="recent-result">
+            <div class="panel-head compact"><div><h3>最近成果</h3></div><button class="text-link">查看全部 →</button></div>
+            <div class="result-card"><div class="result-head"><div class="result-thumb">新</div><div><strong>新用户首购激励</strong><span class="positive big">+12.1%</span></div><svg id="miniResultChart" viewBox="0 0 120 40" preserveAspectRatio="none"></svg></div><div class="result-stats"><span>增量收入<strong>¥428,320</strong></span><span>增量用户<strong>32,421</strong></span><span>ROI<strong>3.6x</strong></span></div></div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="statusbar">
+        <div>GrowthEvo <span>·</span> From Insight to Impact.</div>
+        <div class="status-items"><span><i class="status-dot"></i> 系统运行正常</span><span>▣ 决策延迟 <strong id="latencyValue">—</strong> ms</span><span>◆ 数据更新 <strong id="freshnessValue">—</strong> 分钟前</span><span>v1.0.0</span></div>
+      </footer>
+    </main>
+  </div>
+
+  <nav class="mobile-bottom-nav" aria-label="移动端导航">
+    <button class="active"><span>⌂</span>首页</button><button id="mobileAgentBtn"><span>◈</span>Agent</button><button id="mobileCreateBtn" class="mobile-create"><span>＋</span></button><button><span>◎</span>证据</button><button><span>☰</span>更多</button>
+  </nav>
+
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+
+  <dialog class="modal" id="campaignModal">
+    <form method="dialog" class="modal-card" id="campaignForm">
+      <div class="modal-head"><div><span class="eyebrow">CANDIDATE PLANE</span><h2>创建 Campaign Draft</h2><p>只创建候选对象，不会直接发送或改变真实渠道状态。</p></div><button class="modal-close" value="cancel" aria-label="关闭">×</button></div>
+      <div class="form-grid">
+        <label>活动名称<input name="name" required maxlength="120" placeholder="例如：新用户春节首购激励" /></label>
+        <label>目标<select name="objective"><option>增量利润</option><option>首购率</option><option>7日活跃</option><option>会员转化</option></select></label>
+        <label>人群规模<input name="audience_size" type="number" min="0" value="100000" /></label>
+        <label>渠道<select name="channel"><option>App Push</option><option>Email</option><option>In-app</option><option>Multi-channel</option></select></label>
+        <label>证据等级<select name="evidence_tier"><option>A</option><option>B</option><option selected>C</option><option>D</option></select></label>
+        <label>风险等级<select name="risk_level"><option>L1</option><option selected>L2</option><option>L3</option><option>L4</option></select></label>
+        <label>预算（RMB）<input name="budget_rmb" type="number" min="0" value="100000" /></label>
+        <label>Canary<input name="canary_percent" type="number" min="1" max="100" value="5" /><span class="suffix">%</span></label>
+      </div>
+      <div class="modal-actions"><button class="btn ghost" value="cancel">取消</button><button class="btn primary" id="createDraftBtn" value="default">创建 Draft</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal command-modal" id="commandModal">
+    <div class="command-card">
+      <div class="command-input-row"><span>⌕</span><input id="commandInput" autocomplete="off" placeholder="搜索 Campaign、Experiment、Metric、Agent Run…" /><kbd>Esc</kbd></div>
+      <div class="command-section"><span class="command-label">快速操作</span><button data-command="campaign">＋ 创建 Campaign Draft <kbd>↵</kbd></button><button data-command="agent">◈ 让 Growth Agent 分析一个目标</button><button data-command="evidence">◎ 查看最新 Evidence / Decision Log</button></div>
+      <div class="command-section"><span class="command-label">跳转</span><button>增长机会 <small>Opportunity Map</small></button><button>实验中心 <small>Evidence-first</small></button><button>Agent Harness <small>Trace / Eval</small></button><button>治理与审批 <small>Human-in-the-loop</small></button></div>
+    </div>
+  </dialog>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+</body>
+</html>
