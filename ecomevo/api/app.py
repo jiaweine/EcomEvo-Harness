@@ -17,6 +17,7 @@ from .connection_routes import install_connection_routes
 from .decision_export_routes import install_decision_export_routes
 from .evaluation_api import build_evaluation_router
 from .feedback_routes import install_feedback_routes
+from .growth_routes import install_growth_routes
 from .inbox_routes import install_inbox_routes
 from .knowledge_routes import install_knowledge_routes
 from .observability_routes import install_observability_routes
@@ -79,6 +80,14 @@ if not getattr(_application.app.state, "inbox_routes_installed", False):
 if not getattr(_application.app.state, "feedback_routes_installed", False):
     install_feedback_routes(_application.app, _application.store, _application.FRONTEND)
     _application.app.state.feedback_routes_installed = True
+
+if not getattr(_application.app.state, "growth_routes_installed", False):
+    _application.growth_center = install_growth_routes(
+        _application.app,
+        frontend=_application.FRONTEND,
+        data_dir=_application.DATA_DIR,
+    )
+    _application.app.state.growth_routes_installed = True
 
 if not getattr(_application.app.state, "operator_activity_routes_installed", False):
     _application.operator_activity_ledger = install_operator_activity_routes(

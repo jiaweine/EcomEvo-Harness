@@ -1,0 +1,13 @@
+{
+  "name": "GrowthEvo",
+  "short_name": "GrowthEvo",
+  "description": "AI 原生因果增长决策与执行平台",
+  "start_url": "/growth",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#111827",
+  "icons": [
+    {"src": "/assets/growth-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
+}
